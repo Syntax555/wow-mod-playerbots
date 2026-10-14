@@ -533,6 +533,9 @@ public:
     bool CanCastSpell(uint32 spellid, GameObject* goTarget, bool checkHasSpell = true, Item* castItem = nullptr);
     bool CanCastSpell(uint32 spellid, float x, float y, float z, bool checkHasSpell = true,
                       Item* itemTarget = nullptr);
+    // True when an enemy area spell centred on (x, y, z) would also hit an attackable creature that
+    // isn't fighting yet (and isn't `skip`), which would pull it.
+    bool AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, float y, float z, Unit const* skip = nullptr);
 
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);

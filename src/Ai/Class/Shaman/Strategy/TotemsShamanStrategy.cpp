@@ -144,10 +144,14 @@ WrathOfAirTotemStrategy::WrathOfAirTotemStrategy(PlayerbotAI* botAI) : GenericSh
 void WrathOfAirTotemStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     GenericShamanStrategy::InitTriggers(triggers);
-    // If the bot hasn't learned Wrath of Air Totem yet, set Grounding Totem instead.
+    // If the bot hasn't learned Wrath of Air Totem yet, set the totem "wrath of air totem" falls back to
+    // when cast (Windfury, then Grounding). With Grounding on the bar, Call of the Elements dropped it and
+    // the "no air totem" trigger replaced it with Windfury after every recall.
     Player* bot = botAI->GetBot();
     if (bot->HasSpell(SPELL_WRATH_OF_AIR_TOTEM))
         triggers.push_back(new TriggerNode("set wrath of air totem", { NextAction("set wrath of air totem", 60.0f) }));
+    else if (bot->HasSpell(SPELL_WINDFURY_TOTEM))
+        triggers.push_back(new TriggerNode("set windfury totem", { NextAction("set windfury totem", 60.0f) }));
     else if (bot->HasSpell(SPELL_GROUNDING_TOTEM))
         triggers.push_back(new TriggerNode("set grounding totem", { NextAction("set grounding totem", 60.0f) }));
     triggers.push_back( new TriggerNode("no air totem", { NextAction("wrath of air totem", 55.0f) }));

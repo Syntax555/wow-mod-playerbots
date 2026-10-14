@@ -148,8 +148,9 @@ public:
 class HuntersMarkTrigger : public DebuffTrigger
 {
 public:
-    HuntersMarkTrigger(PlayerbotAI* botAI) : DebuffTrigger(botAI, "hunter's mark", 1, true, 0.5f) {}
-    bool IsActive() override { return BuffTrigger::IsActive(); }
+    // The target has to live long enough to be worth the global cooldown: without the lifetime check a
+    // bot hunter in a 5-man marked every trash mob (241 marks against 107 Steady Shots in one BRD run).
+    HuntersMarkTrigger(PlayerbotAI* botAI) : DebuffTrigger(botAI, "hunter's mark", 1, true, 10.0f) {}
 };
 
 class ExplosiveShotTrigger : public DebuffTrigger

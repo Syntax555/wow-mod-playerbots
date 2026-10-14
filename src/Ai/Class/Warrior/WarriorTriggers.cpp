@@ -6,6 +6,7 @@
 
 #include "WarriorTriggers.h"
 #include "Playerbots.h"
+#include "SpellAuraEffects.h"
 
 namespace
 {
@@ -120,16 +121,15 @@ bool BattleShoutTrigger::IsActive()
         if (!bom)
             continue;
 
-        SpellInfo const* bomInfo = bom->GetSpellInfo();
-        if (!bomInfo)
-            continue;
-
+        // Use the aura's real amount: the core keeps whichever is stronger by AuraEffect amount, and that
+        // includes the paladin's talents (Improved Blessing of Might). Comparing base points made the
+        // warrior recast a Battle Shout that never landed on itself, every global cooldown.
         for (uint8 eff = 0; eff < MAX_SPELL_EFFECTS; ++eff)
         {
-            if (bomInfo->Effects[eff].ApplyAuraName == SPELL_AURA_MOD_ATTACK_POWER)
+            AuraEffect const* bomEffect = bom->GetEffect(eff);
+            if (bomEffect && bomEffect->GetAuraType() == SPELL_AURA_MOD_ATTACK_POWER)
             {
-                int32 bomApValue = bomInfo->Effects[eff].BasePoints + 1;
-                if (bomApValue >= effectiveBsAp)
+                if (bomEffect->GetAmount() >= effectiveBsAp)
                     return false;
                 break;
             }
