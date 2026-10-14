@@ -8,6 +8,17 @@
 #include "LFGMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "World.h"
+
+namespace
+{
+// With AllowTwoSide.Interaction.Group the core lets both factions share a group, so a player of the
+// other faction is checked like any other player instead of being refused as an enemy.
+bool IsOpposingDenied(PlayerbotAI* botAI, Player* from)
+{
+    return botAI->IsOpposing(from) && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP);
+}
+}  // namespace
 
 PlayerbotSecurity::PlayerbotSecurity(Player* const bot) : bot(bot)
 {
@@ -39,7 +50,7 @@ PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* rea
         return PLAYERBOT_SECURITY_DENY_ALL;
     }
 
-    if (botAI->IsOpposing(from))
+    if (IsOpposingDenied(botAI, from))
     {
         if (reason)
             *reason = PLAYERBOT_DENY_OPPOSING;
@@ -50,7 +61,7 @@ PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* rea
     if (sPlayerbotAIConfig.IsInRandomAccountList(account))
     {
         // (duplicate check in case of faction change)
-        if (botAI->IsOpposing(from))
+        if (IsOpposingDenied(botAI, from))
         {
             if (reason)
                 *reason = PLAYERBOT_DENY_OPPOSING;
@@ -187,7 +198,7 @@ bool PlayerbotSecurity::CheckLevelFor(PlayerbotSecurityLevel level, bool silent,
         return false;
 
     Player* master = botAI->GetMaster();
-    if (master && botAI->IsOpposing(master))
+    if (master && IsOpposingDenied(botAI, master))
         if (master->GetSession() && !master->CanBeGameMaster())
             return false;
 
