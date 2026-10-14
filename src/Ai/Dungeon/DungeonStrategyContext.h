@@ -23,6 +23,7 @@
 #include "PoSStrategy.h"
 #include "RampStrategy.h"
 #include "SethStrategy.h"
+#include "SMStrategy.h"
 #include "Strategy.h"
 #include "TOCStrategy.h"
 #include "UBStrategy.h"
@@ -36,7 +37,7 @@ public:
     DungeonStrategyContext() : NamedObjectContext<Strategy>(false, true)
     {
         // Vanilla
-        // ...
+        creators["vanilla-sm"] = &DungeonStrategyContext::vanilla_sm;   // Scarlet Monastery
 
         // Burning Crusade
         creators["tbc-ac"] = &DungeonStrategyContext::tbc_ac;           // Auchindoun: Auchenai Crypts
@@ -65,6 +66,7 @@ public:
     }
 
 private:
+    static Strategy* vanilla_sm(PlayerbotAI* botAI) { return new VanillaDungeonScarletMonasteryStrategy(botAI); }
     static Strategy* tbc_ac(PlayerbotAI* botAI) { return new TbcDungeonAuchenaiCryptsStrategy(botAI); }
     static Strategy* tbc_seth(PlayerbotAI* botAI) { return new TbcDungeonSethekkHallsStrategy(botAI); }
     static Strategy* tbc_mech(PlayerbotAI* botAI) { return new TbcDungeonMechanarStrategy(botAI); }

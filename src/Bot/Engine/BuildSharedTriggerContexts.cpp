@@ -25,6 +25,7 @@
 #include "TbcDungeonTriggerContext.h"
 #include "TriggerContext.h"
 #include "UldTriggerContext.h"
+#include "VanillaDungeonTriggerContext.h"
 #include "VoATriggerContext.h"
 #include "WorldPacketTriggerContext.h"
 #include "WotlkDungeonTriggerContext.h"
@@ -55,6 +56,7 @@ void AiObjectContext::BuildSharedTriggerContexts(
     triggerContexts.Add(new RaidOnyxiaTriggerContext());
     triggerContexts.Add(new RaidIccTriggerContext());
     triggerContexts.Add(new RaidRsTriggerContext());
+    triggerContexts.Add(new VanillaDungeonScarletMonasteryTriggerContext());
     triggerContexts.Add(new TbcDungeonAuchenaiCryptsTriggerContext());
     triggerContexts.Add(new TbcDungeonSethekkHallsTriggerContext());
     triggerContexts.Add(new TbcDungeonMechanarTriggerContext());
