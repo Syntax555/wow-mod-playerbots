@@ -104,6 +104,7 @@ bool PlayerbotAIConfig::Initialize()
     LootDelay = sConfigMgr->GetOption<int32>("Playerbots.LootDelay", 1000);
     DisabledWithoutRealPlayerLoginDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLoginDelay", 30);
     DisabledWithoutRealPlayerLogoutDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLogoutDelay", 300);
+    RandomBotSaveInterval = sConfigMgr->GetOption<uint32>("Playerbots.RandomBotSaveInterval", 0);
 
     FarDistance = sConfigMgr->GetOption<float>("Playerbots.FarDistance", 20.0f);
     SightDistance = sConfigMgr->GetOption<float>("Playerbots.SightDistance", 100.0f);
