@@ -129,6 +129,7 @@ public:
     PlayerbotsPlayerScript() : PlayerScript("PlayerbotsPlayerScript", {
         PLAYERHOOK_ON_LOGIN,
         PLAYERHOOK_ON_BEFORE_LOGOUT,
+        PLAYERHOOK_ON_SAVE,
         PLAYERHOOK_ON_AFTER_UPDATE,
         PLAYERHOOK_ON_CREATURE_KILL_CREDIT,
         PLAYERHOOK_ON_BEFORE_PETITION_SIGN,
@@ -181,6 +182,24 @@ public:
         }
 
         sRandomPlayerbotMgr.OnPlayerLogout(player);
+    }
+
+    // Player::SaveToDB has just set the next autosave to PlayerSaveInterval. For a randombot without
+    // a real player as master, push it out to Playerbots.RandomBotSaveInterval.
+    void OnPlayerSave(Player* player) override
+    {
+        uint32 const interval =
+            std::min<uint32>(sPlayerbotAIConfig.RandomBotSaveInterval, UINT32_MAX / IN_MILLISECONDS) * IN_MILLISECONDS;
+        if (interval <= player->GetSaveTimer() || !player->GetSession()->IsHeadless() ||
+            !sRandomPlayerbotMgr.IsRandomBot(player))
+            return;
+
+        if (PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player))
+            if (Player* master = botAI->GetMaster())
+                if (master->GetSession() && !master->GetSession()->IsHeadless())
+                    return;
+
+        player->SetSaveTimer(interval);
     }
 
     void OnPlayerCreatureKillCredit(Player* player, Creature* killed) override
