@@ -188,7 +188,9 @@ bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* t
                           spellInfo->DmgClass == SPELL_DAMAGE_CLASS_MAGIC;
     bool const fromCaster = spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER);
     WorldObject const* origin = fromCaster ? static_cast<WorldObject const*>(bot) : target;
-    float const searchRadius = bouncing ? jumpRadius * chainTargets : jumpRadius;
+    // The core searches as far as all the jumps together reach (SearchChainTargets is handed the
+    // number of jumps, not the number of targets).
+    float const searchRadius = bouncing ? jumpRadius * jumps : jumpRadius;
 
     std::list<Unit*> candidates;
     ChainCandidateCheck check(bot, spellInfo, origin, searchRadius);
@@ -196,7 +198,18 @@ bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* t
     Cell::VisitObjects(origin, searcher, searchRadius + 10.0f);
     candidates.remove(target);
     if (!bouncing)
-        candidates.remove_if([this](Unit* unit) { return !bot->HasInArc(static_cast<float>(M_PI), unit); });
+    {
+        // In front of the caster once it has turned to the target, as it does to cast (the core's
+        // HasInArc with the facing toward the target).
+        float const facing = bot->GetAbsoluteAngle(target);
+        candidates.remove_if([this, facing](Unit* unit)
+        {
+            float angle = Position::NormalizeOrientation(bot->GetAbsoluteAngle(unit) - facing);
+            if (angle > static_cast<float>(M_PI))
+                angle -= 2.0f * static_cast<float>(M_PI);
+            return std::fabs(angle) > static_cast<float>(M_PI) / 2.0f;
+        });
+    }
 
     // The target isn't fighting: this is the pull, and its own pack comes along anyway.
     bool const pull = !target->IsInCombat();
@@ -208,7 +221,9 @@ bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* t
         {
             if (bouncing && !source->IsWithinDist(*it, jumpRadius))
                 continue;
-            if (next == candidates.end() || source->GetDistanceOrder(*it, *next))
+            if (next != candidates.end() && !source->GetDistanceOrder(*it, *next))
+                continue;
+            if (source->IsWithinLOSInMap(*it, VMAP::ModelIgnoreFlags::M2))
                 next = it;
         }
         if (next == candidates.end())
@@ -3629,17 +3644,6 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
         return false;
     }
 
-    // Nor a chain that would jump on to them: a tank's Avenger's Shield went from the pack it was
-    // fighting into the next one three times in one BRD Detention Block pull (38 mobs, a wipe).
-    if (ChainWouldPullIdleCreature(spellInfo, target))
-    {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. Chain spell would pull an idle creature. - target name: {}, spellid: {}, bot name: {}",
-                target->GetName(), spellid, bot->GetName());
-
-        return false;
-    }
-
     uint32 CastingTime = !spellInfo->IsChanneled() ? spellInfo->CalcCastTime(bot) : spellInfo->GetDuration();
     // bool interruptOnMove = spellInfo->InterruptFlags & SPELL_INTERRUPT_FLAG_MOVEMENT;
     if ((CastingTime || spellInfo->IsAutoRepeatRangedSpell()) && bot->isMoving())
@@ -3712,6 +3716,16 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
         case SPELL_CAST_OK:
         case SPELL_FAILED_NOT_SHAPESHIFT:
         case SPELL_FAILED_OUT_OF_RANGE:
+            // Last, as it searches the grid: nor a chain that would jump on to creatures that
+            // aren't fighting. A tank's Avenger's Shield went from the pack it was fighting into
+            // the next one three times in one BRD Detention Block pull (38 mobs, a wipe).
+            if (ChainWouldPullIdleCreature(spellInfo, target))
+            {
+                if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+                    LOG_DEBUG("playerbots", "Can cast spell failed. Chain spell would pull an idle creature. - target name: {}, spellid: {}, bot name: {}",
+                        target->GetName(), spellid, bot->GetName());
+                return false;
+            }
             return true;
         default:
             if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
