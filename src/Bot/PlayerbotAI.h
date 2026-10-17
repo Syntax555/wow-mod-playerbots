@@ -536,6 +536,11 @@ public:
     // True when an enemy area spell centred on (x, y, z) would also hit an attackable creature that
     // isn't fighting yet (and isn't `skip`), which would pull it.
     bool AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, float y, float z, Unit const* skip = nullptr);
+    // True when a harmful chain spell cast at `target` (Avenger's Shield, Chain Lightning, Multi-Shot,
+    // Cleave) would jump on to an attackable creature that isn't fighting yet: any such creature when
+    // the target is fighting, and one more than a pack's width from the target when the target is the
+    // pull itself.
+    bool ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* target);
 
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
