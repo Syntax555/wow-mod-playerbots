@@ -100,6 +100,33 @@ private:
     float _x, _y, _z, _radius;
     Unit const* _skip;
 };
+
+// The creatures a chain spell of the bot's could jump to from around `source`: attackable, alive,
+// not a critter, totem, trigger or player-controlled unit, fighting or not.
+class ChainCandidateCheck
+{
+public:
+    ChainCandidateCheck(Player* bot, SpellInfo const* spellInfo, WorldObject const* source, float radius)
+        : _bot(bot), _spellInfo(spellInfo), _source(source), _radius(radius) {}
+
+    bool operator()(Unit* unit)
+    {
+        Creature* creature = unit->ToCreature();
+        if (!creature || !creature->IsAlive() || creature->IsInEvadeMode() || creature->IsCritter() ||
+            creature->IsTotem() || creature->IsTrigger() || creature->IsControlledByPlayer() || !creature->IsVisible())
+            return false;
+        return _source->IsWithinDist(creature, _radius) && _bot->IsValidAttackTarget(creature, _spellInfo);
+    }
+
+private:
+    Player* _bot;
+    SpellInfo const* _spellInfo;
+    WorldObject const* _source;
+    float _radius;
+};
+
+// A creature this close to a pull's target belongs to its pack and comes along whatever it is hit with.
+constexpr float CHAIN_PULL_PACK_RADIUS = 12.0f;
 }
 
 bool PlayerbotAI::AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, float y, float z, Unit const* skip)
@@ -129,6 +156,72 @@ bool PlayerbotAI::AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, 
     // The check adds each creature's own size, so search a little wider than the spell's radius.
     Cell::VisitObjects(x, y, bot->GetMap(), searcher, radius + 10.0f);
     return found != nullptr;
+}
+
+bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* target)
+{
+    if (!spellInfo || !target || target == bot || spellInfo->IsPositive())
+        return false;
+
+    uint32 chainTargets = 0;
+    for (uint8 i = EFFECT_0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        SpellEffectInfo const& effect = spellInfo->Effects[i];
+        if (effect.IsEffect() && effect.ChainTarget > 1 && effect.TargetA.GetCheckType() == TARGET_CHECK_ENEMY)
+            chainTargets = std::max(chainTargets, effect.ChainTarget);
+    }
+    if (chainTargets <= 1)
+        return false;
+    // ChainTarget counts the target itself; a glyph or talent may add to it.
+    bot->ApplySpellMod(spellInfo->Id, SPELLMOD_JUMP_TARGETS, chainTargets);
+    uint32 jumps = chainTargets - 1;
+
+    // How the core picks the jumps (Spell::SearchChainTargets): from the target, each time the
+    // closest candidate within the jump radius of the last one hit. Melee and ranged chains
+    // (Cleave, Multi-Shot) don't move on from each target but take the ones nearest the first, in
+    // front of the caster.
+    float jumpRadius = spellInfo->DmgClass == SPELL_DAMAGE_CLASS_RANGED ? 7.5f : 10.0f;
+    if (spellInfo->JumpDistance > 0.0f)
+        jumpRadius = spellInfo->JumpDistance;
+    bool const bouncing = spellInfo->HasAttribute(SPELL_ATTR4_BOUNCY_CHAIN_MISSILES) ||
+                          spellInfo->DmgClass == SPELL_DAMAGE_CLASS_NONE ||
+                          spellInfo->DmgClass == SPELL_DAMAGE_CLASS_MAGIC;
+    bool const fromCaster = spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER);
+    WorldObject const* origin = fromCaster ? static_cast<WorldObject const*>(bot) : target;
+    float const searchRadius = bouncing ? jumpRadius * chainTargets : jumpRadius;
+
+    std::list<Unit*> candidates;
+    ChainCandidateCheck check(bot, spellInfo, origin, searchRadius);
+    Acore::UnitListSearcher<ChainCandidateCheck> searcher(bot, candidates, check);
+    Cell::VisitObjects(origin, searcher, searchRadius + 10.0f);
+    candidates.remove(target);
+    if (!bouncing)
+        candidates.remove_if([this](Unit* unit) { return !bot->HasInArc(static_cast<float>(M_PI), unit); });
+
+    // The target isn't fighting: this is the pull, and its own pack comes along anyway.
+    bool const pull = !target->IsInCombat();
+    WorldObject const* source = origin;
+    while (jumps-- && !candidates.empty())
+    {
+        auto next = candidates.end();
+        for (auto it = candidates.begin(); it != candidates.end(); ++it)
+        {
+            if (bouncing && !source->IsWithinDist(*it, jumpRadius))
+                continue;
+            if (next == candidates.end() || source->GetDistanceOrder(*it, *next))
+                next = it;
+        }
+        if (next == candidates.end())
+            break;
+
+        Unit* hit = *next;
+        if (!hit->IsInCombat() && (!pull || !target->IsWithinDist(hit, CHAIN_PULL_PACK_RADIUS)))
+            return true;
+        if (!fromCaster)
+            source = hit;
+        candidates.erase(next);
+    }
+    return false;
 }
 
 std::vector<std::string> PlayerbotAI::dispel_whitelist = {
@@ -3531,6 +3624,17 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
             LOG_DEBUG("playerbots", "Can cast spell failed. Area spell would pull an idle creature. - target name: {}, spellid: {}, bot name: {}",
+                target->GetName(), spellid, bot->GetName());
+
+        return false;
+    }
+
+    // Nor a chain that would jump on to them: a tank's Avenger's Shield went from the pack it was
+    // fighting into the next one three times in one BRD Detention Block pull (38 mobs, a wipe).
+    if (ChainWouldPullIdleCreature(spellInfo, target))
+    {
+        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+            LOG_DEBUG("playerbots", "Can cast spell failed. Chain spell would pull an idle creature. - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
         return false;
