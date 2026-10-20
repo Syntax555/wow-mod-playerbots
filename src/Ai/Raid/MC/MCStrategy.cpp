@@ -87,6 +87,9 @@ void RaidMcStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("mc ragnaros fire resistance",
                         { NextAction("mc ragnaros fire resistance", ACTION_RAID) }));
 
+    triggers.push_back(
+        new TriggerNode("mc core hound recovery", {NextAction("mc core hound recovery", ACTION_RAID + 2)}));
+
     // Trash
     triggers.push_back(
         new TriggerNode("mc core hound mark",
@@ -100,6 +103,7 @@ void RaidMcStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
 void RaidMcStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
+    multipliers.push_back(new McCoreHoundRecoveryMultiplier(botAI));
     multipliers.push_back(new GarrDisableDpsAoeMultiplier(botAI));
     multipliers.push_back(new BaronGeddonAbilityMultiplier(botAI));
     multipliers.push_back(new GolemaggMultiplier(botAI));

@@ -142,3 +142,18 @@ float GolemaggMultiplier::GetValue(Action* action)
     }
     return 1.0f;
 }
+
+float McCoreHoundRecoveryMultiplier::GetValue(Action* action)
+{
+    if (!AI_VALUE(bool, "mc core hound recovery"))
+        return 1.0f;
+
+    // Healing and escape movement remain available while the pack rekindles.
+    if (dynamic_cast<AttackAction*>(action) || dynamic_cast<CastShootAction*>(action) ||
+        action->getName() == "pet attack" ||
+        (dynamic_cast<CastSpellAction*>(action) && !dynamic_cast<CastBuffSpellAction*>(action) &&
+         !dynamic_cast<CastHealingSpellAction*>(action) && !dynamic_cast<CastCureSpellAction*>(action)))
+        return 0.0f;
+
+    return 1.0f;
+}

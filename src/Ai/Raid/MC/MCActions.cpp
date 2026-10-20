@@ -5,10 +5,14 @@
  */
 
 #include "MCActions.h"
+
+#include <algorithm>
+
 #include "MCHelpers.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
-#include <algorithm>
+#include "Spell.h"
+#include "SpellInfo.h"
 
 static constexpr float LIVING_BOMB_DISTANCE = 20.0f;
 static constexpr float INFERNO_DISTANCE = 20.0f;
@@ -306,7 +310,7 @@ Unit* McCoreHoundMarkAction::GetTarget()
     for (auto const& [guid, ref] : bot->GetThreatMgr().GetThreatenedByMeList())
     {
         Unit* unit = ref->GetOwner();
-        if (unit && unit->IsAlive() && unit->GetEntry() == NPC_CORE_HOUND)
+        if (unit && unit->IsAlive() && unit->GetEntry() == NPC_CORE_HOUND && !unit->HasAura(SPELL_CORE_HOUND_PLAY_DEAD))
         {
             if (!highestHealthHound || unit->GetHealth() > highestHealthHound->GetHealth())
                 highestHealthHound = unit;
@@ -322,7 +326,8 @@ Unit* McCoreHoundMarkAction::GetTarget()
     {
         // Only switch skull if the new target has meaningfully more health (10% buffer) to prevent rapid re-marking
         if (Unit* currentSkullUnit = botAI->GetUnit(currentSkullGuid))
-            if (currentSkullUnit->IsAlive() && highestHealthHound->GetHealth() <= currentSkullUnit->GetHealth() * 1.10f)
+            if (currentSkullUnit->IsAlive() && !currentSkullUnit->HasAura(SPELL_CORE_HOUND_PLAY_DEAD) &&
+                highestHealthHound->GetHealth() <= currentSkullUnit->GetHealth() * 1.10f)
                 return nullptr;
     }
 
@@ -339,5 +344,56 @@ bool McCoreHoundMarkAction::Execute(Event /*event*/)
         return false;
 
     bot->GetGroup()->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), target->GetGUID());
+    return true;
+}
+
+static bool IsCastingHarmfulSpell(Unit* unit)
+{
+    for (CurrentSpellTypes type : {CURRENT_GENERIC_SPELL, CURRENT_CHANNELED_SPELL, CURRENT_AUTOREPEAT_SPELL})
+        if (Spell* spell = unit->GetCurrentSpell(type))
+            if (!spell->GetSpellInfo()->IsPositive())
+                return true;
+
+    return false;
+}
+
+bool McCoreHoundRecoveryAction::isUseful()
+{
+    if (!AI_VALUE(bool, "mc core hound recovery"))
+        return !_pausedPet.IsEmpty();
+
+    Pet* pet = bot->GetPet();
+    return bot->GetVictim() || IsCastingHarmfulSpell(bot) ||
+           (pet && (pet->GetVictim() || IsCastingHarmfulSpell(pet) || pet->GetReactState() != REACT_PASSIVE));
+}
+
+bool McCoreHoundRecoveryAction::Execute(Event /*event*/)
+{
+    Pet* pet = bot->GetPet();
+    if (!AI_VALUE(bool, "mc core hound recovery"))
+    {
+        if (pet && pet->GetGUID() == _pausedPet)
+            pet->SetReactState(_petReactState);
+        _pausedPet.Clear();
+        return true;
+    }
+
+    bot->AttackStop();
+    if (IsCastingHarmfulSpell(bot))
+        bot->InterruptNonMeleeSpells(false);
+    if (pet)
+    {
+        if (_pausedPet != pet->GetGUID())
+        {
+            _pausedPet = pet->GetGUID();
+            _petReactState = pet->GetReactState();
+        }
+        pet->AttackStop();
+        if (IsCastingHarmfulSpell(pet))
+            pet->InterruptNonMeleeSpells(false);
+        pet->SetReactState(REACT_PASSIVE);
+        if (pet->GetCharmInfo())
+            pet->GetCharmInfo()->SetIsCommandAttack(false);
+    }
     return true;
 }
