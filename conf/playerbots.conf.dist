@@ -401,7 +401,8 @@ Playerbots.RpgDelay = 10000
 Playerbots.SitDelay = 20000
 # ReturnDelay has a minimum value of 2000 - lower values will cause a crash!
 Playerbots.ReturnDelay = 2000
-Playerbots.LootDelay = 1000
+# Pause in milliseconds between loot steps; pending requests still wait for server acknowledgement.
+Playerbots.LootDelay = 250
 
 #
 #
