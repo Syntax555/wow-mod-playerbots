@@ -29,6 +29,90 @@ static constexpr float VAELASTRASZ_RANGED_BIAS_BOSS_WEIGHT = 1.0f - VAELASTRASZ_
 
 // General
 
+namespace
+{
+constexpr uint32 BWL_MAP_ID = 469;
+constexpr uint32 NPC_DEATH_TALON_WYRMKIN = 12465;
+constexpr uint32 SPELL_FIREBALL_VOLLEY = 22425;
+}
+
+Unit* BwlInterruptVolleyAction::FindCaster(std::string& interrupt)
+{
+    if (bot->GetMapId() != BWL_MAP_ID || !bot->IsInCombat())
+        return nullptr;
+
+    char const* primary = nullptr;
+    char const* secondary = nullptr;
+    switch (bot->getClass())
+    {
+        case CLASS_ROGUE:
+            primary = "kick";
+            break;
+        case CLASS_MAGE:
+            primary = "counterspell";
+            break;
+        case CLASS_SHAMAN:
+            primary = "wind shear";
+            break;
+        case CLASS_DEATH_KNIGHT:
+            primary = "mind freeze";
+            break;
+        case CLASS_WARRIOR:
+            primary = "pummel";
+            secondary = "shield bash";
+            break;
+        default:
+            return nullptr;
+    }
+
+    // Only engaged Wyrmkin casting Fireball Volley; never chase or switch the DPS target.
+    for (ObjectGuid const guid : AI_VALUE(GuidVector, "attackers"))
+    {
+        Unit* caster = botAI->GetUnit(guid);
+        if (!caster || !caster->IsAlive() || caster->GetEntry() != NPC_DEATH_TALON_WYRMKIN)
+            continue;
+
+        Spell* cast = caster->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        if (!cast || cast->m_spellInfo->Id != SPELL_FIREBALL_VOLLEY)
+            continue;
+
+        for (char const* spell : {primary, secondary})
+        {
+            if (!spell || !botAI->HasSpell(spell))
+                continue;
+
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(AI_VALUE2(uint32, "spell id", spell));
+            if (!info)
+                continue;
+
+            // CanCastSpell accepts OUT_OF_RANGE for actions that can approach a target.
+            float const range = info->GetMaxRange(false, bot);
+            bool const inRange = range <= NOMINAL_MELEE_RANGE ? bot->IsWithinMeleeRange(caster)
+                                                            : bot->IsWithinCombatRange(caster, range);
+            if (inRange && botAI->IsInterruptableSpellCasting(caster, spell) &&
+                botAI->CanCastSpell(spell, caster))
+            {
+                interrupt = spell;
+                return caster;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool BwlInterruptVolleyAction::isUseful()
+{
+    std::string interrupt;
+    return FindCaster(interrupt) != nullptr;
+}
+
+bool BwlInterruptVolleyAction::Execute(Event /*event*/)
+{
+    std::string interrupt;
+    Unit* caster = FindCaster(interrupt);
+    return caster && botAI->CastSpell(interrupt, caster);
+}
+
 bool BwlOnyxiaScaleCloakAuraCheckAction::Execute(Event /*event*/)
 {
     bot->AddAura(static_cast<uint32>(BlackwingLairSpells::SPELL_ONYXIA_SCALE_CLOAK), bot);

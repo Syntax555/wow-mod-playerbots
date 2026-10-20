@@ -13,6 +13,17 @@
 
 // General
 
+class BwlInterruptVolleyAction : public Action
+{
+public:
+    BwlInterruptVolleyAction(PlayerbotAI* botAI) : Action(botAI, "bwl interrupt volley") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+
+private:
+    Unit* FindCaster(std::string& interrupt);
+};
+
 class BwlOnyxiaScaleCloakAuraCheckAction : public Action
 {
 public:

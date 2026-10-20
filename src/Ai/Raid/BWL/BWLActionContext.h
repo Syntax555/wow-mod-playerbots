@@ -17,6 +17,7 @@ class RaidBwlActionContext : public NamedObjectContext<Action>
 public:
     RaidBwlActionContext()
     {
+        creators["bwl interrupt volley"] = &RaidBwlActionContext::bwl_interrupt_volley;
         creators["bwl check onyxia scale cloak"] = &RaidBwlActionContext::bwl_check_onyxia_scale_cloak;
         creators["bwl turn off suppression device"] = &RaidBwlActionContext::bwl_turn_off_suppression_device;
 
@@ -44,6 +45,7 @@ public:
     }
 
 private:
+    static Action* bwl_interrupt_volley(PlayerbotAI* botAI) { return new BwlInterruptVolleyAction(botAI); }
     static Action* bwl_check_onyxia_scale_cloak(PlayerbotAI* botAI) { return new BwlOnyxiaScaleCloakAuraCheckAction(botAI); }
     static Action* bwl_turn_off_suppression_device(PlayerbotAI* botAI) { return new BwlTurnOffSuppressionDeviceAction(botAI); }
     static Action* bwl_razorgore_fire_resistance_action(PlayerbotAI* botAI) { return new BossFireResistanceAction(botAI, "razorgore the untamed"); }
