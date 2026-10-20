@@ -11,6 +11,13 @@
 
 // General
 
+class BwlVolleyCombatTrigger : public Trigger
+{
+public:
+    BwlVolleyCombatTrigger(PlayerbotAI* botAI) : Trigger(botAI, "bwl volley combat", 0) {}
+    bool IsActive() override;
+};
+
 class BwlSuppressionDeviceTrigger : public Trigger
 {
 public:

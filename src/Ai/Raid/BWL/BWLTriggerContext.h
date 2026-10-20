@@ -16,6 +16,7 @@ class RaidBwlTriggerContext : public NamedObjectContext<Trigger>
 public:
     RaidBwlTriggerContext()
     {
+        creators["bwl volley combat"] = &RaidBwlTriggerContext::bwl_volley_combat;
         creators["bwl suppression device"] = &RaidBwlTriggerContext::bwl_suppression_device;
 
         creators["bwl razorgore fire resistance"] = &RaidBwlTriggerContext::bwl_razorgore_fire_resistance_trigger;
@@ -44,6 +45,7 @@ public:
     }
 
 private:
+    static Trigger* bwl_volley_combat(PlayerbotAI* botAI) { return new BwlVolleyCombatTrigger(botAI); }
     static Trigger* bwl_suppression_device(PlayerbotAI* botAI) { return new BwlSuppressionDeviceTrigger(botAI); }
     static Trigger* bwl_razorgore_fire_resistance_trigger(PlayerbotAI* botAI) { return new BossFireResistanceTrigger(botAI, "razorgore the untamed"); }
     static Trigger* bwl_razorgore_not_mind_controlled(PlayerbotAI* botAI) { return new BwlRazorgoreNotMindControlledTrigger(botAI); }

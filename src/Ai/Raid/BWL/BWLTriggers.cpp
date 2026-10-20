@@ -12,6 +12,11 @@ using namespace BlackwingLairHelpers;
 
 // General
 
+bool BwlVolleyCombatTrigger::IsActive()
+{
+    return bot->GetMapId() == 469 && bot->IsInCombat();
+}
+
 bool BwlSuppressionDeviceTrigger::IsActive()
 {
     // Until MoP, only rogues could disarm suppression devices.

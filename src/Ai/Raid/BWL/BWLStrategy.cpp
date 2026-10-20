@@ -11,6 +11,8 @@
 
 void RaidBwlStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
+    triggers.push_back(new TriggerNode("bwl volley combat", {
+        NextAction("bwl interrupt volley", ACTION_INTERRUPT + 1) }));
     triggers.push_back(new TriggerNode("often", {
         NextAction("bwl check onyxia scale cloak", ACTION_RAID) }));
     triggers.push_back(new TriggerNode("bwl suppression device", {
