@@ -2120,7 +2120,7 @@ bool LadyVashjLootTaintedCoreAction::Execute(Event /*event*/)
     *releasePacket << tainted->GetGUID();
     bot->GetSession()->QueuePacket(releasePacket);
 
-    botAI->SetNextCheckDelay(sPlayerbotAIConfig.LootDelay); // 1s default; for realism before throw.
+    botAI->SetNextCheckDelay(sPlayerbotAIConfig.LootDelay);  // Configured loot acknowledgement pause before throwing.
     return true;
 }
 
