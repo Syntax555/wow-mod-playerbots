@@ -32,6 +32,7 @@ public:
         creators["mc golemagg assist tank attack core rager"] = &RaidMcActionContext::golemagg_assist_tank_attack_core_rager;
         creators["mc majordomo shadow resistance"] = &RaidMcActionContext::majordomo_shadow_resistance;
         creators["mc ragnaros fire resistance"] = &RaidMcActionContext::ragnaros_fire_resistance;
+        creators["mc core hound recovery"] = &RaidMcActionContext::core_hound_recovery;
         creators["mc core hound mark"] = &RaidMcActionContext::core_hound_mark;
         creators["mc move from lava"] = &RaidMcActionContext::move_from_lava;
         creators["mc golemagg back off"] = &RaidMcActionContext::golemagg_back_off;
@@ -39,6 +40,7 @@ public:
     }
 
 private:
+    static Action* core_hound_recovery(PlayerbotAI* botAI) { return new McCoreHoundRecoveryAction(botAI); }
     static Action* lucifron_shadow_resistance(PlayerbotAI* botAI) { return new BossShadowResistanceAction(botAI, "lucifron"); }
     static Action* magmadar_fire_resistance(PlayerbotAI* botAI) { return new BossFireResistanceAction(botAI, "magmadar"); }
     static Action* gehennas_shadow_resistance(PlayerbotAI* botAI) { return new BossShadowResistanceAction(botAI, "gehennas"); }

@@ -94,6 +94,18 @@ public:
     bool Execute(Event event) override;
 };
 
+class McCoreHoundRecoveryAction : public Action
+{
+public:
+    McCoreHoundRecoveryAction(PlayerbotAI* botAI) : Action(botAI, "mc core hound recovery") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+
+private:
+    ObjectGuid _pausedPet;
+    ReactStates _petReactState = REACT_DEFENSIVE;
+};
+
 class McCoreHoundMarkAction : public Action
 {
 public:

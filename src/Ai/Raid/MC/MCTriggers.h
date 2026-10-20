@@ -60,6 +60,13 @@ public:
     bool IsActive() override;
 };
 
+class McCoreHoundRecoveryTrigger : public Trigger
+{
+public:
+    McCoreHoundRecoveryTrigger(PlayerbotAI* botAI) : Trigger(botAI, "mc core hound recovery", 1) {}
+    bool IsActive() override;
+};
+
 class McCoreHoundMarkTrigger : public Trigger
 {
 public:

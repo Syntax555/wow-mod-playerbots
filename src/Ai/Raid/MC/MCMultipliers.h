@@ -9,6 +9,13 @@
 
 #include "Multiplier.h"
 
+class McCoreHoundRecoveryMultiplier : public Multiplier
+{
+public:
+    McCoreHoundRecoveryMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "mc core hound recovery") {}
+    float GetValue(Action* action) override;
+};
+
 class GarrDisableDpsAoeMultiplier : public Multiplier
 {
 public:

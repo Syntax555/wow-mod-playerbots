@@ -31,6 +31,7 @@ public:
         creators["mc golemagg is assist tank"] = &RaidMcTriggerContext::golemagg_is_assist_tank;
         creators["mc majordomo shadow resistance"] = &RaidMcTriggerContext::majordomo_shadow_resistance;
         creators["mc ragnaros fire resistance"] = &RaidMcTriggerContext::ragnaros_fire_resistance;
+        creators["mc core hound recovery"] = &RaidMcTriggerContext::core_hound_recovery;
         creators["mc core hound mark"] = &RaidMcTriggerContext::core_hound_mark;
         creators["mc in lava"] = &RaidMcTriggerContext::in_lava;
         creators["mc golemagg magma splash"] = &RaidMcTriggerContext::golemagg_magma_splash;
@@ -38,6 +39,7 @@ public:
     }
 
 private:
+    static Trigger* core_hound_recovery(PlayerbotAI* botAI) { return new McCoreHoundRecoveryTrigger(botAI); }
     static Trigger* lucifron_shadow_resistance(PlayerbotAI* botAI) { return new BossShadowResistanceTrigger(botAI, "lucifron"); }
     static Trigger* magmadar_fire_resistance(PlayerbotAI* botAI) { return new BossFireResistanceTrigger(botAI, "magmadar"); }
     static Trigger* gehennas_shadow_resistance(PlayerbotAI* botAI) { return new BossShadowResistanceTrigger(botAI, "gehennas"); }

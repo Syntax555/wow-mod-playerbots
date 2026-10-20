@@ -22,6 +22,8 @@ enum MoltenCoreNPCs
 };
 enum MoltenCoreSpells
 {
+    SPELL_CORE_HOUND_PLAY_DEAD = 19822,
+
     // Baron Geddon
     SPELL_INFERNO = 19695,
     SPELL_LIVING_BOMB = 20475,
@@ -30,6 +32,9 @@ enum MoltenCoreSpells
     SPELL_GOLEMAGGS_TRUST = 20553,
     SPELL_MAGMA_SPLASH = 13880,
 };
+
+constexpr uint32 CORE_HOUND_RECOVERY_WINDOW = 3000;
+constexpr float CORE_HOUND_REKINDLE_RANGE = 80.0f;
 
 constexpr uint32 MAGMA_SPLASH_BACK_OFF_STACKS = 20;
 constexpr float MAGMA_SPLASH_BACK_OFF_DISTANCE = 12.0f;

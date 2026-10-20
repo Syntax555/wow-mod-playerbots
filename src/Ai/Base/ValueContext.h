@@ -54,6 +54,7 @@
 #include "LogLevelValue.h"
 #include "LootStrategyValue.h"
 #include "LootValues.h"
+#include "MCCoreHoundRecoveryValue.h"
 #include "MaintenanceValues.h"
 #include "ManaSaveLevelValue.h"
 #include "NearestCorpsesValue.h"
@@ -329,10 +330,13 @@ public:
         creators["can use fishing bobber"] = &ValueContext::can_use_fishing_bobber;
         creators["fishing spot"] = &ValueContext::fishing_spot;
         creators["wait for attack time"] = &ValueContext::wait_for_attack_time;
+        creators["mc core hound recovery"] = &ValueContext::mc_core_hound_recovery;
         creators["combat start time"] = &ValueContext::combat_start_time;
     }
 
 private:
+    static UntypedValue* mc_core_hound_recovery(PlayerbotAI* botAI) { return new McCoreHoundRecoveryValue(botAI); }
+
     static UntypedValue* party_member_without_water(PlayerbotAI* botAI)
     {
         return new PartyMemberWithoutWaterValue(botAI);

@@ -404,6 +404,10 @@ Playerbots.ReturnDelay = 2000
 # Pause in milliseconds between loot steps; pending requests still wait for server acknowledgement.
 Playerbots.LootDelay = 250
 
+# Pause damage when a Molten Core hound pack misses its simultaneous kill window.
+# Wait for every smoldering hound to revive before resuming damage.
+Playerbots.McCoreHoundRecovery = 0
+
 #
 #
 ####################################################################################################
