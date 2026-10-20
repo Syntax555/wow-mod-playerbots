@@ -1891,6 +1891,13 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
         "wotlk-vh", "zulaman"
     };
 
+    // Restore encounter-owned pet stance before removing the only cleanup trigger.
+    if (mapId != 409 && HasStrategy("moltencore", BOT_STATE_COMBAT))
+    {
+        aiObjectContext->GetValue<bool>("mc core hound recovery")->Reset();
+        aiObjectContext->GetAction("mc core hound recovery")->Execute(Event());
+    }
+
     for (std::string const& strat : allInstanceStrategies)
     {
         engines[BOT_STATE_COMBAT]->removeStrategy(strat);
