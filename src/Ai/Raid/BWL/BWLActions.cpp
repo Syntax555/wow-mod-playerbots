@@ -243,6 +243,7 @@ bool BwlVaelastraszMoveAwayAction::CalculateFleeDirection(Unit const* boss, floa
     fleeX = 0.0f;
     fleeY = 0.0f;
     bool bossDead = !boss || !boss->IsAlive();
+    bool unsafeMemberNearby = false;
 
     if (Group const* group = bot->GetGroup())
     {
@@ -259,6 +260,8 @@ bool BwlVaelastraszMoveAwayAction::CalculateFleeDirection(Unit const* boss, floa
             // Compute a flee direction via weighted repulsion from other bots.
             // Weighted repulsion: closer = stronger push (linear falloff to 20y)
             float dist = bot->GetDistance2d(p);
+            if (dist < VAELASTRASZ_REPULSION_RANGE)
+                unsafeMemberNearby = true;
             if (dist < VAELASTRASZ_REPULSION_RANGE && dist > 0.1f)
             {
                 float weight = 1.0f - dist / VAELASTRASZ_REPULSION_RANGE;
@@ -273,6 +276,17 @@ bool BwlVaelastraszMoveAwayAction::CalculateFleeDirection(Unit const* boss, floa
     // No repulsion
     if (fleeLen < 0.1f)
     {
+        // Overlapping members and symmetric stacks still require an escape.
+        if (unsafeMemberNearby)
+        {
+            float const awayX = boss ? bot->GetPositionX() - boss->GetPositionX() : 0.0f;
+            float const awayY = boss ? bot->GetPositionY() - boss->GetPositionY() : 0.0f;
+            float const awayLen = sqrt(awayX * awayX + awayY * awayY);
+            fleeX = awayLen > 0.1f ? awayX / awayLen : cos(bot->GetOrientation());
+            fleeY = awayLen > 0.1f ? awayY / awayLen : sin(bot->GetOrientation());
+            return true;
+        }
+
         // Tail Sweep recovery: move back toward boss
         if (!bossDead && bot->GetDistance2d(boss) > VAELASTRASZ_TAIL_SWEEP_RECOVERY_RANGE)
         {
