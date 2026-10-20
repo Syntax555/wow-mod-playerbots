@@ -102,7 +102,7 @@ bool PlayerbotAIConfig::Initialize()
     SitDelay = sConfigMgr->GetOption<int32>("Playerbots.SitDelay", 20000);
     ReturnDelay = sConfigMgr->GetOption<int32>("Playerbots.ReturnDelay", 2000);
     McCoreHoundRecovery = sConfigMgr->GetOption<bool>("Playerbots.McCoreHoundRecovery", false);
-    LootDelay = sConfigMgr->GetOption<int32>("Playerbots.LootDelay", 1000);
+    LootDelay = sConfigMgr->GetOption<int32>("Playerbots.LootDelay", 250);
     DisabledWithoutRealPlayerLoginDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLoginDelay", 30);
     DisabledWithoutRealPlayerLogoutDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLogoutDelay", 300);
     RandomBotSaveInterval = sConfigMgr->GetOption<uint32>("Playerbots.RandomBotSaveInterval", 0);
