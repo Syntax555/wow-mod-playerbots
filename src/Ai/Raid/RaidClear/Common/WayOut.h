@@ -172,6 +172,10 @@ namespace RaidClear
             return true;
         }
 
+        // When the last look found nowhere to go; 0 once a walk has been sent since. For an action
+        // that waits longer than WAY_OUT_RETRY_MS before it looks again.
+        uint32 NoSpotAtMs() const { return _noSpotAtMs; }
+
     private:
         uint32 _sentAtMs = 0;
         uint32 _noSpotAtMs = 0;

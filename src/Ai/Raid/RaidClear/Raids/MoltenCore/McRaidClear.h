@@ -8,8 +8,25 @@
  *
  * Added here (mechanics from the core scripts in scripts/EasternKingdoms/BlackrockMountain/
  * MoltenCore):
- *   - Kill order: Lava Spawn (splits every 15s), the healing adds (Sulfuron's priests,
- *     Majordomo's healers), then the other boss adds and Ragnaros' Sons of Flame.
+ *   - Kill order: Lava Spawn (splits every 15s), Sulfuron's priests (they heal) and
+ *     Majordomo's Flamewaker Healers (Shadow Shock and Shadow Bolt; despite the name they heal
+ *     nobody), then the other boss adds and Ragnaros' Sons of Flame.
+ *   - Lucifron casts Shadow Shock (20603) every 5 s: shadow damage to every enemy within 20 yd
+ *     of his middle (centre to centre: the core adds no combat reach to an area spell a creature
+ *     casts). Majordomo's Flamewaker Healers cast the same spell every 9 s. Playerbots lets
+ *     ranged bots and healers stand anywhere in spell range: in the raid's combat logs each one
+ *     hit about 29 players. Ranged bots and healers closer than 23 yd to Lucifron or to a
+ *     Flamewaker Healer in the fight walk to the nearest dry spot 25 yd from all of them (not
+ *     onto the Hot Coal in Majordomo's room). One that finds nowhere better fights from where it
+ *     stands and looks again 2 s later. Playerbots' walk into range of a target that would end
+ *     inside is held, and the bot walks round instead, to the nearest spot 25 yd out that is in
+ *     range (a healer on one side of Lucifron and an off-tank on the other); any other walk
+ *     toward something within 23 yd of a caster waits while the bot is within 30 yd of that
+ *     caster. Tanks and melee stay where they are. From 25 yd a healer still reaches the tank
+ *     at the boss's feet.
+ *   - Lucifron's Flamewaker Protectors cast Dominate Mind (20604, 15 s) on a raid member: the
+ *     bot does nothing of its own, is stopped with a Polymorph or a Hammer of Justice, a bot or
+ *     pet on it lets go, and no area spell is cast within 12 yd of it (Common/Charmed.h).
  *   - Fire on the ground and breaths (Common/Hazards.h): bots walk out of Gehennas' Rain of Fire
  *     while it burns and out of Magmadar's Lava Bombs (fire traps, 5 yd), and everyone but the
  *     tanks out of the front of an Ancient Core Hound (Lava Breath, a 54 degree cone 35 yd long:
@@ -45,8 +62,9 @@
  *     toward anything that close to him until it is over. A bot in the middle of a cast is
  *     told to drop it the moment Inferno starts, and one still inside casts nothing it has to
  *     stand still for.
- *   - Majordomo: nobody casts at an enemy with Magic Reflection, and melee (not tanks) stop
- *     swinging at one with Damage Reflection. Both shields cover all of his adds.
+ *   - Majordomo: nobody casts a spell at an enemy with Magic Reflection that the core would
+ *     send back (Common/SpellReflect.h: abilities, taunts, Auto Shot still go); for Damage
+ *     Reflection see below. Both shields cover all of his adds.
  *     The Hot Coal in the middle of his room (the pit his Teleport throws players into) is a
  *     trap: with a player within about 7 yd of its middle, everyone within 10 yd takes Intense
  *     Heat (20533, about 750 fire a second, logged as environmental damage). Nothing in
@@ -196,10 +214,11 @@ namespace RaidClear::MoltenCore
 
         NPC_FLAMEWALKER          = 11661,  // Gehennas
         NPC_FLAMEWALKER_PRIEST   = 11662,  // Sulfuron
-        NPC_FLAMEWAKER_HEALER    = 11663,  // Majordomo
+        NPC_FLAMEWAKER_HEALER    = 11663,  // Majordomo; Shadow Shock, Shadow Bolt (heals nobody)
         NPC_FLAMEWAKER_ELITE     = 11664,  // Majordomo
         NPC_FIRESWORN            = 12099,  // Garr
-        NPC_FLAMEWALKER_PROTECTOR = 12119, // Lucifron
+        NPC_FLAMEWALKER_PROTECTOR = 12119, // Lucifron; Dominate Mind (20604)
+        NPC_LUCIFRON             = 12118,
         NPC_SON_OF_FLAME         = 12143,  // Ragnaros, submerge phase
         NPC_LAVA_SPAWN           = 12265,  // Firelord trash, splits every 15s
         NPC_LAVA_SURGER          = 12101,  // patrols; Surge
@@ -220,7 +239,8 @@ namespace RaidClear::MoltenCore
 
     enum Spells : uint32
     {
-        SPELL_MAGIC_REFLECTION   = 20619,
+        SPELL_MAGIC_REFLECTION   = 20619,  // SPELL_AURA_REFLECT_SPELLS: Common/SpellReflect.h's
+        SPELL_SHADOW_SHOCK       = 20603,  // Lucifron, Flamewaker Healer: 20 yd around the caster
         SPELL_DAMAGE_REFLECTION  = 21075,
         SPELL_SEPARATION_ANXIETY = 23492,  // on a Firesworn more than 40 yd from Garr
         SPELL_INFERNO            = 19695,  // on Baron Geddon; each pulse is 19698, 20 yd around him
@@ -292,6 +312,23 @@ namespace RaidClear::MoltenCore
     constexpr float SPLASH_TRASH_SPOT = 5.0f;
     constexpr float SPLASH_TRASH_WORTH_IT = 2.0f;
     constexpr float SPLASH_TRASH_SEARCH = 24.0f;
+
+    // Shadow Shock (20603) reaches 20 yd from its caster's middle. Ranged and healers closer than
+    // KEEP_AWAY to Lucifron or a Flamewaker Healer walk to the nearest dry spot at least SPOT from
+    // all of them (looked for up to SEARCH yards round the bot), or to one WORTH_IT yards further
+    // out when there is none; one that found nowhere looks again after RETRY_MS (with four
+    // Healers tanked apart there may be nowhere). Playerbots' walk into range of a target (its
+    // "reach" actions) only goes where it ends at least SPOT from all of them; where it wouldn't,
+    // the bot walks round instead, to the nearest spot SPOT out that is in range (looked for up to
+    // APPROACH_SEARCH yards round it). Any other walk toward something closer than KEEP_AWAY to a
+    // caster waits while the bot is within HOLD of that caster.
+    constexpr float SHADOW_SHOCK_KEEP_AWAY = 23.0f;
+    constexpr float SHADOW_SHOCK_SPOT = 25.0f;
+    constexpr float SHADOW_SHOCK_WORTH_IT = 2.0f;
+    constexpr float SHADOW_SHOCK_SEARCH = 24.0f;
+    constexpr float SHADOW_SHOCK_APPROACH_SEARCH = 30.0f;
+    constexpr float SHADOW_SHOCK_HOLD = 30.0f;
+    constexpr uint32 SHADOW_SHOCK_RETRY_MS = 2000;
 
     // Panic (19408) radius.
     constexpr float PANIC_RANGE = 45.0f;
@@ -434,6 +471,61 @@ class RcMcTremorMultiplier : public Multiplier
 {
 public:
     RcMcTremorMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc tremor") {}
+    float GetValue(Action* action) override;
+};
+
+// --- Lucifron, Majordomo: Shadow Shock --------------------------------------
+
+// A ranged bot or healer stands within reach of Lucifron's or a Flamewaker Healer's Shadow Shock.
+class RcMcShadowShockTrigger : public Trigger
+{
+public:
+    RcMcShadowShockTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc shadow shock") {}
+    bool IsActive() override;
+};
+
+class RcMcLeaveShadowShockAction : public Action
+{
+public:
+    RcMcLeaveShadowShockAction(PlayerbotAI* botAI) : Action(botAI, "rc mc leave shadow shock"), _walk(botAI) {}
+    bool Execute(Event event) override;
+    // Not again for SHADOW_SHOCK_RETRY_MS after a look that found nowhere to go.
+    bool isUseful() override;
+
+private:
+    RaidClear::WayOutWalk _walk;
+    uint32 _noSpotAtMs = 0;
+};
+
+// A ranged bot or healer out of range of its target (a healer: whoever it has to heal) whose walk
+// into range would end inside a Shadow Shock caster's reach (the hold multiplier stops that walk).
+class RcMcShadowShockApproachTrigger : public Trigger
+{
+public:
+    RcMcShadowShockApproachTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc shadow shock approach") {}
+    bool IsActive() override;
+};
+
+// Walks round instead: to the nearest spot in range that is SPOT from every caster.
+class RcMcShadowShockApproachAction : public Action
+{
+public:
+    RcMcShadowShockApproachAction(PlayerbotAI* botAI) : Action(botAI, "rc mc shadow shock approach"), _walk(botAI) {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+
+private:
+    RaidClear::WayOutWalk _walk;
+    uint32 _noSpotAtMs = 0;
+};
+
+// Ranged bots and healers don't walk into a Shadow Shock caster's reach: playerbots' walk into
+// range of a target not where it would end inside, any other walk not toward something inside
+// from close by.
+class RcMcShadowShockHoldMultiplier : public Multiplier
+{
+public:
+    RcMcShadowShockHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc shadow shock hold") {}
     float GetValue(Action* action) override;
 };
 

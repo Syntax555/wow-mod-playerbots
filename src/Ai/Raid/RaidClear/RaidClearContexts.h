@@ -92,6 +92,8 @@ public:
         creators["rc mc leave inferno"] = &RaidClearActionContext::mc_leave_inferno;
         creators["rc mc leave hot coal"] = &RaidClearActionContext::mc_leave_hot_coal;
         creators["rc mc carry living bomb"] = &RaidClearActionContext::mc_carry_living_bomb;
+        creators["rc mc leave shadow shock"] = &RaidClearActionContext::mc_leave_shadow_shock;
+        creators["rc mc shadow shock approach"] = &RaidClearActionContext::mc_shadow_shock_approach;
         creators["rc mc leave arcane explosion"] = &RaidClearActionContext::mc_leave_arcane_explosion;
         creators["rc mc interrupt dark mending"] = &RaidClearActionContext::mc_interrupt_dark_mending;
         creators["rc mc ragnaros tank"] = &RaidClearActionContext::mc_ragnaros_tank;
@@ -197,6 +199,8 @@ private:
     static Action* mc_leave_inferno(PlayerbotAI* botAI) { return new RcMcLeaveInfernoAction(botAI); }
     static Action* mc_leave_hot_coal(PlayerbotAI* botAI) { return new RcMcLeaveHotCoalAction(botAI); }
     static Action* mc_carry_living_bomb(PlayerbotAI* botAI) { return new RcMcCarryLivingBombAction(botAI); }
+    static Action* mc_leave_shadow_shock(PlayerbotAI* botAI) { return new RcMcLeaveShadowShockAction(botAI); }
+    static Action* mc_shadow_shock_approach(PlayerbotAI* botAI) { return new RcMcShadowShockApproachAction(botAI); }
     static Action* mc_leave_arcane_explosion(PlayerbotAI* botAI) { return new RcMcLeaveArcaneExplosionAction(botAI); }
     static Action* mc_interrupt_dark_mending(PlayerbotAI* botAI) { return new RcMcInterruptDarkMendingAction(botAI); }
     static Action* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankAction(botAI); }
@@ -311,6 +315,8 @@ public:
         creators["rc mc inferno"] = &RaidClearTriggerContext::mc_inferno;
         creators["rc mc hot coal"] = &RaidClearTriggerContext::mc_hot_coal;
         creators["rc mc living bomb"] = &RaidClearTriggerContext::mc_living_bomb;
+        creators["rc mc shadow shock"] = &RaidClearTriggerContext::mc_shadow_shock;
+        creators["rc mc shadow shock approach"] = &RaidClearTriggerContext::mc_shadow_shock_approach;
         creators["rc mc shazzrah ranged"] = &RaidClearTriggerContext::mc_shazzrah_ranged;
         creators["rc mc dark mending"] = &RaidClearTriggerContext::mc_dark_mending;
         creators["rc mc ragnaros tank"] = &RaidClearTriggerContext::mc_ragnaros_tank;
@@ -433,6 +439,8 @@ private:
     static Trigger* mc_inferno(PlayerbotAI* botAI) { return new RcMcInfernoTrigger(botAI); }
     static Trigger* mc_hot_coal(PlayerbotAI* botAI) { return new RcMcHotCoalTrigger(botAI); }
     static Trigger* mc_living_bomb(PlayerbotAI* botAI) { return new RcMcLivingBombTrigger(botAI); }
+    static Trigger* mc_shadow_shock(PlayerbotAI* botAI) { return new RcMcShadowShockTrigger(botAI); }
+    static Trigger* mc_shadow_shock_approach(PlayerbotAI* botAI) { return new RcMcShadowShockApproachTrigger(botAI); }
     static Trigger* mc_shazzrah_ranged(PlayerbotAI* botAI) { return new RcMcShazzrahRangedTrigger(botAI); }
     static Trigger* mc_dark_mending(PlayerbotAI* botAI) { return new RcMcDarkMendingTrigger(botAI); }
     static Trigger* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankTrigger(botAI); }

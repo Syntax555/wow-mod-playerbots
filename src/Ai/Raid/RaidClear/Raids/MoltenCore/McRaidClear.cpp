@@ -8,6 +8,7 @@
 
 #include "RaidClearConfig.h"
 #include "Common/BossLookup.h"
+#include "Common/Charmed.h"
 #include "Common/Interrupts.h"
 #include "Common/SpellReflect.h"
 #include "Common/SplashSpells.h"
@@ -50,7 +51,8 @@ std::vector<RaidClear::KillOrderEntry> const& RaidClear::MoltenCore::KillOrder()
         // Splits in two every 15s while it lives (up to 16), so it dies before anything else.
         { NPC_LAVA_SPAWN, 0 },
 
-        // Healers: Sulfuron's priests cast Dark Mending, Majordomo's healers keep his elites up.
+        // Sulfuron's priests cast Dark Mending. Majordomo's Flamewaker Healers heal nothing, despite
+        // the name: they cast Shadow Shock (20 yd around them) and Shadow Bolt, so they go early too.
         { NPC_FLAMEWALKER_PRIEST, 1 },
         { NPC_FLAMEWAKER_HEALER, 1 },
 
@@ -154,6 +156,19 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     triggers.push_back(
         new TriggerNode("rc mc damage reflection", { NextAction("rc mc stop melee", ACTION_RAID + 1) }));
 
+    // Like the way out of Wrath of Ragnaros and the Giants' Smash: over the heals and the rotation.
+    triggers.push_back(
+        new TriggerNode("rc mc shadow shock", { NextAction("rc mc leave shadow shock", ACTION_RAID + 1) }));
+    // In place of playerbots' walk into range ("reach spell" is ACTION_HIGH): above that and the
+    // filler, under the heals on whoever is in range.
+    triggers.push_back(new TriggerNode("rc mc shadow shock approach",
+                                       { NextAction("rc mc shadow shock approach", ACTION_HIGH + 1) }));
+
+    // Lucifron's Flamewaker Protectors' Dominate Mind, as in Zul'Gurub and Ahn'Qiraj: over the
+    // skull (ACTION_RAID + 2).
+    triggers.push_back(new TriggerNode("rc charmed member", { NextAction("rc control charmed", ACTION_RAID + 4) }));
+    triggers.push_back(new TriggerNode("rc charmed target", { NextAction("rc leave charmed target", ACTION_RAID + 3) }));
+
     triggers.push_back(
         new TriggerNode("rc mc ragnaros ranged", { NextAction("rc mc ragnaros move out", ACTION_RAID + 1) }));
     // Above the way out of his Wrath: the spot is out of it too, and further from the eruptions.
@@ -196,11 +211,14 @@ void RaidClearMoltenCoreStrategy::InitMultipliers(std::vector<Multiplier*>& mult
     multipliers.push_back(new RcMcLivingBombHoldMultiplier(botAI));
     multipliers.push_back(new RcMcHotCoalHoldMultiplier(botAI));
     multipliers.push_back(new RcMcRagnarosHoldMultiplier(botAI));
+    multipliers.push_back(new RcMcShadowShockHoldMultiplier(botAI));
     multipliers.push_back(new RcMcShazzrahHoldMultiplier(botAI));
     multipliers.push_back(new RcMcReflectionMultiplier(botAI));
     multipliers.push_back(new RcMcAnxiousFireswornMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
     multipliers.push_back(new RcMcCoreHoundMultiplier(botAI));
+    multipliers.push_back(new RcCharmedSplashMultiplier(botAI));
+    multipliers.push_back(new RcCharmedSelfMultiplier(botAI));
 }
 
 // --- Magmadar -------------------------------------------------------------
@@ -263,7 +281,7 @@ namespace
         return bot->GetMapId() == MAP_ID ? RaidClear::FightingCreature(bot, { NPC_SHAZZRAH }) : nullptr;
     }
 
-    // Ranged bots and healers: they keep out of Arcane Explosion and Wrath of Ragnaros.
+    // Ranged bots and healers: they keep out of Arcane Explosion, Shadow Shock and Wrath of Ragnaros.
     bool KeepsBack(Player* bot)
     {
         return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
@@ -607,9 +625,9 @@ float RcMcReflectionMultiplier::GetValue(Action* action)
     if (!target || !bot->IsValidAttackTarget(target))
         return 1.0f;  // heals, buffs, self casts
 
-    // Magic Reflection sends single-target spells back at the caster.
-    if (isSpell && target->HasAura(SPELL_MAGIC_REFLECTION))
-        return 0.0f;
+    // Magic Reflection (a REFLECT_SPELLS aura) is "rc spell reflect"'s: it zeroes only what the
+    // core would send back. Abilities, taunts and Auto Shot still go at a shielded add (Majordomo
+    // teleports with a threat wipe, and his tanks have to taunt his adds back).
 
     // Damage Reflection hurts whoever hits it in melee, abilities included.
     if (StopsForDamageReflection(bot) && target->HasAura(SPELL_DAMAGE_REFLECTION))
@@ -1914,4 +1932,250 @@ bool RcMcCarryLivingBombAction::Execute(Event /*event*/)
         return GapToRaid(carrier, x, y, z);
     };
     return _walk.Go(gapAt, LIVING_BOMB_KEEP_AWAY, LIVING_BOMB_SPOT, LIVING_BOMB_WORTH_IT, LIVING_BOMB_SEARCH);
+}
+
+// --- Lucifron, Majordomo: Shadow Shock --------------------------------------
+
+namespace
+{
+    // Where Shadow Shock goes off: Lucifron and every Flamewaker Healer in the fight. Empty for
+    // a bot that belongs at their feet (tanks, melee): the same bots as Wrath of Ragnaros sends out.
+    std::vector<Position> ShadowShockCasters(PlayerbotAI* botAI, Player* bot)
+    {
+        std::vector<Position> casters;
+        if (bot->GetMapId() != MAP_ID || !KeepsBack(bot))
+            return casters;
+        // Not through "find target" or the attackers: a bot that has only been on the Protectors
+        // or was revived mid-fight would not see him.
+        if (Creature* lucifron = RaidClear::FightingCreature(bot, { NPC_LUCIFRON }))
+            casters.push_back(lucifron->GetPosition());
+        if (!bot->IsInCombat())
+            return casters;
+        for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (unit && unit->GetEntry() == NPC_FLAMEWAKER_HEALER && unit->IsAlive() && unit->IsInCombat() &&
+                unit->IsInMap(bot))
+                casters.push_back(unit->GetPosition());
+        }
+        return casters;
+    }
+
+    // Yards from (x, y, z) to the middle of the nearest of them (the spell measures from there).
+    float ShadowShockGap(std::vector<Position> const& casters, float x, float y, float z)
+    {
+        float gap = 1000.0f;
+        for (Position const& at : casters)
+            gap = std::min(gap, at.GetExactDist(x, y, z));
+        return gap;
+    }
+
+    float ShadowShockGap(std::vector<Position> const& casters, Unit const* unit)
+    {
+        return ShadowShockGap(casters, unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ());
+    }
+
+    // How good a spot is to stand on, on the same scale: lava (Molten Core has it in most rooms)
+    // counts as no further out than the casters' own middle, and a spot by the Hot Coal in
+    // Majordomo's room as only as far out as it is from the coal's reach (HOT_COAL_SPOT there is
+    // as good as SPOT here), so the way out of one doesn't lead into the other.
+    struct ShadowShockSpots
+    {
+        Map* map;
+        uint32 phaseMask;
+        float height;
+        std::vector<Position> const& casters;
+
+        ShadowShockSpots(Player* bot, std::vector<Position> const& at)
+            : map(bot->GetMap()), phaseMask(bot->GetPhaseMask()), height(bot->GetCollisionHeight()), casters(at)
+        {
+        }
+
+        float operator()(float x, float y, float z) const
+        {
+            LiquidData const liquid = map->GetLiquidData(phaseMask, x, y, z, height, {});
+            if (liquid.Status & MAP_LIQUID_STATUS_IN_CONTACT)
+                return 0.0f;
+            return std::min(ShadowShockGap(casters, x, y, z),
+                            HotCoalGap(x, y, z) + (SHADOW_SHOCK_SPOT - HOT_COAL_SPOT));
+        }
+    };
+
+    // The range playerbots' walk into range of a target (its "reach" actions) is for; 0 for any
+    // other walk.
+    float ReachRange(PlayerbotAI* botAI, Action* action)
+    {
+        std::string const name = action->getName();
+        if (name == "reach spell")
+            return botAI->GetRange("spell");
+        if (name == "reach party member to heal")
+            return botAI->GetRange("heal");
+        return 0.0f;
+    }
+
+    // Where that walk's next leg ends, on the straight line to the target (as
+    // MovementAction::ReachCombatTo shortens its path): `range` past both combat reaches from the
+    // target, or halfway there when that is 6 yd or more away.
+    Position ReachLegEnd(Player* bot, Unit const* target, float range)
+    {
+        float const reach = range + bot->GetCombatReach() + target->GetCombatReach();
+        float const dist = bot->GetExactDist(target);
+        float stopAt = reach;
+        if (dist - reach >= 6.0f)
+            stopAt = (dist - reach) / 2.0f + reach;
+        float const along = dist > 0.1f ? std::max(0.0f, dist - stopAt) / dist : 0.0f;
+        return Position(bot->GetPositionX() + (target->GetPositionX() - bot->GetPositionX()) * along,
+                        bot->GetPositionY() + (target->GetPositionY() - bot->GetPositionY()) * along,
+                        bot->GetPositionZ() + (target->GetPositionZ() - bot->GetPositionZ()) * along);
+    }
+
+    // Out of `range` of the target, and the walk into range would end inside a caster's reach.
+    bool ReachEndsInShadowShock(Player* bot, std::vector<Position> const& casters, Unit const* target, float range)
+    {
+        if (bot->IsWithinCombatRange(target, range))
+            return false;
+        Position const end = ReachLegEnd(bot, target, range);
+        return ShadowShockGap(casters, end.GetPositionX(), end.GetPositionY(), end.GetPositionZ()) < SHADOW_SHOCK_SPOT;
+    }
+
+    // What the bot wants in range, with that range (as playerbots' reach actions have it): a
+    // healer whoever it has to heal, anyone else (or a healer with nobody to heal) its target, if
+    // that is in the fight. nullptr for nothing.
+    Unit* ApproachTarget(PlayerbotAI* botAI, Player* bot, float& range)
+    {
+        AiObjectContext* context = botAI->GetAiObjectContext();
+        if (PlayerbotAI::IsHeal(bot))
+        {
+            Unit* patient = context->GetValue<Unit*>("party member to heal")->Get();
+            if (patient && patient != bot && patient->IsAlive() && patient->IsInMap(bot))
+            {
+                range = botAI->GetRange("heal");
+                return patient;
+            }
+        }
+        Unit* target = context->GetValue<Unit*>("current target")->Get();
+        if (!target || !target->IsAlive() || !target->IsInMap(bot) || !target->IsInCombat() ||
+            !bot->IsValidAttackTarget(target))
+            return nullptr;
+        range = botAI->GetRange("spell");
+        return target;
+    }
+
+    bool WaitingAfterNoSpot(uint32 noSpotAtMs)
+    {
+        return noSpotAtMs && getMSTimeDiff(noSpotAtMs, getMSTime()) < SHADOW_SHOCK_RETRY_MS;
+    }
+}
+
+bool RcMcShadowShockTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !botAI->CanMove())
+        return false;
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    return !casters.empty() && ShadowShockGap(casters, bot) < SHADOW_SHOCK_KEEP_AWAY;
+}
+
+bool RcMcLeaveShadowShockAction::isUseful()
+{
+    return !WaitingAfterNoSpot(_noSpotAtMs);
+}
+
+bool RcMcLeaveShadowShockAction::Execute(Event /*event*/)
+{
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    if (casters.empty() || ShadowShockGap(casters, bot) >= SHADOW_SHOCK_KEEP_AWAY)
+        return false;
+
+    ShadowShockSpots const gapAt(bot, casters);
+    if (_walk.Go(gapAt, SHADOW_SHOCK_KEEP_AWAY, SHADOW_SHOCK_SPOT, SHADOW_SHOCK_WORTH_IT, SHADOW_SHOCK_SEARCH))
+        return true;
+    // Nowhere better within reach (four Healers tanked apart can cover the floor): the bot fights
+    // from where it stands for a while rather than look again on every update.
+    _noSpotAtMs = _walk.NoSpotAtMs();
+    return false;
+}
+
+bool RcMcShadowShockApproachTrigger::IsActive()
+{
+    // As playerbots' own reach actions: not while told to stay, nor in the middle of a channel.
+    if (!bot->IsAlive() || !bot->IsInCombat() || !botAI->CanMove() ||
+        botAI->HasStrategy("stay", botAI->GetState()) || bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+        return false;
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    // A bot inside walks out first.
+    if (casters.empty() || ShadowShockGap(casters, bot) < SHADOW_SHOCK_KEEP_AWAY)
+        return false;
+    float range = 0.0f;
+    Unit* target = ApproachTarget(botAI, bot, range);
+    return target && ReachEndsInShadowShock(bot, casters, target, range);
+}
+
+bool RcMcShadowShockApproachAction::isUseful()
+{
+    return !WaitingAfterNoSpot(_noSpotAtMs);
+}
+
+bool RcMcShadowShockApproachAction::Execute(Event /*event*/)
+{
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    if (casters.empty() || ShadowShockGap(casters, bot) < SHADOW_SHOCK_KEEP_AWAY)
+        return false;
+    float range = 0.0f;
+    Unit* target = ApproachTarget(botAI, bot, range);
+    if (!target || !ReachEndsInShadowShock(bot, casters, target, range))
+        return false;
+
+    // A spot less than SPOT out is never taken (it scores far below any spot that is). Among the
+    // rest, one in range scores SPOT and is the one looked for; one short of range scores less
+    // the further short it is, so with none in reach the bot gets WORTH_IT yards closer round
+    // the outside. A yard of slack: the target moves.
+    ShadowShockSpots const outside(bot, casters);
+    Position const at = target->GetPosition();
+    float const reach = range + bot->GetCombatReach() + target->GetCombatReach() - 1.0f;
+    auto const gapAt = [&outside, &at, reach](float x, float y, float z)
+    {
+        float const out = outside(x, y, z);
+        if (out < SHADOW_SHOCK_SPOT)
+            return out - 1000.0f;
+        return std::min(SHADOW_SHOCK_SPOT, SHADOW_SHOCK_SPOT + reach - at.GetExactDist(x, y, z));
+    };
+    if (_walk.Go(gapAt, SHADOW_SHOCK_SPOT, SHADOW_SHOCK_SPOT, SHADOW_SHOCK_WORTH_IT, SHADOW_SHOCK_APPROACH_SEARCH))
+        return true;
+    _noSpotAtMs = _walk.NoSpotAtMs();
+    return false;
+}
+
+float RcMcShadowShockHoldMultiplier::GetValue(Action* action)
+{
+    bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
+    if (!walks && !dynamic_cast<CastReachTargetSpellAction*>(action))
+        return 1.0f;
+    if (bot->GetMapId() != MAP_ID || !KeepsBack(bot))
+        return 1.0f;
+
+    Unit* target = action->GetTarget();
+    if (!target || target == bot)
+        return 1.0f;
+    // A battle rez is worth a Shadow Shock, and "rc mc shadow shock approach" has no way round
+    // for a corpse.
+    if (action->getName() == "reach party member to resurrect")
+        return 1.0f;
+
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    if (casters.empty())
+        return 1.0f;
+
+    // Playerbots' walk into range (it only walks while out of range): wherever it goes, unless it
+    // would end inside. Then "rc mc shadow shock approach" walks round instead, so the bot isn't
+    // sent in and straight out again.
+    if (float const range = ReachRange(botAI, action))
+        return ReachEndsInShadowShock(bot, casters, target, range) ? 0.0f : 1.0f;
+
+    // Any other walk (follow, a charge) toward something inside a caster's reach, from close
+    // enough that it is in range already. Per caster: with several Flamewaker Healers up, one
+    // beside the bot doesn't stop it walking toward its target at another across the room.
+    for (Position const& c : casters)
+        if (target->GetExactDist(&c) < SHADOW_SHOCK_KEEP_AWAY && bot->GetExactDist(&c) <= SHADOW_SHOCK_HOLD)
+            return 0.0f;
+    return 1.0f;
 }
