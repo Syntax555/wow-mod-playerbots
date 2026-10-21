@@ -224,6 +224,12 @@ Core Rager tank split (the off-tank split stays out of that fight), Core Hound p
 | Magmadar | Every shaman keeps **Tremor Totem** down against **Panic**, and places no other earth totem while he is near: playerbots keeps Stoneskin or Strength of Earth down the same way, and left alone the two replace each other every second and a half. |
 | Baron Geddon | **Inferno** burns everyone within 20 yards of him for 8 seconds, harder with every pulse, and he stands still for it. Playerbots walks its bots out, but only the ones that have threat on him: a tank holding an add, a bot on the trash that came with him or one revived mid-fight stands in all of it. Here every bot within 23 yards of him drops its spell and walks to the nearest spot 25 yards out, his tank included; nobody walks back toward anything that close to him until it is over, and a bot still inside casts nothing it has to stand still for. |
 | Baron Geddon | **Living Bomb** goes off after 8 seconds and hits every raid member within 18 yards of its carrier. Playerbots moves the carrier away from the middle of the raid by as many yards as its nearest neighbour is short of 20, which gets a bot at the edge of the group clear and leaves one in the middle (where the healers stand) surrounded. Here the carrier walks to the nearest spot 24.5 yards from everyone else and out of Inferno's reach, looked for up to 40 yards away, or to the emptiest spot there is. |
+| Baron Geddon | Below 2% health he casts **Armageddon** and blows up 8 seconds later: 7,600 to 8,400 fire damage to everyone within 20 yards. Every bot but the tanks leaves as it leaves Inferno, and the ranged finish him from outside. While a bot carries a **Living Bomb**, nobody else walks (or charges) toward something within 20 yards of it from outside that: melee no longer follow the boss to a tank that has it, nor healers walk into heal range of the carrier. |
+| Lucifron (trash) | **Flame Imps** cast **Fire Nova** at everyone within 10 yards. Ranged and healers keep out of it as out of a giant's Smash, except from an imp that is on them (it would only follow). |
+| Shazzrah | **Magic Grounding** halves the damage he takes and is back every 7 to 9 seconds. One bot takes it off each time: the first shaman within reach of him (**Purge**), damage dealers before healers, else a priest (**Dispel Magic**). |
+| Lucifron, Gehennas, Shazzrah | Their **curses** land on most of the raid at once, and every decurser used to lift every healer's before any tank's (Gehennas' takes 75% off the healing the target gets). Now each cursed tank gets a mage or druid of its own who lifts it first; the rest decurse as before. |
+| Majordomo Executus | Melee keep hitting an add through **Damage Reflection** (100 fire per hit for 10 seconds) and only stop below half health. |
+| Molten Core | Priests cast **Shadow Protection** only as **Prayer of Shadow Protection** (once three raid members lack it). Playerbots cast the single one whenever fewer were missing, and with deaths and revives that was most of a run: 213 single casts in one. Only Lucifron, Gehennas and Majordomo hit with shadow, and paladins put up **Shadow Resistance Aura** for those. |
 | Sulfuron Harbinger | Kill the Flamewaker Priests first. |
 | Majordomo Executus | Healers first, then Elites. No spells into **Magic Reflection**; melee stop swinging into **Damage Reflection** (tanks keep going). The **Hot Coal** in the middle of his room (where his Teleport throws players) burns everyone within 10 yards for about 750 a second while anyone stands within 7 yards of it. In combat a bot that has stopped within 12 yards of it walks out, on the side its target is on (one only crossing the pit is left alone). A tank with a mob on it goes 22 yards out, so the mob follows it out of reach. Melee whose target stands in it stay on that target. |
 | Ragnaros | **Lava Burst** erupts at three of eight fixed places every 10 seconds or so, seven of them on the rock 30 to 45 yards from him, and an eruption hits most of the raid around it. Each ranged bot and healer takes a spot of its own 30 to 42 yards from him, as far from all eight as the rock allows (the west side of the room), dry, in his line of sight and 3.5 yards from the next; healers pick first, within 36 yards of the main tank. While he is up they walk back to their spot when more than 4 yards off and don't wander away from it. Ranged and healers stay out of **Wrath of Ragnaros**, which reaches 25 yards from his middle. He is 20 yards wide himself, so the distance is measured centre to centre: a bot closer than 27.5 yards to his middle walks to the nearest dry spot 29.5 yards out and doesn't walk back toward anything that close to him. Not while he is under the lava. Kill the **Sons of Flame** when he submerges. |
@@ -510,6 +516,16 @@ Category: Raids
   once are fine.
 - Ragnaros: ranged bots and healers each take a spot on the west side of the room, away from
   where **Lava Burst** erupts, and stay there.
+- Ragnaros: bots keep their spot after he comes back up out of the lava, instead of all being
+  handed new ones.
+- Baron Geddon: everyone but the tanks gets out of **Armageddon**, and nobody walks back to a bot
+  carrying a **Living Bomb**.
+- Shazzrah: a shaman (or a priest) takes **Magic Grounding** off him every time he casts it.
+- Molten Core curses: each tank gets its own decurser, so a tank no longer waits for every healer
+  in the raid to be decursed first.
+- Majordomo: melee keep hitting through **Damage Reflection** unless they are low.
+- Molten Core: ranged bots and healers keep out of the **Flame Imps**' **Fire Nova**, and priests
+  stop casting single **Shadow Protection** on one raid member at a time.
 - Molten Core: ranged bots and healers step out of a Molten Giant's **Smash** and a Molten
   Destroyer's **Massive Tremor**.
 - Firemaw: every healer now gets a turn to drop **Flame Buffet** stacks, the ones with the most

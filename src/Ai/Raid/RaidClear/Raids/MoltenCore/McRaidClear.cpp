@@ -20,6 +20,7 @@
 #include "MoveSpline.h"
 #include "Pet.h"
 #include "Spell.h"
+#include "GenericBuffUtils.h"
 #include "GenericSpellActions.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
@@ -126,6 +127,11 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     triggers.push_back(
         new TriggerNode("rc mc living bomb", { NextAction("rc mc carry living bomb", ACTION_EMERGENCY + 6) }));
 
+    // Over playerbots' own Purge and decurse (ACTION_DISPEL, a druid's 57): one GCD each.
+    triggers.push_back(
+        new TriggerNode("rc mc magic grounding", { NextAction("rc mc purge grounding", ACTION_RAID) }));
+    triggers.push_back(new TriggerNode("rc mc cursed tank", { NextAction("rc mc decurse tank", ACTION_RAID) }));
+
     triggers.push_back(new TriggerNode("rc mc garr gather", { NextAction("rc mc garr gather", ACTION_RAID + 1) }));
 
     triggers.push_back(
@@ -142,6 +148,7 @@ void RaidClearMoltenCoreStrategy::InitMultipliers(std::vector<Multiplier*>& mult
 {
     multipliers.push_back(new RcMcTremorMultiplier(botAI));
     multipliers.push_back(new RcMcInfernoHoldMultiplier(botAI));
+    multipliers.push_back(new RcMcLivingBombHoldMultiplier(botAI));
     multipliers.push_back(new RcMcHotCoalHoldMultiplier(botAI));
     multipliers.push_back(new RcMcRagnarosHoldMultiplier(botAI));
     multipliers.push_back(new RcMcReflectionMultiplier(botAI));
@@ -203,13 +210,18 @@ float RcMcTremorMultiplier::GetValue(Action* action)
 
 namespace
 {
-    // Baron Geddon in the middle of an Inferno, or nullptr.
+    // Baron Geddon in the middle of an Inferno, or about to blow up (Armageddon, the same 20 yd;
+    // his tanks stay on him for that one), or nullptr.
     Creature* GeddonInInferno(Player* bot)
     {
         if (bot->GetMapId() != MAP_ID)
             return nullptr;
         Creature* geddon = RaidClear::FightingCreature(bot, { NPC_BARON_GEDDON });
-        return geddon && geddon->HasAura(SPELL_INFERNO) ? geddon : nullptr;
+        if (!geddon)
+            return nullptr;
+        if (geddon->HasAura(SPELL_INFERNO))
+            return geddon;
+        return geddon->HasAura(SPELL_ARMAGEDDON) && !PlayerbotAI::IsTank(bot) ? geddon : nullptr;
     }
 }
 
@@ -276,9 +288,10 @@ public:
 
     void OnSpellPrepare(Spell* /*spell*/, Unit* caster, SpellInfo const* spellInfo) override
     {
-        if (!caster || !spellInfo || spellInfo->Id != SPELL_INFERNO || caster->GetMapId() != MAP_ID ||
-            caster->GetEntry() != NPC_BARON_GEDDON)
+        if (!caster || !spellInfo || (spellInfo->Id != SPELL_INFERNO && spellInfo->Id != SPELL_ARMAGEDDON) ||
+            caster->GetMapId() != MAP_ID || caster->GetEntry() != NPC_BARON_GEDDON)
             return;
+        bool const armageddon = spellInfo->Id == SPELL_ARMAGEDDON;
         if (!RaidClear::GetConfig().IsRaidEnabled(MAP_ID))
             return;
 
@@ -290,6 +303,8 @@ public:
                 continue;
             PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
             if (!botAI || !botAI->HasStrategy("rc moltencore", BOT_STATE_COMBAT))
+                continue;
+            if (armageddon && PlayerbotAI::IsTank(player))
                 continue;
 
             botAI->RequestSpellInterrupt();
@@ -307,16 +322,18 @@ void RaidClear::MoltenCore::AddScripts()
 
 namespace
 {
-    // Melee that isn't tanking: these take Damage Reflection's damage shield on every hit.
-    bool IsReflectableMelee(Player* bot)
+    // Melee that isn't tanking take Damage Reflection's damage shield (100 a hit) on every hit.
+    // They keep hitting through it, unless they are low.
+    bool StopsForDamageReflection(Player* bot)
     {
-        return PlayerbotAI::IsMelee(bot) && !PlayerbotAI::IsTank(bot);
+        return PlayerbotAI::IsMelee(bot) && !PlayerbotAI::IsTank(bot) &&
+               bot->GetHealthPct() < DAMAGE_REFLECTION_STOP_BELOW_PCT;
     }
 }
 
 bool RcMcDamageReflectionTrigger::IsActive()
 {
-    if (!IsReflectableMelee(bot))
+    if (!StopsForDamageReflection(bot))
         return false;
 
     Unit* victim = bot->GetVictim();
@@ -353,7 +370,7 @@ float RcMcReflectionMultiplier::GetValue(Action* action)
         return 0.0f;
 
     // Damage Reflection hurts whoever hits it in melee, abilities included.
-    if (IsReflectableMelee(bot) && target->HasAura(SPELL_DAMAGE_REFLECTION))
+    if (StopsForDamageReflection(bot) && target->HasAura(SPELL_DAMAGE_REFLECTION))
         return 0.0f;
 
     return 1.0f;
@@ -710,6 +727,171 @@ float RcMcAnxiousFireswornMultiplier::GetValue(Action* action)
     return RaidClear::Splash::LandsOn(bot, reach, target, fighting, spare) ? 0.0f : 1.0f;
 }
 
+// --- Shazzrah: Magic Grounding --------------------------------------------
+
+namespace
+{
+    // Shazzrah with Magic Grounding up, or nullptr.
+    Creature* GroundedShazzrah(Player* bot)
+    {
+        if (bot->GetMapId() != MAP_ID)
+            return nullptr;
+        Creature* shazzrah = RaidClear::FightingCreature(bot, { NPC_SHAZZRAH });
+        return shazzrah && shazzrah->HasAura(SPELL_MAGIC_GROUNDING) ? shazzrah : nullptr;
+    }
+
+    // The spell this raid member takes a magic buff off an enemy with, or nullptr.
+    char const* PurgeSpellOf(Player* member)
+    {
+        if (member->getClass() == CLASS_SHAMAN && (member->HasSpell(SPELL_PURGE_1) || member->HasSpell(SPELL_PURGE_2)))
+            return "purge";
+        if (member->getClass() == CLASS_PRIEST &&
+            (member->HasSpell(SPELL_DISPEL_MAGIC_1) || member->HasSpell(SPELL_DISPEL_MAGIC_2)))
+            return "dispel magic";
+        return nullptr;
+    }
+
+    // Who takes Magic Grounding off: a bot within reach of him, shamans before priests, damage
+    // dealers before healers, then group order. Every bot works it out the same way, so one does.
+    Player* GroundingPurger(Player* bot, Creature* shazzrah)
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return bot;
+        Player* best = nullptr;
+        int bestRank = 4;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsAlive() || !member->IsInMap(bot) || !GET_PLAYERBOT_AI(member) ||
+                PlayerbotAI::IsTank(member) || !PurgeSpellOf(member))
+                continue;
+            // He has it up nearly all fight, so this runs every tick: the line of sight only for
+            // one that would do better than the one found so far.
+            int const rank = (member->getClass() == CLASS_SHAMAN ? 0 : 2) + (PlayerbotAI::IsHeal(member) ? 1 : 0);
+            if (rank >= bestRank || member->GetDistance(shazzrah) > PURGE_REACH || !member->IsWithinLOSInMap(shazzrah))
+                continue;
+            best = member;
+            bestRank = rank;
+        }
+        return best;
+    }
+}
+
+bool RcMcMagicGroundingTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !bot->IsInCombat() || !PurgeSpellOf(bot))
+        return false;
+    Creature* shazzrah = GroundedShazzrah(bot);
+    return shazzrah && GroundingPurger(bot, shazzrah) == bot;
+}
+
+bool RcMcPurgeGroundingAction::Execute(Event /*event*/)
+{
+    Creature* shazzrah = GroundedShazzrah(bot);
+    char const* spell = PurgeSpellOf(bot);
+    if (!shazzrah || !spell || !botAI->CanCastSpell(spell, shazzrah))
+        return false;
+    return botAI->CastSpell(spell, shazzrah);
+}
+
+// --- Lucifron, Gehennas, Shazzrah: curses ----------------------------------
+
+namespace
+{
+    bool HasMcCurse(Unit const* unit)
+    {
+        return unit->HasAura(SPELL_GEHENNAS_CURSE) || unit->HasAura(SPELL_SHAZZRAH_CURSE) ||
+               unit->HasAura(SPELL_LUCIFRON_CURSE);
+    }
+
+    // A mage, or a druid in a form it can cast Remove Curse in (not a tank), that knows it.
+    bool CanDecurse(Player* member)
+    {
+        if (member->getClass() == CLASS_MAGE)
+            return member->HasSpell(SPELL_REMOVE_CURSE_MAGE);
+        if (member->getClass() != CLASS_DRUID || PlayerbotAI::IsTank(member))
+            return false;
+        ShapeshiftForm const form = member->GetShapeshiftForm();
+        return (form == FORM_NONE || form == FORM_MOONKIN || form == FORM_TREE) &&
+               member->HasSpell(SPELL_REMOVE_CURSE_DRUID);
+    }
+
+    // The cursed tank this bot is to decurse, or nullptr. Each cursed tank in group order gets
+    // the first bot decurser (in group order) within reach of it not already given one; every
+    // decurser works it out the same way. The rest go on with playerbots' own order.
+    Player* TankToDecurse(Player* bot)
+    {
+        Group* group = bot->GetGroup();
+        if (!group || bot->GetMapId() != MAP_ID)
+            return nullptr;
+        std::vector<Player*> tanks;
+        std::vector<Player*> decursers;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsAlive() || !member->IsInMap(bot))
+                continue;
+            if (PlayerbotAI::IsTank(member) && HasMcCurse(member))
+                tanks.push_back(member);
+            else if (GET_PLAYERBOT_AI(member) && CanDecurse(member))
+                decursers.push_back(member);
+        }
+        if (tanks.empty())
+            return nullptr;
+
+        std::vector<bool> taken(decursers.size(), false);
+        for (Player* tank : tanks)
+            for (std::size_t i = 0; i < decursers.size(); ++i)
+            {
+                Player* decurser = decursers[i];
+                if (taken[i] || decurser->GetDistance(tank) > DECURSE_REACH || !decurser->IsWithinLOSInMap(tank))
+                    continue;
+                if (decurser == bot)
+                    return tank;
+                taken[i] = true;
+                break;
+            }
+        return nullptr;
+    }
+}
+
+bool RcMcCursedTankTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !bot->IsInCombat() || !CanDecurse(bot))
+        return false;
+    return TankToDecurse(bot) != nullptr;
+}
+
+bool RcMcDecurseTankAction::Execute(Event /*event*/)
+{
+    Player* tank = TankToDecurse(bot);
+    if (!tank || !botAI->CanCastSpell("remove curse", tank))
+        return false;
+    return botAI->CastSpell("remove curse", tank);
+}
+
+// --- Shadow Protection ------------------------------------------------------
+
+void RaidClearMoltenCoreBuffsStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+{
+    multipliers.push_back(new RcMcShadowProtectionMultiplier(botAI));
+}
+
+float RcMcShadowProtectionMultiplier::GetValue(Action* action)
+{
+    if (!action || bot->GetMapId() != MAP_ID || bot->getClass() != CLASS_PRIEST)
+        return 1.0f;
+    std::string const name = action->getName();
+    if (name != "shadow protection" && name != "shadow protection on party")
+        return 1.0f;
+    // What the cast would come out as (GroupBuffSpellAction::Execute asks the same): the Prayer
+    // once three raid members lack it and the priest has a Sacred Candle, else the single one.
+    return ai::buff::UpgradeToGroupIfAppropriate(bot, botAI, "shadow protection") == "shadow protection"
+               ? 0.0f
+               : 1.0f;
+}
+
 // --- Molten Giants and Destroyers ---------------------------------------------
 
 namespace
@@ -720,8 +902,9 @@ namespace
         float radius;
     };
 
-    // Where the Giants and Destroyers in the fight stand, with how far their AoE reaches. Empty
-    // for a bot that belongs in it (tanks, melee).
+    // Where the Giants, Destroyers and Flame Imps in the fight stand, with how far their AoE
+    // reaches. Empty for a bot that belongs in it (tanks, melee). Not an imp that is on the bot
+    // itself: it would follow the bot out.
     std::vector<Blast> SplashTrashFor(PlayerbotAI* botAI, Player* bot)
     {
         std::vector<Blast> blasts;
@@ -737,6 +920,8 @@ namespace
                 blasts.push_back({ unit->GetPosition(), SMASH_RADIUS });
             else if (unit->GetEntry() == NPC_MOLTEN_DESTROYER)
                 blasts.push_back({ unit->GetPosition(), MASSIVE_TREMOR_RADIUS });
+            else if (unit->GetEntry() == NPC_FLAME_IMP && unit->GetVictim() != bot)
+                blasts.push_back({ unit->GetPosition(), FIRE_NOVA_RADIUS });
         }
         return blasts;
     }
@@ -1277,6 +1462,36 @@ namespace
         }
         return gap;
     }
+}
+
+float RcMcLivingBombHoldMultiplier::GetValue(Action* action)
+{
+    // The carrier walks away from the raid (below); nothing stopped melee following the boss, or
+    // a healer walking into heal range, straight back to it. As with Inferno: picking a target
+    // isn't movement, only getting there is held.
+    bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
+    if (!walks && !dynamic_cast<CastReachTargetSpellAction*>(action))
+        return 1.0f;
+    if (bot->GetMapId() != MAP_ID || bot->HasAura(SPELL_LIVING_BOMB) || action->getName() == "mc move from lava")
+        return 1.0f;
+    Unit* target = action->GetTarget();
+    if (!target || target == bot || !RaidClear::FightingCreature(bot, { NPC_BARON_GEDDON }))
+        return 1.0f;
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return 1.0f;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* carrier = ref->GetSource();
+        if (!carrier || carrier == bot || !carrier->IsAlive() || !carrier->IsInMap(bot) ||
+            !carrier->HasAura(SPELL_LIVING_BOMB))
+            continue;
+        // A bot already inside isn't held there: the carrier is on its way out of it.
+        if (target->GetExactDist(carrier) < LIVING_BOMB_HOLD && bot->GetExactDist(carrier) >= LIVING_BOMB_HOLD)
+            return 0.0f;
+    }
+    return 1.0f;
 }
 
 bool RcMcLivingBombTrigger::IsActive()
