@@ -351,10 +351,12 @@ namespace RaidClear::MoltenCore
     // Melee stop swinging into Damage Reflection only below this much health.
     constexpr float DAMAGE_REFLECTION_STOP_BELOW_PCT = 50.0f;
 
-    // Purge and Dispel Magic reach 30 yd; a purger is looked for this close to Shazzrah (edge to
-    // edge), and a decurser this close to a tank.
-    constexpr float PURGE_REACH = 28.0f;
-    constexpr float DECURSE_REACH = 28.0f;
+    // Purge and Dispel Magic reach 30 yd, Remove Curse and Remove Lesser Curse 40; a purger is
+    // looked for this close to Shazzrah (edge to edge), and a decurser this close to a tank.
+    // The ranged and healers stand 28.5 yd from Shazzrah's edge (SHAZZRAH_SPOT), so the purge
+    // reach has to take them in.
+    constexpr float PURGE_REACH = 29.5f;
+    constexpr float DECURSE_REACH = 38.0f;
 
     // Garr checks his Firesworn once a second: more than 40 yd from him (edge to edge) and it
     // gets Separation Anxiety. A Firesworn this far out counts as having it already.
