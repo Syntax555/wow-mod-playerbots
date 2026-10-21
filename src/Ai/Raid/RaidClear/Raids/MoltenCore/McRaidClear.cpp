@@ -805,9 +805,13 @@ namespace
                unit->HasAura(SPELL_LUCIFRON_CURSE);
     }
 
-    // A mage, or a druid in a form it can cast Remove Curse in (not a tank), that knows it.
+    // A mage, or a druid in a form it can cast Remove Curse in (not a tank), that knows it and
+    // isn't out of mana or silenced.
     bool CanDecurse(Player* member)
     {
+        constexpr float MIN_MANA_PCT = 5.0f;
+        if (member->GetPowerPct(POWER_MANA) < MIN_MANA_PCT || member->HasUnitFlag(UNIT_FLAG_SILENCED))
+            return false;
         if (member->getClass() == CLASS_MAGE)
             return member->HasSpell(SPELL_REMOVE_CURSE_MAGE);
         if (member->getClass() != CLASS_DRUID || PlayerbotAI::IsTank(member))
@@ -858,7 +862,11 @@ namespace
 
 bool RcMcCursedTankTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !bot->IsInCombat() || !CanDecurse(bot))
+    if (!bot->IsAlive() || !bot->IsInCombat() || bot->GetMapId() != MAP_ID || !CanDecurse(bot))
+        return false;
+    // Only in the three fights that curse (the lookup is cached): the rest of the run, curses
+    // left over included, is playerbots' own decursing.
+    if (!RaidClear::FightingCreature(bot, { NPC_LUCIFRON_BOSS, NPC_GEHENNAS, NPC_SHAZZRAH }))
         return false;
     return TankToDecurse(bot) != nullptr;
 }
@@ -903,8 +911,9 @@ namespace
     };
 
     // Where the Giants, Destroyers and Flame Imps in the fight stand, with how far their AoE
-    // reaches. Empty for a bot that belongs in it (tanks, melee). Not an imp that is on the bot
-    // itself: it would follow the bot out.
+    // reaches. Empty for a bot that belongs in it (tanks, melee). Only an imp a tank holds: a
+    // loose one runs after whoever it is on, and keeping clear of those would have every
+    // ranged bot and healer walking away from each other's imps all pull.
     std::vector<Blast> SplashTrashFor(PlayerbotAI* botAI, Player* bot)
     {
         std::vector<Blast> blasts;
@@ -920,7 +929,8 @@ namespace
                 blasts.push_back({ unit->GetPosition(), SMASH_RADIUS });
             else if (unit->GetEntry() == NPC_MOLTEN_DESTROYER)
                 blasts.push_back({ unit->GetPosition(), MASSIVE_TREMOR_RADIUS });
-            else if (unit->GetEntry() == NPC_FLAME_IMP && unit->GetVictim() != bot)
+            else if (unit->GetEntry() == NPC_FLAME_IMP && unit->GetVictim() && unit->GetVictim()->IsPlayer() &&
+                     PlayerbotAI::IsTank(unit->GetVictim()->ToPlayer()))
                 blasts.push_back({ unit->GetPosition(), FIRE_NOVA_RADIUS });
         }
         return blasts;
@@ -1487,8 +1497,11 @@ float RcMcLivingBombHoldMultiplier::GetValue(Action* action)
         if (!carrier || carrier == bot || !carrier->IsAlive() || !carrier->IsInMap(bot) ||
             !carrier->HasAura(SPELL_LIVING_BOMB))
             continue;
-        // A bot already inside isn't held there: the carrier is on its way out of it.
-        if (target->GetExactDist(carrier) < LIVING_BOMB_HOLD && bot->GetExactDist(carrier) >= LIVING_BOMB_HOLD)
+        // Toward something within its reach and closer to the carrier than the bot: from outside
+        // that walks in, from inside it follows (melee after the boss whose tank has it). A bot
+        // held inside stays put while the carrier walks off.
+        float const targetGap = target->GetExactDist(carrier);
+        if (targetGap < LIVING_BOMB_HOLD && targetGap < bot->GetExactDist(carrier))
             return 0.0f;
     }
     return 1.0f;

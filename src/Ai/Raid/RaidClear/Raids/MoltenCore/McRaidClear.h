@@ -95,17 +95,17 @@
  *     to 8,400 fire to everyone within 20 yd of him (20479). Every bot but the tanks leaves the
  *     way it leaves Inferno; ranged bots finish him from outside.
  *   - Living Bomb: nobody but its carrier walks (or charges) toward something within
- *     LIVING_BOMB_HOLD of a carrier while standing outside that. The carrier walks away from the
- *     raid (above), but nothing stopped melee following the boss, or a healer walking into heal
- *     range, straight back to it.
+ *     LIVING_BOMB_HOLD of a carrier and closer to it than the bot. The carrier walks away from
+ *     the raid (above), but nothing stopped melee following the boss after a tank that has it,
+ *     or a healer walking into heal range, straight back to it.
  *   - Majordomo's Damage Reflection (21075, a damage shield: 100 fire to whoever hits the add
  *     in melee, for 10 s): melee keep hitting through it and only stop below
  *     DAMAGE_REFLECTION_STOP_BELOW_PCT health. Standing idle for the whole shield cost more than
  *     the 100 a hit.
  *   - Flame Imps (11669) cast Fire Nova (20602) every 4 to 7 s: fire to everyone within 10 yd.
- *     They come in big packs that spread over the raid, so ranged bots and healers keep out of
- *     it like out of a Giant's Smash, except from an imp that is on the bot itself (it would
- *     only follow).
+ *     Ranged bots and healers keep out of it like out of a Giant's Smash, from the imps a tank
+ *     holds (a loose imp runs after whoever it is on; walking away from those would keep the
+ *     whole back line on the move).
  *   - Shazzrah's Magic Grounding (19714): a magic buff on himself, 50% less damage taken, for
  *     30 s, recast every 7 to 9 s. Playerbots only Purges what is on a bot's own current target,
  *     and priests not at all. One purger takes it off every time: the first shaman (Purge) in
@@ -115,8 +115,9 @@
  *     magic damage taken) land on most of the raid at once. Playerbots' decursers each lift the
  *     master's first, then every healer's (their own group's first), and only then the tanks':
  *     the tank, who matters most under Gehennas' Curse, waits behind every healer in the raid.
- *     Here each cursed tank gets one mage or druid of its own (the first in group order within
- *     reach not already given one) who lifts it before anything else.
+ *     Here, while one of the three is fighting, each cursed tank gets one mage or druid of its
+ *     own (the first in group order within reach, with mana and not silenced, not already given
+ *     one) who lifts it before anything else.
  *   - Shadow Protection: every priest has "rshadow", and playerbots casts the single-target
  *     buff unless at least three raid members lack it. Raid members that died lose it and come
  *     back one or two at a time, so once the raid's buffs are out of step a whole MC run went
@@ -174,6 +175,8 @@ namespace RaidClear::MoltenCore
         NPC_CORE_HOUND           = 11671,  // packs of five: Lucifron, Magmadar
         NPC_FLAME_IMP            = 11669,  // Fire Nova: 10 yd AoE; Lucifron's trash
         NPC_SHAZZRAH             = 12264,
+        NPC_LUCIFRON_BOSS        = 12118,
+        NPC_GEHENNAS             = 12259,
     };
 
     enum Spells : uint32
