@@ -3038,9 +3038,13 @@ RaidClear.BlackwingLair.Enable = 1
 #
 #    RaidClear.BlackwingLair.Firemaw.<Role>Spot
 #    RaidClear.BlackwingLair.Chromaggus.<Role>Spot
-#        Description: Fixed spots for the Firemaw and Chromaggus fights, as "x y z" (or the
-#                     line .gps prints: the first three numbers are used). Empty: that role
-#                     has no spot, and bots search for cover round themselves as before.
+#    RaidClear.BlackwingLair.Ebonroc.<Role>Spot
+#    RaidClear.BlackwingLair.Flamegor.<Role>Spot
+#        Description: Fixed spots for the Firemaw, Chromaggus, Ebonroc and Flamegor fights, as
+#                     "x y z" (or the line .gps prints: the first three numbers are used).
+#                     Ebonroc and Flamegor take no hide spots: there is nothing to hide from.
+#                     Empty: that role has no spot, and bots search for cover round
+#                     themselves as before.
 #                     Changes apply on .reload config.
 #                     TankSpot       - where the tank the boss is on holds him (back to a wall,
 #                                      so Wing Buffet throws nobody).
@@ -3077,6 +3081,14 @@ RaidClear.BlackwingLair.Chromaggus.RangedSpot = ""
 RaidClear.BlackwingLair.Chromaggus.RangedHideSpot = ""
 RaidClear.BlackwingLair.Chromaggus.HealerSpot = ""
 RaidClear.BlackwingLair.Chromaggus.HealerHideSpot = ""
+
+RaidClear.BlackwingLair.Ebonroc.TankSpot = ""
+RaidClear.BlackwingLair.Ebonroc.RangedSpot = ""
+RaidClear.BlackwingLair.Ebonroc.HealerSpot = ""
+
+RaidClear.BlackwingLair.Flamegor.TankSpot = ""
+RaidClear.BlackwingLair.Flamegor.RangedSpot = ""
+RaidClear.BlackwingLair.Flamegor.HealerSpot = ""
 
 #
 #    RaidClear.ZulGurub.Enable

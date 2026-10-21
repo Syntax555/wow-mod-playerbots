@@ -44,9 +44,28 @@ namespace
         return size_t(std::distance(CASTS.begin(), std::find(CASTS.begin(), CASTS.end(), spellId)));
     }
 
+    // The casts worth a stun or an incapacitate where no kick lands: the three that hit or heal a
+    // whole pack. One evening's run let all 13 Wyrmkin Fireball Volleys go off, no kick being
+    // able to touch them.
+    bool WorthACastStopper(uint32 spellId)
+    {
+        return spellId == SPELL_FIREBALL_VOLLEY || spellId == SPELL_HEALING_CIRCLE || spellId == SPELL_BWL_FLAMESTRIKE;
+    }
+
     bool IsStoppableCast(SpellInfo const* info)
     {
-        return info && RankOf(info->Id) < CASTS.size() && RaidClear::Interruptible(info);
+        return info && RankOf(info->Id) < CASTS.size() &&
+               (RaidClear::Interruptible(info) || WorthACastStopper(info->Id));
+    }
+
+    // What this bot has ready that stops the cast: an interrupt where one gets through, else a
+    // stun or an incapacitate on the casts worth one.
+    char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast)
+    {
+        char const* with = RaidClear::Interruptible(cast) ? RaidClear::ReadyInterrupt(botAI, bot, caster) : nullptr;
+        if (!with && WorthACastStopper(cast->Id))
+            with = RaidClear::ReadyCastStopper(botAI, bot, caster);
+        return with;
     }
 
     // What this caster is casting that a bot should stop, or nullptr.
@@ -95,7 +114,7 @@ namespace
             SpellInfo const* cast = CastToStop(unit);
             if (!cast || InterruptJustSent(unit))
                 continue;
-            char const* interrupt = RaidClear::ReadyInterrupt(botAI, bot, unit);
+            char const* interrupt = ReadyStop(botAI, bot, unit, cast);
             if (!interrupt)
                 continue;
 
@@ -159,7 +178,7 @@ public:
                 continue;
             PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
             if (botAI && botAI->HasStrategy("rc bwl runners", botAI->GetState()) &&
-                RaidClear::ReadyInterrupt(botAI, player, caster))
+                ReadyStop(botAI, player, caster, spellInfo))
                 botAI->ResetActionDuration();
         }
     }

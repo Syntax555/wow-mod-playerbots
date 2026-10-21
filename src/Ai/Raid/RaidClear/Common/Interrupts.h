@@ -7,8 +7,13 @@
  *
  * The core only stops a cast that silence can stop (its prevention type) and that interrupts can
  * (its interrupt flags), and not on a mob immune to the interrupt's mechanic. Many raid casters
- * are: in Blackwing Lair the Death Talon Wyrmkin, Hatchers and Spellbinders, so their Fireball
- * Volley and Flamestrike can't be stopped, nor can the Taskmasters' Healing Circle.
+ * are: in Blackwing Lair the Death Talon Wyrmkin, Hatchers and Spellbinders, so no kick stops
+ * their Fireball Volley and Flamestrike, nor the Taskmasters' Healing Circle.
+ *
+ * A stun or an incapacitate stops any cast it lands on, whatever the cast's flags, and several of
+ * those casters aren't immune to all of them: Gouge, Repentance and Scatter Shot take a Wyrmkin,
+ * Hammer of Justice and Gouge a Spellbinder. Those cost long cooldowns, so a raid spends them
+ * only on the casts it lists as worth one.
  *
  * Released under the MIT License.
  */
@@ -34,6 +39,10 @@ namespace RaidClear
     // name), or nullptr. A tank only interrupts what it holds: it would turn its back on that.
     // Not one the target is immune to: a kick at a Death Talon Wyrmkin only burns the cooldown.
     char const* ReadyInterrupt(PlayerbotAI* botAI, Player* bot, Unit* target);
+
+    // The first stun or incapacitate the bot has ready, paid for and in reach of the target, that
+    // the target isn't immune to (playerbots' name), or nullptr. The same tank rule as above.
+    char const* ReadyCastStopper(PlayerbotAI* botAI, Player* bot, Unit* target);
 
     // Whether an interrupt can stop this cast at all.
     bool Interruptible(SpellInfo const* cast);

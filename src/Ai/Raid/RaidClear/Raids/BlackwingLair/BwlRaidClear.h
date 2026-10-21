@@ -653,6 +653,36 @@ public:
     bool Execute(Event event) override;
 };
 
+// --- Crowd control (BwlCrowdControl.cpp) ------------------------------------
+
+// A warlock bot has an Enraged Felguard (the Blackwing Warlocks' Demon Portals) to banish: one
+// nobody holds, or its own banish about to end. Banished, it is out of the fight and out of the
+// bots' target lists (playerbots' AttackersValue). Playerbots' own Banish waits for a raid icon
+// nobody sets here: one evening's run had 9 Felguards up in one pull and no Banish at all.
+class RcBwlBanishFelguardTrigger : public Trigger
+{
+public:
+    RcBwlBanishFelguardTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc bwl banish felguard") {}
+    bool IsActive() override;
+};
+
+class RcBwlBanishFelguardAction : public Action
+{
+public:
+    RcBwlBanishFelguardAction(PlayerbotAI* botAI) : Action(botAI, "rc bwl banish felguard") {}
+    bool Execute(Event event) override;
+};
+
+// A mage's Polymorph only on a mob worth holding (a Blackwing Mage, Legionnaire or Taskmaster):
+// playerbots' "cc" sends it at whatever attacker isn't its target, which in the Technician halls
+// is a Technician the raid's area damage breaks it off and kills in seconds.
+class RcBwlPolymorphMultiplier : public Multiplier
+{
+public:
+    RcBwlPolymorphMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc bwl polymorph") {}
+    float GetValue(Action* action) override;
+};
+
 // --- Suppression Room -----------------------------------------------------
 
 class RcBwlSuppressionDeviceTrigger : public Trigger

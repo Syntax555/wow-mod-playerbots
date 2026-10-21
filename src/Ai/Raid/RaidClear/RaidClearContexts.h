@@ -69,6 +69,7 @@ public:
         creators["rc tank share threat"] = &RaidClearActionContext::tank_share_threat;
         creators["rc protect boss victim"] = &RaidClearActionContext::protect_boss_victim;
         creators["rc salvation on player"] = &RaidClearActionContext::salvation_on_player;
+        creators["rc warn pet owner"] = &RaidClearActionContext::warn_pet_owner;
         creators["rc aggro leash"] = &RaidClearActionContext::aggro_leash;
         creators["rc knockback footing"] = &RaidClearActionContext::knockback_footing;
         creators["rc leave unpulled target"] = &RaidClearActionContext::leave_unpulled_target;
@@ -100,6 +101,7 @@ public:
         creators["rc bwl wyrmguard stay clear"] = &RaidClearActionContext::bwl_wyrmguard_keep_away;
         creators["rc bwl hazard stay clear"] = &RaidClearActionContext::bwl_hazard_stay_clear;
         creators["rc bwl stay and interrupt"] = &RaidClearActionContext::bwl_interrupt;
+        creators["rc bwl banish felguard"] = &RaidClearActionContext::bwl_banish_felguard;
         creators["rc bwl tremor for tank"] = &RaidClearActionContext::bwl_tremor_for_tank;
         creators["rc bwl berserker rage"] = &RaidClearActionContext::bwl_berserker_rage;
         creators["rc bwl nefarian to tank"] = &RaidClearActionContext::bwl_nefarian_to_tank;
@@ -166,6 +168,7 @@ private:
     static Action* tank_share_threat(PlayerbotAI* botAI) { return new RcTankShareThreatAction(botAI); }
     static Action* protect_boss_victim(PlayerbotAI* botAI) { return new RcProtectBossVictimAction(botAI); }
     static Action* salvation_on_player(PlayerbotAI* botAI) { return new RcSalvationOnPlayerAction(botAI); }
+    static Action* warn_pet_owner(PlayerbotAI* botAI) { return new RcWarnPetOwnerAction(botAI); }
     static Action* aggro_leash(PlayerbotAI* botAI) { return new RcAggroLeashAction(botAI); }
     static Action* knockback_footing(PlayerbotAI* botAI) { return new RcKnockbackFootingAction(botAI); }
     static Action* leave_unpulled_target(PlayerbotAI* botAI) { return new RcLeaveUnpulledTargetAction(botAI); }
@@ -201,6 +204,7 @@ private:
     static Action* bwl_wyrmguard_keep_away(PlayerbotAI* botAI) { return new RcBwlWyrmguardKeepAwayAction(botAI); }
     static Action* bwl_hazard_stay_clear(PlayerbotAI* botAI) { return new RcBwlTrashHazardAction(botAI); }
     static Action* bwl_interrupt(PlayerbotAI* botAI) { return new RcBwlInterruptAction(botAI); }
+    static Action* bwl_banish_felguard(PlayerbotAI* botAI) { return new RcBwlBanishFelguardAction(botAI); }
     static Action* bwl_tremor_for_tank(PlayerbotAI* botAI) { return new RcBwlTremorTankAction(botAI); }
     static Action* bwl_berserker_rage(PlayerbotAI* botAI) { return new RcBwlBerserkerRageAction(botAI); }
     static Action* bwl_nefarian_to_tank(PlayerbotAI* botAI) { return new RcBwlNefarianToTankAction(botAI); }
@@ -271,6 +275,7 @@ public:
         creators["rc tank share threat"] = &RaidClearTriggerContext::tank_share_threat;
         creators["rc boss on non tank"] = &RaidClearTriggerContext::boss_on_non_tank;
         creators["rc player over threat"] = &RaidClearTriggerContext::player_over_threat;
+        creators["rc pet over threat"] = &RaidClearTriggerContext::pet_over_threat;
         creators["rc aggro leash"] = &RaidClearTriggerContext::aggro_leash;
         creators["rc knockback footing"] = &RaidClearTriggerContext::knockback_footing;
         creators["rc knockback footing tank"] = &RaidClearTriggerContext::knockback_footing_tank;
@@ -305,6 +310,7 @@ public:
         creators["rc bwl wyrmguard keep away"] = &RaidClearTriggerContext::bwl_wyrmguard_keep_away;
         creators["rc bwl trash hazard"] = &RaidClearTriggerContext::bwl_trash_hazard;
         creators["rc bwl interrupt"] = &RaidClearTriggerContext::bwl_interrupt;
+        creators["rc bwl banish felguard"] = &RaidClearTriggerContext::bwl_banish_felguard;
         creators["rc bwl bellowing roar"] = &RaidClearTriggerContext::bwl_bellowing_roar;
         creators["rc bwl nefarian loose"] = &RaidClearTriggerContext::bwl_nefarian_loose;
         creators["rc bwl drake front"] = &RaidClearTriggerContext::bwl_drake_front;
@@ -379,6 +385,7 @@ private:
     static Trigger* tank_share_threat(PlayerbotAI* botAI) { return new RcTankShareThreatTrigger(botAI); }
     static Trigger* boss_on_non_tank(PlayerbotAI* botAI) { return new RcBossOnNonTankTrigger(botAI); }
     static Trigger* player_over_threat(PlayerbotAI* botAI) { return new RcPlayerOverThreatTrigger(botAI); }
+    static Trigger* pet_over_threat(PlayerbotAI* botAI) { return new RcPetOverThreatTrigger(botAI); }
     static Trigger* aggro_leash(PlayerbotAI* botAI) { return new RcAggroLeashTrigger(botAI); }
     static Trigger* knockback_footing(PlayerbotAI* botAI)
     {
@@ -424,6 +431,7 @@ private:
     static Trigger* bwl_wyrmguard_keep_away(PlayerbotAI* botAI) { return new RcBwlWyrmguardKeepAwayTrigger(botAI); }
     static Trigger* bwl_trash_hazard(PlayerbotAI* botAI) { return new RcBwlTrashHazardTrigger(botAI); }
     static Trigger* bwl_interrupt(PlayerbotAI* botAI) { return new RcBwlInterruptTrigger(botAI); }
+    static Trigger* bwl_banish_felguard(PlayerbotAI* botAI) { return new RcBwlBanishFelguardTrigger(botAI); }
     static Trigger* bwl_bellowing_roar(PlayerbotAI* botAI) { return new RcBwlBellowingRoarTrigger(botAI); }
     static Trigger* bwl_nefarian_loose(PlayerbotAI* botAI) { return new RcBwlNefarianLooseTrigger(botAI); }
     static Trigger* bwl_drake_front(PlayerbotAI* botAI) { return new RcBwlDrakeFrontTrigger(botAI); }
