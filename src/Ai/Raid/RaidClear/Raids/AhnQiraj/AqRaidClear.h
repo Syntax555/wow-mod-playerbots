@@ -610,6 +610,16 @@ namespace RaidClear::TempleOfAhnQiraj
     // are then told apart by who is nearer which twin, and stand still.
     constexpr uint32 TWINS_LANDING_MS = 2500;
     constexpr float VEKNILASH_DUE_KEEP = 6.0f;
+    // The two tanks stand 60 yd and more apart, too far for one healer to keep both up. Healer
+    // bots split between them (a teleport swaps the twins, not where the tanks stand), and each
+    // keeps its own in reach: one farther than TWINS_HEALER_FAR from it (edge to edge) walks back
+    // to within TWINS_HEALER_NEAR. Both short of the 40 yd heals, so a tank's walk with its twin
+    // doesn't take it out of reach at once. A healer doesn't walk after someone farther than
+    // TWINS_HEALER_FAR + TWINS_HEALER_WALK from its tank: the walk ends in heal range of them
+    // (38.5 yd short), which can be outside its own ring.
+    constexpr float TWINS_HEALER_FAR = 34.0f;
+    constexpr float TWINS_HEALER_NEAR = 26.0f;
+    constexpr float TWINS_HEALER_WALK = 30.0f;
     // Out of a Blizzard: the gap from the bot's edge to the cloud's.
     constexpr float BLIZZARD_KEEP = 1.0f;
     // A bot walks to the nearest spot with this much to spare on every rule above.
