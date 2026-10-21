@@ -116,7 +116,9 @@
  *     they hit, and only once no other Wyrmguard is within 20 yd of it. These rules run on both
  *     engines ("rc bwl runners"): a bot waiting at the camp isn't in combat yet. Their tanks
  *     hold them where they took them, not 30 yd apart: three stomps spread down a corridor left
- *     the raid nowhere to stand, two stomps on one spot leave everywhere else.
+ *     the raid nowhere to stand, two stomps on one spot leave everywhere else. A tank with a
+ *     Wyrmguard on it drinks a Free Action Potion (from its bags, or with the "raid" cheat
+ *     without one) so the stomps don't stun it.
  *   - Hunters Tranquilizing Shot Flamegor's and Chromaggus' Frenzy, like the Seethers' Enrage.
  *     Class calls: priests stop healing while Corrupted Healing is on them (every heal would put
  *     a shadow DoT on its target; shields still go out, and a tank below 35% still gets healed);
@@ -165,6 +167,7 @@
 #include "Multiplier.h"
 #include "Strategy.h"
 #include "Trigger.h"
+#include "UseItemAction.h"
 
 #include <vector>
 
@@ -276,6 +279,13 @@ namespace RaidClear::BlackwingLair
 
         // Fire left on the ground (BwlHazards.cpp).
         SPELL_BWL_RAIN_OF_FIRE  = 19717,   // Blackwing Warlock, 10 yd
+
+        SPELL_FREE_ACTION       = 6615,    // Free Action Potion: stun, root and snare immunity for 30 s
+    };
+
+    enum Items : uint32
+    {
+        ITEM_FREE_ACTION_POTION = 5634,
     };
 
     enum GameObjects : uint32
@@ -1287,6 +1297,24 @@ class RcBwlWyrmguardHoldMultiplier : public Multiplier
 public:
     RcBwlWyrmguardHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc bwl wyrmguard hold") {}
     float GetValue(Action* action) override;
+};
+
+// A tank a Wyrmguard is hitting, without Free Action on it, that has a potion ready or the
+// "raid" cheat.
+class RcBwlWyrmguardFreeActionTrigger : public Trigger
+{
+public:
+    RcBwlWyrmguardFreeActionTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc bwl wyrmguard free action") {}
+    bool IsActive() override;
+};
+
+// Drinks a Free Action Potion from the bags; with none and the "raid" cheat on, casts its spell.
+class RcBwlFreeActionAction : public UseItemAction
+{
+public:
+    RcBwlFreeActionAction(PlayerbotAI* botAI) : UseItemAction(botAI, "rc bwl free action", true) {}
+    bool Execute(Event event) override;
+    bool isPossible() override { return true; }
 };
 
 #endif
