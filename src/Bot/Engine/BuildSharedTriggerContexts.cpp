@@ -20,6 +20,7 @@
 #include "OSTriggerContext.h"
 #include "OnyTriggerContext.h"
 #include "RSTriggerContext.h"
+#include "RaidClearContexts.h"
 #include "SSCTriggerContext.h"
 #include "TKTriggerContext.h"
 #include "TbcDungeonTriggerContext.h"
@@ -78,4 +79,5 @@ void AiObjectContext::BuildSharedTriggerContexts(
     triggerContexts.Add(new WotlkDungeonFoSTriggerContext());
     triggerContexts.Add(new WotlkDungeonPoSTriggerContext());
     triggerContexts.Add(new WotlkDungeonToCTriggerContext());
+    triggerContexts.Add(new RaidClearTriggerContext());
 }

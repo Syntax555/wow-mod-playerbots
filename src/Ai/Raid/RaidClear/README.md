@@ -1,0 +1,604 @@
+# Raid Clear
+
+Part of this playerbots fork (formerly the separate module mod-raid-clear): it teaches the bots
+the boss and trash mechanics of each vanilla raid, one raid at a time.
+
+[mod-dungeon-clear](https://github.com/jrad7/mod-dungeon-clear) already walks a bot raid from
+boss to boss. As soon as a boss is pulled it steps back and leaves the fight to playerbots' own
+raid strategies. In the TBC raids and ICC those are detailed, but in the vanilla raids most
+bosses only get a resistance aura. Raid clear fills in the missing mechanics.
+
+## How it works
+
+- Each raid has one strategy, named `rc <raid>`. Every bot on that raid's map gets it
+  automatically and loses it when it leaves. Playerbots' own strategy for the raid keeps running
+  alongside it.
+- It doesn't need mod-dungeon-clear. The mechanics also apply when you lead the raid yourself.
+- Its strategy, action and trigger names are added with playerbots' own shared contexts
+  (`src/Bot/Engine/BuildShared*Contexts.cpp`); `RaidClearModule.cpp` installs the strategies by
+  map.
+
+### Kill order (all raids)
+
+DPS bots always attack the skull-marked enemy first. The group's main-tank bot keeps the skull on
+whichever add should die first: adds that split or multiply, then healers, then the boss's other
+adds. A skull already on an add of the same or higher priority is left where it is, so the mark
+doesn't flicker between equal adds. A skull you put on a listed add stays there too. One you put on
+anything else moves as soon as a listed add is in the fight, and on Zul'Gurub's High Priest Thekal
+skull keeps moving whatever you do.
+
+### Main tank and off-tanks (all raids)
+
+`.botraid` builds raids with two or more tanks, but playerbots treats them all the same: each one
+grabs whatever isn't hitting it, off-tanks taunt the main tank's mob, and every mob ends up in one
+pile. In any raid:
+
+- **One main tank.** If nobody has the group's Main Tank flag, the tank playerbots already treats
+  as main gets it (first tank in group order). The main tank then sticks to its own target, and
+  mod-dungeon-clear leads with the same tank. A Main Tank you set yourself is kept.
+- **Off-tanks.** The other tanks never take the main tank's target. They pick up mobs hitting
+  healers or DPS first, then extra mobs on the main tank, and leave mobs another off-tank already
+  holds.
+- **Separated on trash.** An off-tank drags its mob away from the main tank's mob, so cleaves and
+  stomps hit only one tank: at least 12 yards apart, and further for mobs with a big AoE (in Molten
+  Core, two Molten Giants end up 30 yards apart and two Molten Destroyers 36). It only picks dry
+  ground (no lava) at about the same height and in the main tank's line of sight. In boss fights
+  it stays put unless configured otherwise.
+- **Co-tanking bosses that drop threat.** Some bosses knock their tank away and wipe part of its
+  threat (Broodlord Lashlayer's Knock Away, the Blackwing drakes' Wing Buffet), and some need two
+  tanks taking turns (Fankriss). On those, an off-tank with no add to hold attacks the boss too,
+  so it sits second on threat and catches the boss before it turns on a healer. An off-tank the
+  boss turns to keeps it rather than going back to the adds, unless an add that needs a tank of
+  its own is loose and no other off-tank is free. The main tank taunts it back.
+- **Adds that need a tank of their own.** Some adds have to be tanked away from everyone (Blackwing
+  Lair's Death Talon Captain). The main tank leaves them alone and drops one it already had. An
+  off-tank taunts them off whoever has them, the main tank included, drags them well clear of the
+  main tank's mob and keeps them until they die. With more of them than free off-tanks, the main
+  tank keeps the extra ones.
+- **Sharing a boss's threat.** Some bosses keep taking their tank away (Hakkar's mind control and
+  threat wipes). On those, a tank the boss isn't on taunts to lift its threat back to the top: at
+  once when it has lost its threat (under half of the highest), at most every 30 seconds when it
+  has only drifted behind (under 90%). Any tank taunts the moment the boss is on a player who
+  isn't a tank, and only one tank taunts at a time. Where no taunt lands (Hakkar is immune), a
+  paladin's **Hand of Protection** on that player does the job: a creature doesn't stay on someone
+  its swings can't hurt, so it turns to the next on its threat, which is a tank. If you play in the
+  raid and come within 10% of that tank's threat, a paladin puts **Hand of Salvation** on you.
+  Playerbots' damage dealers don't watch their
+  threat, so on these bosses they hold their damage while they are within 10% of the threat of the
+  tank who would catch the boss next. Curses, Hunter's Mark and Tranquilizing Shot still go out.
+- **Endless adds are ignored.** Off-tanks don't chase adds that respawn faster than anyone can
+  tank them (Blackwing Lair's Suppression Room whelps).
+- **Packs tanked in one heap.** Some packs only die together (Molten Core's Core Hounds). An
+  off-tank never takes one of those off the main tank and never drags one away; one it picks up
+  off a healer it walks over to the tank holding the pack, so area spells hit them all. That
+  tank is the main tank, or, when the main tank is busy with something else (a boss pulled
+  along), the first off-tank holding one.
+
+### Aggro leash (all raids)
+
+When playerbots moves a bot away from something (a mob in its face, a boss's AoE, the rest of the
+group for a Living Bomb), it picks a point straight behind the bot and doesn't look at what stands
+there. In a raid that is often the next pack or the next boss, and the raid ends up fighting both.
+
+So while a bot is in combat, its walks are checked against every mob nearby that isn't in the
+fight but would join it: hostile, aggressive, alive, in line of sight and on the same level.
+
+- A walk that would pass inside such a mob's aggro radius plus a buffer (6 yards), and takes the
+  bot closer to it, is stopped as it starts. The check runs on the server's own map update and
+  not in the bot's AI, which only looks every 100 to 500 milliseconds while the bot keeps
+  running.
+- After a stop the bot starts no walk for 0.7 seconds, so whatever sent it doesn't send it
+  straight back.
+- A walk toward the bot's target (going to the fight, or pulling the next pack) is judged more
+  gently. The target itself, and any mob whose aggro radius already covers the target, don't
+  count: there is no getting at the target without them. Every other pack only has to be passed
+  by half the buffer: round the corner of a pack is fine, through it is not.
+- Any other walk (backing off, spreading out, dodging) is judged against every idle mob: the
+  full buffer, or half of it for a mob the target stands next to. A boss tanked beside an idle
+  pack doesn't make that pack safe to back into.
+- A bot standing within 2 yards of an idle mob's aggro radius (a patrol walking up) steps back
+  out, toward the main tank where it can. A bot in melee with its target is never moved off it.
+- A mob that is walking (a patrol, or one wandering round its spot) counts where it is and where
+  it will be over the next 15 yards of its way (`RaidClear.AggroLeash.PatrolAhead`): a bot
+  doesn't walk to where a patrol is about to arrive. The server only knows the leg a mob is on,
+  up to its next waypoint, so that is as far ahead as this sees.
+- A boss that isn't in the fight gets 8 more yards (`RaidClear.AggroLeash.BossBuffer`) for
+  every walk that isn't toward the bot's target and every spot a bot picks to stand on. A second
+  pack is a harder fight; a second boss is a wipe.
+- An off-tank dragging its mob away from the main tank's doesn't pick a spot inside any of
+  that. (Before, it could: the walk was stopped a step in, sent again two seconds later, and
+  stopped a step further on.)
+
+The aggro radius is the core's own: the mob's detection range (20 yards unless its template says
+otherwise) plus a yard for every level the mob is above the bot.
+
+Knockbacks, charges and fears are not walks the bot chose and can't be stopped. What a bot can
+choose is where it stands when the knockback comes (`RaidClear.AggroLeash.Knockback`):
+
+- Some mobs throw players about. A Molten Giant's **Knock Away** sends its tank 9 yards,
+  Broodlord's 17, his **Blast Wave** everyone within 20 yards of him 18, and the **Wing Buffet**
+  of Firemaw, Ebonroc and Flamegor everyone in front of them 39. Playerbots' tank walks round
+  its mob to turn it away from the raid, so it stands with its back to whatever hasn't been
+  pulled yet, and that is where it lands.
+- How far a mob throws, and whom (whoever it is on, everyone within a radius, only those in
+  front of it or behind it), is read from the server's spell data. Each raid lists the throwers
+  it knows; any other is picked up when it throws someone on a raid map (one line in the server
+  log) and known until the server restarts. A single-target throw has to go to whoever the mob
+  is on three times first, and is dropped the first time it goes to anyone else: one aimed at a
+  random player (a Death Talon Flamescale's **Berserker Charge**) can't be stood out of the way
+  of.
+- A bot standing where a throw would catch it and carry it into an idle mob's aggro radius
+  moves. The flight counts as well as the landing, and it ends at walls the way the server ends
+  it for a bot, so a tank with its back to a wall is fine where it is. The tank the mob is on
+  goes round it to the nearest side with a clear landing (not while the mob is casting); a melee
+  bot does the same within the half behind the mob; anyone else walks to the nearest spot out of
+  the throw's reach, or with a clear landing.
+- While such a mob is on a tank and an idle pack is near enough to be thrown into, playerbots'
+  "tank face" is off for that tank.
+- With no idle mob anywhere near the thrower, none of this does anything.
+
+The same idle mobs are kept out of the bots' area damage (`RaidClear.AggroLeash.Splash`). An area
+spell hits everything hostile in its radius, in the fight or not, and a chain jumps to whatever
+stands near enough, so a Blizzard, Volley, Death and Decay, Hurricane, Starfall or Chain Lightning
+next to a pack that isn't in the fight pulls it. A bot doesn't cast a spell that hits more than
+its target where it would reach an idle mob (how far each spell reaches is read from the server's
+spell data), and uses its single-target spells until the fight has moved or that pack is dead.
+A target that isn't in combat itself is a pull and isn't judged.
+
+### Pull discipline, and healers who stay back (all raids)
+
+Playerbots counts the raid's skull as a target for every bot, whether it is in the fight or
+not. So the moment a pack is marked, every damage dealer opens on it: a mage's Flamestrike lands
+before a tank has moved, the pack runs through the casters, and whoever backs away finds the
+next pack. In one Blackwing Lair evening that was six wipes and about two deaths in three.
+
+With `RaidClear.PullDiscipline` on:
+
+- A bot that isn't a tank leaves a pack alone until something in the raid has started the fight
+  with it: a tank's pull, a patrol walking in, your own opener. It doesn't attack it, cast on
+  it or walk up to it, and its pet is called off.
+- No bot, tank or not, opens on a boss that isn't in the fight while the raid is still fighting
+  something else.
+- A bot whose target turns out to be one of those takes the nearest enemy that *is* in the
+  fight, or lets go until the pull has happened.
+
+Only mobs standing where they spawned count. Anything the fight itself brings in (adds, totems,
+a summoned boss) is fair game the moment it appears. The rule is off when the raid has no living
+tank. A bot you tell to attack such a pack waits like the rest until you, or a tank, have hit it.
+
+`RaidClear.HealersStayBack`: a healer paladin's idle action in playerbots is **Judgement of
+Light**, 10 yards, and the bot walks into range for it, which put nine holy paladins in every
+Cleave, War Stomp and breath. A healer paladin now only judges what is already in range from
+where it stands.
+
+`RaidClear.Bots.TeachTranquilizingShot`: mod-individual-progression moves **Tranquilizing
+Shot** to level 61 on the hunter trainers (it was a book from Molten Core), so a level 60 hunter
+bot never has it and no Frenzy is ever removed. Hunter bots that enter a raid are taught it.
+The spell stays on the character.
+
+### Reflected spells (all raids)
+
+Some enemies send spells back at whoever casts them: the **Anubisath Guardians** of Ruins of
+Ahn'Qiraj and the **Anubisath Sentinels** and **Defenders** of the Temple have either **Fire and
+Arcane Reflect** or **Shadow and Frost Reflect**, and Majordomo's adds get **Magic Reflection**.
+Playerbots used to cast its rotation anyway, so an arcane mage hit itself with every Arcane
+Missile. Now a bot doesn't cast a spell at an enemy that would reflect it, Arcane Missiles
+included. It goes on to the next spell it has: an arcane or fire mage to Frostbolt, a frost mage
+to Fireball, a warlock to Shadow Bolt or Immolate. Only when nothing else gets through does it use
+its wand (not Searing Pain, which would pull the mob off the tank). Chain spells and the few area
+spells that can be reflected (Chain Lightning under Magic Reflection, Seed of Corruption, Living
+Bomb) aren't cast where they would land on a reflecting enemy in the fight. Most area spells
+(Arcane Explosion, Blizzard, Consecration) can't be reflected at all. The check reads the enemy's
+auras the way the server does, so any reflect in any raid is covered. Pets aren't covered: an
+Imp's Firebolt still bounces.
+
+### Death log (all raids)
+
+Every death in a raid gets one line in the server log, so a bad night can be read back and the
+mechanic that's killing the bots found:
+
+```
+[RaidClear] death: Name (Mage, dps, bot) map 469 instance 1 | Chromaggus 41% [Frenzy, ...] 22 yd, in LOS | killed by Incinerate (Chromaggus) 3120 | last 6s: Incinerate (Chromaggus) 3120; melee (Chromaggus) 2x 1850 | debuffs: Brood Affliction: Black, ...
+[RaidClear] Chromaggus killed (map 469 instance 1): 24 deaths | Incinerate (Chromaggus) 9, melee (Chromaggus) 6, ...
+```
+
+Damage is what was actually dealt. A hit whose spell can't be matched shows as `unknown`. The
+brackets after the boss list what its own fight put on it: its buffs, permanent ones too (Strength
+of Ossirian), and what a creature cast on it (a crystal's weakness), never the raid's debuffs.
+`grep "\[RaidClear\]" Server.log` pulls them out.
+
+## Raids
+
+### Molten Core
+
+Playerbots already handles Shazzrah's Arcane Explosion, the Golemagg /
+Core Rager tank split (the off-tank split stays out of that fight), Core Hound packs, lava pools and the resistance auras. On top of that:
+
+| Fight | What the bots do |
+|---|---|
+| Firelord trash | Kill **Lava Spawn** before anything else (they split every 15 seconds). |
+| Lucifron, Gehennas, Garr | Kill the Flamewaker Protectors, Flamewalkers and Firesworn before the boss. |
+| Garr | A **Firesworn** more than 40 yards from Garr gets **Separation Anxiety** (four times the damage), and every Firesworn erupts when it dies: about 2,000 fire damage to everyone within 15 yards, or 8,000 with Separation Anxiety. So the fight stays with Garr. A bot more than 30 yards from him walks back to 22, and the Firesworn on it follows (a tank only comes when a Firesworn is on it, so trash pulled with the boss stays where its tank holds it). Nobody but the tanks hits a Firesworn that has Separation Anxiety or is far enough out to get it: bots already attacking one stop, pets and Auto Shot included, a cast or channel at one (Arcane Missiles) or a running area spell it walks into (Blizzard, Volley) is broken off, no area or chain spell (Multi-Shot, Cleave, Chain Lightning through Garr, Consecration) is cast where it would land on one, a tank holds one below 40% with taunts only until Separation Anxiety is gone, and the skull never goes on one. |
+| Molten Giant, Molten Destroyer | **Smash** hits everyone within 10 yards of a giant, **Massive Tremor** everyone within 13 yards of a destroyer. Ranged and healers inside either walk out to 5 yards past its edge. |
+| Lucifron, Magmadar (Core Hounds) | A Core Hound brought to 0 health **plays dead** for 10 seconds and takes no damage, then gets up at full health unless every other Core Hound within 80 yards in the fight is down too, so a pack (or two or three) has to come down together. The tanks keep every hound in one heap. The skull sits on the healthiest hound, and nobody but a tank single-targets a hound more than 10% of its health below that one, while area and chain spells keep hitting them all, so they stay even. Nobody hits a hound that is playing dead (bots on one switch, pets too), and from the moment one plays dead the skull goes to the standing hound with the least health, so the rest go down inside its 10 seconds. |
+| Magmadar | Every shaman keeps **Tremor Totem** down against **Panic**, and places no other earth totem while he is near: playerbots keeps Stoneskin or Strength of Earth down the same way, and left alone the two replace each other every second and a half. |
+| Baron Geddon | **Inferno** burns everyone within 20 yards of him for 8 seconds, harder with every pulse, and he stands still for it. Playerbots walks its bots out, but only the ones that have threat on him: a tank holding an add, a bot on the trash that came with him or one revived mid-fight stands in all of it. Here every bot within 23 yards of him drops its spell and walks to the nearest spot 25 yards out, his tank included; nobody walks back toward anything that close to him until it is over, and a bot still inside casts nothing it has to stand still for. |
+| Baron Geddon | **Living Bomb** goes off after 8 seconds and hits every raid member within 18 yards of its carrier. Playerbots moves the carrier away from the middle of the raid by as many yards as its nearest neighbour is short of 20, which gets a bot at the edge of the group clear and leaves one in the middle (where the healers stand) surrounded. Here the carrier walks to the nearest spot 24.5 yards from everyone else and out of Inferno's reach, looked for up to 40 yards away, or to the emptiest spot there is. |
+| Sulfuron Harbinger | Kill the Flamewaker Priests first. |
+| Majordomo Executus | Healers first, then Elites. No spells into **Magic Reflection**; melee stop swinging into **Damage Reflection** (tanks keep going). The **Hot Coal** in the middle of his room (where his Teleport throws players) burns everyone within 10 yards for about 750 a second while anyone stands within 7 yards of it. In combat a bot that has stopped within 12 yards of it walks out, on the side its target is on (one only crossing the pit is left alone). A tank with a mob on it goes 22 yards out, so the mob follows it out of reach. Melee whose target stands in it stay on that target. |
+| Ragnaros | **Lava Burst** erupts at three of eight fixed places every 10 seconds or so, seven of them on the rock 30 to 45 yards from him, and an eruption hits most of the raid around it. Each ranged bot and healer takes a spot of its own 30 to 42 yards from him, as far from all eight as the rock allows (the west side of the room), dry, in his line of sight and 3.5 yards from the next; healers pick first, within 36 yards of the main tank. While he is up they walk back to their spot when more than 4 yards off and don't wander away from it. Ranged and healers stay out of **Wrath of Ragnaros**, which reaches 25 yards from his middle. He is 20 yards wide himself, so the distance is measured centre to centre: a bot closer than 27.5 yards to his middle walks to the nearest dry spot 29.5 yards out and doesn't walk back toward anything that close to him. Not while he is under the lava. Kill the **Sons of Flame** when he submerges. |
+
+### Blackwing Lair
+
+Playerbots already handles the Onyxia Scale Cloak, Razorgore's egg phase, Vaelastrasz's Burning
+Adrenaline, Chromaggus's Bronze affliction, Nefarian's Wild Magic and Fear Ward, Wyrmguard spacing
+and the fire resistance auras. On top of that:
+
+| Fight | What the bots do |
+|---|---|
+| Razorgore | Kill his adds in order: **Death Talon Dragonspawn**, then **Blackwing Mages**, then **Legionnaires**. The off-tank split stays out of the fight (playerbots places the tanks). |
+| Vaelastrasz's room | The six **Blackwing Technicians** standing round him run for the far door as soon as a player walks in (the bots arriving first doesn't set them off) and are gone about 25 seconds later, loot and all. One hit stops a technician for five minutes. Every bot that isn't a healer hits one that is still running, each bot starting with a different one so the first volley stops several, and moves on to the next runner as soon as its own has stopped. Damage dealers with none in reach go after the nearest (melee only while it is still on their floor: nobody on foot catches one up the ramp); tanks hit what they can reach from where they stand and don't walk after one. Once nothing is running the raid kills them like any other pack. Not once Vaelastrasz himself is fighting. |
+| Vaelastrasz | He can't be taunted, so the off-tank keeps itself second on threat for when **Burning Adrenaline** kills the main tank. |
+| Warlock packs | Kill the **Blackwing Warlocks** and **Blackwing Technicians** first: each warlock keeps opening Demon Portals that summon Enraged Felguards until it dies, and each technician throws a **Bomb** every few seconds. Then Taskmasters and Spellbinders, then the felguards. Bots walk out of a Warlock's **Rain of Fire** and a Spellbinder's or Hatcher's **Flamestrike** while the fire burns, by a way that doesn't back them into the next pack. |
+| Interrupts (trash) | Any bot with Kick, Pummel, Shield Bash, Wind Shear, Counterspell or Silence ready and in reach stops a trash cast, its own target or not, one bot per cast (the rest leave that caster alone for 0.4 seconds), the worst first: **Fireball Volley**, **Healing Circle**, **Shadow Bolt**, **Flamestrike**, **Fireball**. A bot that is waiting at the camp while the pack is dragged in does too. Before a kick is spent the server's own spell data is checked: whether the cast can be interrupted at all, and whether the caster is immune. On this core that leaves the **Blackwing Warlocks**' Shadow Bolt and the **Blackwing Mages**' Fireball: Death Talon Wyrmkin, Hatchers and Spellbinders are immune to interrupts and silences, and Healing Circle can't be interrupted. |
+| Death Talon packs (Hall of the Dragonspawn) | The **Death Talon Captain** puts **Mark of Detonation** on whoever he hits, and every melee hit on that player then explodes on all of that player's allies within 30 yards. So he gets an off-tank of his own: the main tank leaves him alone, an off-tank taunts him off whoever has him and holds him 36 yards from the main tank's mob until he dies. Every other non-tank stays 32 yards from anyone carrying the Mark (moving out toward the main tank) and doesn't walk back toward a target inside that circle. Kill order: **Wyrmkin** first, before anything else in the pack (**Fireball Volley** hits everyone within 45 yards, and nothing interrupts, silences or stuns a Wyrmkin), then **Flamescales** and **Seethers**, the Captain last, mostly by ranged; melee join in whenever the Mark is dispelled. Everyone but the tanks stays out of the front of a **Death Talon Captain** or **Overseer** it isn't on (**Cleave**). The nearest hunter **Tranquilizing Shots** an enraged Seether. |
+| Wyrmguard packs | All three Wyrmguards of a pack **War Stomp** exactly 8 seconds after the pull (everything within 15 yards, about 2,000 each, and a stun), by which time the tank has brought them to where the raid waits: two or three stomps at once kill a cloth wearer. So from the moment a pack is pulled, everyone who isn't a tank stays 17 yards from every **Death Talon Wyrmguard**, from whoever a Wyrmguard is still running to and, until they have all arrived, from the main tank, waiting at the camp included, and looks up to 36 yards round it for a way out. Melee only stand by the one they hit, and only while a tank holds it, no other Wyrmguard is within 20 yards of it and they have 75% health or more. Nobody walks in toward anything standing in a stomp, and follow, formation and the camp hold don't walk a bot back into one, wherever it starts. Every Wyrmguard gets its own tank. As soon as a pack is pulled (like the three before Ebonroc), the main tank keeps one and each off-tank runs in, taunts another off whoever has it and holds it where it took it. The tanks no longer drag them 30 yards apart: in a corridor three stomps that far apart left the raid nowhere to stand, and one evening two stomps 0.07 seconds apart hit 38 players. With fewer tanks than Wyrmguards the main tank keeps the extra ones. |
+| Technician packs | Ranged bots and healers keep 7 yards from each other while **Blackwing Technicians** are fighting nearby, so one **Bomb** (5-yard splash) hits one bot. A bot with someone that close walks to the nearest spot with nobody that close, still in reach of its target, at most once every 1.5 seconds; follow, formation and the camp hold don't walk it straight back. |
+| Suppression Room | With the `raid` bot cheat on (the default), bots turn off every armed **Suppression Device** within 22 yards: the aura reaches 20, playerbots' own disarm only 15. Kill the Hatchers and Taskmasters before Broodlord if they come along. Off-tanks ignore the whelps. |
+| Broodlord Lashlayer | The off-tank co-tanks him through **Knock Away**. Ranged and healers stay out of **Blast Wave** (20 yards); a healer only backs off as far as it can still reach the tank. |
+| Firemaw, Ebonroc, Flamegor | Two tanks hold the drake: the main tank and the first spare off-tank, both in front of it, so **Wing Buffet** hands it from one to the other without turning it. Only those two taunt it, only from in front and never while **Shadow Flame** is being cast; the other tanks stay under 80% of their threat. Everyone but those two stays out of the 120 degrees in front of it (**Shadow Flame** reaches 45 yards and kills a non-tank outright; **Wing Buffet** 20), and a bot caught in front when a cast starts drops what it is doing and runs. Casters and healers are no longer taken to the dragon's flank at melee range by playerbots' own positioning, follow and formation don't walk anyone back into the front, and nobody **Charges**, **Intercepts** or **Feral Charges** onto the dragon from in front of it (they land on the near side). Hunters take Flamegor's **Frenzy** off with Tranquilizing Shot. |
+| Firemaw | At 5-7 stacks of **Flame Buffet** (varies per bot, so the raid doesn't leave together) a damage dealer or spare tank hides until the stacks drop. Healers take turns, the most stacks first, at most a third of them at once; one at 9 stacks goes anyway. His two tanks trade him: the one he is on hands him over at 10 stacks to the other once it has 7 fewer, and the one he isn't on rests at 10. Hidden bots keep healing and casting at anything they can see, and still step out of fire on the ground. With fixed spots set in the config (see below) the tanks hold him at the wall and every role fights and hides where the spots say. |
+| Chromaggus | He can't be taunted, so the off-tanks build threat on him and the damage dealers stay under the tanks' threat (as on Nefarian and Hakkar). He breathes every 30 seconds from the pull, his two breaths taking turns, so everyone but the bot he is on goes behind cover 7 seconds before one is due (healers 3 seconds before) and comes back out after it, **Time Lapse** included (it only stuns; his tank takes it). Hunters take his **Frenzy** off with Tranquilizing Shot. With fixed spots set in the config his tank holds him at its spot and everyone hides at theirs. **Brood Affliction: Black** (more fire damage taken) comes off before anything else: mages, druids and Cleanse Spirit shamans split the cursed players between them, tanks first, then the lowest on health; healers leave it to the others while a tank is below half health. Bronze is already handled by playerbots (Hourglass Sand). His **Elemental Shield** (a new one every 17-25 seconds) cuts Holy and four of the five magic schools by 76% and makes the fifth hit about 2.9 times as hard: ranged damage dealers cast their spells of that school first and leave their spells of the other schools alone while they have one to cast. |
+| Nefarian | No taunt lands on him, and his druid call (cat form) kills a bear in front of him, so a paladin tank holds him if there is one (then a death knight, a warrior, a druid last): the other tanks stay under 80% of that tank's threat and the damage dealers under the tanks'. Everyone but that tank and whoever he is on stays out of the 120 degrees in front of him (**Shadow Flame**, **Cleave**) and behind him (**Tail Lash**), and runs when a Shadow Flame starts. Ranged and healers stay outside **Bellowing Roar** (35 yards from his middle; he is big enough to be hit from 48), healers where they still reach the tank. **Bellowing Roar** feared all four tanks for its whole length in one evening, he turned with them, and every Shadow Flame after it hit four to eight others. So each tank gets a **Tremor Totem** (it only frees its shaman's own party within 30 yards): the first shaman in the tank's party walks in to within 22 yards of the tank, outside his front and tail, puts it down there and goes back, and puts it down again only when it is gone or more than 28 yards from the tank. Nothing else goes in that shaman's earth slot meanwhile; the other shamans keep their own totems. Warriors within the roar use **Berserker Rage** the moment it starts, and a priest walks over to put **Fear Ward** on the tank whenever it is ready. No taunt lands on him: when he is on someone who isn't a tank (as when he lands) that player walks to his tank, so his breath points where the tank stands and not through the ranged ring, until the tank's threat or a paladin's **Hand of Protection** takes him back. The rogue call teleports every rogue to just in front of him and stuns them there for 30 seconds: the tank he is on walks round to his other side, so he turns his back on them. At 20% he raises every drakonid that died in phase one as a **Bone Construct** (some 45 of them), and every heal puts all of them on the healers. They only die to area damage, and that only works on a pile: one spare tank stands still at his side, where the healers stand (outside the roar, still in reach of the tank), the casters and healers walk over and stand on it (round behind him if they are on his other side), and the constructs that follow them die there. Kill the **Drakonids** and **Bone Constructs** before him. Class calls: priests stop healing while **Corrupted Healing** is on them (their heals would put a shadow DoT on the tanks; shields still go out). Priests still heal a tank below 35%. After the shaman call, the corrupted **Healing Stream** totem dies before anything else, then Stoneskin and Windfury; everyone but the tanks walks 13 yards away from the **Fire Nova** totem before it goes off. The warlock call's **Corrupted Infernals** die with the drakonids. |
+| Onyxia Scale Cloak | Playerbots gives its bots the cloak's protection in Blackwing Lair, but only re-adds it every few seconds after a rez. A bot revived here gets it back the moment it stands up, so it can't be caught by a **Shadow Flame** in between. |
+| Ebonroc | His other tank taunts him off a tank with **Shadow of Ebonroc** (he heals on every hit on it), and that tank leaves him alone until it wears off. |
+
+On older cores, a Suppression Device a player disarms with Disarm Trap disappears but keeps
+slowing the raid. The core fixes this from Playerbot core `2a2211c` onward ([azerothcore-wotlk#27774](https://github.com/azerothcore/azerothcore-wotlk/pull/27774)):
+the disarmed device retracts and re-arms after 30-120 seconds.
+
+### Zul'Gurub
+
+Playerbots has no Zul'Gurub strategy, so everything here is new.
+
+| Fight | What the bots do |
+|---|---|
+| High Priest Venoxis | Kill his four **Razzashi Cobras** first. While he's a troll (above 50%), **Holy Wrath** hits his target and chains to the nearest player within 10 yards, over and over, about 30% harder each jump: nine jumps in, it hits for more than 40,000. So the chain gets nowhere to go. Everyone but the tanks stays about 16 yards away from his target, from whoever is top of his threat (Holy Wrath starts there, even if he's still hitting the tank), and from any tank or pet standing within a jump of those. Melee don't walk in at all; ranged and healers work from range. At 50% he turns into a snake, Holy Wrath stops and melee go in. |
+| High Priest Thekal | He comes with **Zealot Lor'Khan** and **Zealot Zath**, and until he turns into a tiger none of the three stays dead: one that drops gets up at full health 10 seconds later unless the other two are down by then, and a zealot that gets up heals Thekal to full as well. So the bots bring them down together. The marking tank keeps skull on whichever of the three has the most health left and moves it as they level out, damage dealers follow it, and the three drop within a few seconds of each other. While all three are up nobody but the tanks uses a spell that hits more than one enemy (Blizzard, Rain of Fire, Multi-Shot, Cleave, Blade Flurry): area damage ignores skull and would kill Lor'Khan, who has the least health, first every time. Once one is down, everything goes. The two **Zulian Tigers** that stand with him die first, and Lor'Khan's **Great Heal** (a 4 second cast worth 40,000 health) is interrupted by any bot that can reach him, its target or not (a tank only when he is on that tank). If you play in the raid, follow skull and hold your own area spells until the first one drops. Needs `RaidClear.KillOrder`. |
+| Hakkar | He keeps taking his tank away: **Cause Insanity** mind-controls whoever is top of his threat for 10 seconds, and for every High Priest still alive he has that priest's Aspect. The **Aspects of Arlokk and Mar'li** stun his tank and wipe its threat (Arlokk's every 10-15 seconds). Arlokk only appears when someone rings the Gong of Bethekk, so a bot raid usually reaches Hakkar with her Aspect on him. Each time he turns to whoever is next on threat, and once he has **Frenzy** he kills a mage in two swings. So the tanks share his threat and the damage dealers stay under it (see *Sharing a boss's threat* above): the next in line is always a tank. Hakkar can't be taunted, so if he does end up on someone who isn't a tank (a player in the raid has nothing holding its damage back), a paladin casts **Hand of Protection** on them and he moves on to a tank; they can't attack for those 10 seconds. That only happens when a tank is next on his threat (the bots keep it that way), and a player in bear form, Defensive Stance or Frost Presence, or with Righteous Fury, is taken for a tank and left alone. A player who gets close to the tanks' threat is given **Hand of Salvation** before that happens. It needs two tanks or more; three is safer with a priest alive. Killing all five priests first is still the easy way: each one alive also gives him 20% more damage and 10% more health. |
+| High Priestess Jeklik | From 50% her Bat Riders drop **Liquid Fire** on a random raid member every 8 seconds. Each patch burns for 20 seconds and hits everyone within 5 yards for about 900 whenever someone stands in it. Bots within about 6 yards of a patch walk out. When she or her tank stands in one, the tank takes her out of it, and melee wait until she is out. |
+| Trash | The packs' healers die first: a **Hakkari Blood Priest**, then a **Hakkari Priest**, then the **Gurubashi Blood Drinkers** that heal themselves off the whole raid. While a Hakkari Priest has **Anti-Magic Shield** (8 seconds, immune to every spell), skull comes off it and casters don't target it. The kill order needs `RaidClear.KillOrder`. A **Gurubashi Bat Rider** below 30% casts **Unstable Concoction**: 3 seconds, then it blows itself up for about 5,000 fire damage to everyone within 10 yards. It dies either way, so every bot in reach, tanks too, walks out and stays out until it has gone off: to the nearest spot, in any direction, that is clear of every Bat Rider about to blow, that it can actually walk to, and that doesn't take it into the next pack. That comes before anything else a bot was doing. Nobody goes on hitting a mob that evades everything, or a raid member an enemy has taken over (Will of Hakkar, Brain Wash, Cause Insanity): a bot or pet on one lets go, and area spells aren't cast where a mind-controlled member stands. A bot an enemy controls does nothing of its own (playerbots kept casting its area spells on the raid). A mind-controlled member is also stopped: a mage **Polymorphs** them or a paladin uses **Hammer of Justice**, one bot at a time. If the mind control ends first, the bot takes its sheep or stun off again, so nobody comes back as a sheep. That goes for you too if you play in the raid. |
+
+### Ahn'Qiraj
+
+Playerbots only knows Ossirian's crystals in the Ruins, and has no Temple strategy at all.
+The kill orders below need `RaidClear.KillOrder`.
+
+| Fight | What the bots do |
+|---|---|
+| Anubisath Explode (both raids) | An **Anubisath Guardian** (Ruins) or **Anubisath Defender** (Temple) can light a 6 second fuse at 10% health, then blows up for about 4,700 to everyone within 20 yards. Every bot in reach, tanks too, walks out and stays out until it has gone off, the same way as from a Zul'Gurub Bat Rider. A bot in the middle of a cast drops it the moment the fuse is lit. The bugs Vek'lor sets to explode at the Twin Emperors (**Explode Bug**: 3 seconds, then about 2,800 to everyone within 15 yards) are kept away from the same way. |
+| Anubisath Defender | Each Defender rolls its abilities when it is pulled, and nothing shows which until it uses them. One has **Thunderclap** (everyone within 25 yards, about 1,150; it hit 37 of 40 in one bot raid), the other **Shadow Storm**, which only hits those 25 yards away or more. After its first one, ranged bots and healers stand just outside a Thunderclap Defender's reach, still in range of their spells, or come within 22 yards of a Shadow Storm one. A bot with its **Plague** walks clear of everyone else (it hits everyone within 5 yards of them every 3 seconds) and stays clear while it lasts; a plagued ranged bot keeps to both rules at once. A Defender pulled again (after a wipe) rolls again, and the bots wait to see which. Not done: **Meteor**. |
+| Anubisath Sentinel | Each Sentinel in a pack has one of nine abilities, and when one dies the others get its ability and half their health back. Skull goes on them in a raid guide's order, the abilities that do least harm when passed on first: **Fire and Arcane Reflect**, **Shadow and Frost Reflect**, **Mending**, **Knock Away**, **Thorns**, **Mortal Strike**, **Mana Burn**, **Thunderclap**, **Shadow Storm**, each by its own ability (the one it passes on; the ones it got from a dead one all the others got too). Their abilities show from the pull, so ranged bots and healers keep to the Defenders' **Thunderclap** and **Shadow Storm** rules from the start. Not done: **Mana Burn** (40 yards round it). |
+| Ossirian the Unscarred | Without a crystal's weakness on him he has **Strength of Ossirian**: four times the damage, so his **War Stomp** (20 yards) hits for 6,000-8,000 and his swings kill a cloth wearer in two. Using a crystal while he is within 30 yards of it gives him a weakness for a while, and each use spawns the next crystal elsewhere in the room. Playerbots sent the whole raid running to the crystal. Now the tank he is on takes him to the next crystal in time (when his weakness has less left than the walk, plus a margin) and stops a little short of it. One bot, the nearest damage dealer (a healer only if no damage dealer can), goes there ahead of him and uses it once he is in reach and has Strength or less than 15 seconds of weakness left. Everyone else keeps fighting. A crystal the tank can't get any closer to (a pack in the way, no path) is skipped for a while, and so is a bot that can't get to its crystal. |
+| The Prophet Skeram | Every 20-30 seconds **True Fulfillment** mind-controls the raid member second closest to him for 20 seconds, with four times its damage. In one bot raid the bots he took killed four others with their own area spells: playerbots kept running them against their new enemies, the raid. Now a bot he takes does nothing of its own; the server's mind-control AI, which swings and only now and then casts a damage spell, is all that is left of it, as for a player. A mage **Polymorphs** it or a paladin uses **Hammer of Justice**, one bot at a time, nobody hits it (a bot or pet on it lets go) and nobody casts an area spell near it. Any bot with an interrupt in reach stops his **Arcane Explosion** (30 yards around him) and True Fulfillment, his target or not, True Fulfillment first and one bot per cast; a bot in the middle of a cast when he starts drops it if nobody else can. The last interrupt ready near him is kept for True Fulfillment (in one bot raid all five went through, every interrupt spent on an Arcane Explosion a moment before), and playerbots' own Kick at its target waits the same way. At 75%, 50% and 25% he splits into himself and two **images** that cast everything he casts but have only part of his health: skull goes on the images first, then on him. He **Blinks** between three platforms and wipes his threat, and **Earth Shocks** whoever he is on that isn't hitting him back. As in a raid guide, every platform has a tank: the tank he is on holds him on his own platform (or `RaidClear.TempleOfAhnQiraj.Skeram.TankSpot`), so he walks back to it after a blink; the first two off-tanks wait on the other two platforms, pick up the images that land there, and when he lands on theirs and isn't on a tank, taunt him and bring him back to the middle. Ranged bots and healers stand at their spots when the config has them. |
+| Viscidus | 200 frost hits freeze him, and while he's frozen enough hits shatter him into globs. Playerbots' casters only cast their spec's spells, so an arcane mage never added a frost hit. Until he's frozen, every bot damage dealer with a frost spell casts it at him: mages **Frostbolt** (rank 1, which casts in 1.5 seconds), shamans **Frost Shock**, death knights **Howling Blast** or **Icy Touch**. Healers keep healing. Bots walk out of the **Toxic Slime** clouds (and away from the slimes that drop them) to the nearest clear spot, instead of stepping straight back into the next cloud, and nobody walks toward something standing in one, except toward Viscidus while he's frozen. The tank he is on walks him out of a cloud, never toward the entrance, where he resets. When he shatters into **Globs**, each one that reaches the middle of the room gives him 5% of his health back, and they speed up as they go. With skull on one glob at a time, 12 of 16 got through. Now every bot damage dealer takes a glob of its own: melee the nearest, ranged bots the one closest to the middle that they can reach, each avoiding the globs others are already on, so the raid spreads over all of them and attacks nothing else until they are gone. A bot with an instant area spell that would hit three globs or more (**Arcane Explosion**, **Chain Lightning**, **Multi-Shot**, **Whirlwind**, **Cleave**, **Thunder Clap**, **Blood Boil**, **Holy Nova**, **Consecration**, **Divine Storm**, **Swipe**) casts that first. Skull still marks them (needs `RaidClear.KillOrder`). |
+| Nature damage (Viscidus, Huhuran, Bug Trio) | One shaman keeps **Nature Resistance Totem** down and one hunter keeps **Aspect of the Wild** up, the first of each in group order near the boss. Both are raid auras (30 yards) that don't add up, so one of each is enough. That shaman puts nothing else in its air slot and that hunter uses no other aspect, except **Aspect of the Viper** when it runs out of mana. |
+| Princess Huhuran | **Wyvern Sting** puts the 10 raid members nearest her to sleep, and anything that takes it off (any poison cure) hits them for 3,000: in one bot raid all 28 stings were cured within 2 seconds and five of the sleepers died of it. Bots no longer cure poison on anyone with the sting, cast no **Abolish Poison** and no **Cleansing Totem** during the fight, and a shaman with a Cleansing Totem down destroys it. From 30% (or after 5 minutes) her **Berserk** sends **Poison Bolt** (about 1,500 nature) every 2 seconds into the 15 raid members nearest her: from 32% on, ranged bots and healers that aren't in plate stand 32 yards from her, still in range of their spells and heals, and don't walk closer. Melee damage dealers not in plate join them only while 15 tanks and plate stand round her; with fewer they would be hit anyway, so they stay and hit her. A shaman whose water totem is Cleansing places its totems one by one instead of with **Call of the Elements**. Not done: spreading out against **Noxious Poison**. |
+| Twin Emperors | Within 60 yards of each other the twins heal each other every few seconds, and every 30-40 seconds Vek'lor swaps their places, wipes both threat lists, and each attacks whoever is nearest. **Vek'lor** takes no physical damage and **Arcane Bursts** everyone within 10 yards when a player comes within 5; **Vek'nilash** takes only physical and holy damage and **Uppercuts** someone in his reach. In one bot raid they stood together the whole fight, four tanks and the melee stood on Vek'lor and 21 died to Arcane Burst. Now two tank bots hold the twins (paladins first, as holy is all a tank can hurt Vek'lor with): Vek'nilash's tank walks him away from Vek'lor whenever they are close enough to heal each other, and Vek'lor's tank holds him from 6-10 yards (Judgement's reach, outside the Burst) and adds **Avenger's Shield** and **Exorcism**. Melee bots, the other tanks and hunters hit only Vek'nilash; casters and healers only Vek'lor, and keep their threat on him under whoever he is on. Right after a teleport the two tanks stand still, so each twin lands on one: the nearest. Nobody else comes within 12 yards of Vek'lor, ranged bots and healers stay 8 yards from Vek'nilash, and everyone walks out of his **Blizzard**. From a second before a teleport can come, the melee step back from Vek'nilash and pets come back to their owners (they get their stance back once the fight is over), so each twin lands on the other's tank. With `TwinEmperors.TankSpotA` and `TankSpotB` set (by the two torches, more than 60 yards apart, as a raid guide places them), Vek'nilash's tank takes him to the one farther from Vek'lor and holds him there; Vek'lor lands where Vek'nilash stood, so after the first teleport both twins sit on the two spots. Not solved: the pull itself (both twins go for whoever pulled; the first teleport sorts that out), and a twin landing on a pet or totem nearer than its tank. With `RaidClear.KillOrder` enabled, mutated scarabs and scorpions get skull kill priority for damage dealers; the two assigned twin tanks stay on their emperors. Neutral bugs and bugs set to explode are excluded from this kill order. |
+| Kurinnaxx | Every 5-15 seconds he puts a **Sand Trap** under someone. Five seconds later it goes off: about 2,000 nature damage to everyone within 8 yards, 75% less chance to hit and a 20 second silence. Every bot in reach, tanks too, walks out while the fuse burns, and nobody walks toward something standing on a trap until it has gone off. |
+| Moam | Every few seconds he drains mana from up to six raid members anywhere in the room and gains twice as much. When his mana is full he spends it all on **Arcane Eruption**: 3,000-4,000 arcane damage to everyone within 45 yards. Hunters keep **Viper Sting** on him, priests that aren't healing **Mana Burn** him and warlocks **Drain Mana**, so he doesn't fill up. In his stone phase he gains mana faster until his three **Mana Fiends** are dead: skull goes on them first. |
+| Ayamiss the Hunter | She paralyzes someone and takes them to the altar, and a **Hive'Zara Larva** crawls there and eats them. The larva isn't in the fight, so playerbots never attacked it. Every bot damage dealer within 60 yards goes for the larva nearest the altar and stays on it until it is dead. |
+| Battleguard Sartura | She and her three **Royal Guards** **Whirlwind** (10 yards) and turn to someone random every few seconds; Sartura runs 15 yards a second, so nobody outruns her. Every bot she or a guard isn't on, tanks too, walks out of a whirlwind and nobody walks toward someone inside one. She can't be stunned while she whirlwinds, but outside it a stun stops her next whirlwind, and the guards can be stunned in theirs. So bots with **Hammer of Justice**, **Concussion Blow**, **Kidney Shot**, **Bash** or **Maim** in reach stun a whirlwinding guard first (mostly the bot it is chasing: everyone else is out of reach), then Sartura, then any guard, one stun at a time, and none that diminishing returns would make immune or shorten to a quarter. The guards die first. |
+| Fankriss the Unyielding | His **Spawn of Fankriss** go **Berserk** 30 seconds after they appear: five times the damage, and no taunt holds them. Each gets an off-tank of its own and skull before anything else, then the **Vekniss Hatchlings**. Every 7-14 seconds his **Mortal Wound** puts a stack on his tank, 10% less healing each, for 15 seconds, so on one tank the stacks only add up. Two tanks take him in turns, the main tank and the first bot off-tank not holding a worm, which builds threat on him meanwhile but stays under 90% of the other's: when the tank he is on has 4 stacks, the other taunts him as soon as its own have worn off. No other taunt takes him off one of those two. If he ends up on another tank (his main tank died), or the off-tank he is on has to go for a worm because nobody else is free, whichever of the two has fewer stacks taunts him at once. Bring three tanks or more: with two, a worm costs the swap. |
+| Bug Trio | A bug that drops while another lives is eaten, and the eaters get their health back. **Princess Yauj** leaves ten **Yauj Broods**, **Lord Kri** a **Poison Cloud** that keeps dropping the same **Toxin** clouds as Viscidus' slimes and **Vem**'s death enrages the others. Skull goes on the broods, then Kri (his **Toxic Volley** keeps the healers curing), then Yauj, then Vem last (a raid guide's easiest order), and leaves a bug that is being eaten (it can't be hurt) or is on its way to eat (it gets its health back when it arrives). Any bot that can reach Yauj interrupts her **Great Heal**, shamans keep **Tremor Totem** down for her fear, and bots walk out of Kri's cloud and toward nothing in it. **Vekniss Guardians** are taken one at a time, and an off-tank holds its guardian 10 yards from the other tanks' mobs (**Impale**). With spots in the config, the tank each bug is on holds it at that bug's spot, so the three are tanked apart and **Vem** sits in an alcove where only his tank is in his sight (his **Charge** goes to someone out of his reach that he can see); ranged bots and healers stand at theirs. |
+
+## Setup
+
+Nothing to install: it is built with playerbots. Its options are the `RaidClear.*` section at the
+end of `conf/playerbots.conf.dist` (they kept their names, so `AC_RAID_CLEAR_*` environment
+overrides still work). It needs `AiPlayerbot.ApplyInstanceStrategies = 1` (the default), so the
+bots also keep playerbots' own raid strategies.
+
+## Config
+
+| Option | Default | |
+|---|---|---|
+| `RaidClear.Enable` | 1 | Master switch (startup only). |
+| `RaidClear.KillOrder` | 1 | Skull kill order. |
+| `RaidClear.Tanks.AssignMainTank` | 1 | Give the group's Main Tank flag to a tank if nobody has it. |
+| `RaidClear.Tanks.Split` | 1 | Off-tanks leave the main tank's target and pick up the rest. |
+| `RaidClear.Tanks.Separation` | 12 | Minimum yards between the two tanks' mobs on trash; big-AoE mobs get more (0 = off). |
+| `RaidClear.Tanks.SeparateOnBosses` | 0 | Also separate during boss fights. |
+| `RaidClear.DeathLog` | 1 | Log every raid death (cause, last 6s of damage, debuffs, boss) and a per-pull tally. |
+| `RaidClear.AggroLeash` | 1 | Bots in combat don't back into packs that aren't in the fight. |
+| `RaidClear.AggroLeash.Buffer` | 6 | Yards kept beyond a mob's aggro radius. |
+| `RaidClear.AggroLeash.Splash` | 1 | No area or chain spell where it would reach a pack that isn't in the fight. |
+| `RaidClear.AggroLeash.Knockback` | 1 | Bots don't stand where a knockback would throw them into a pack that isn't in the fight. |
+| `RaidClear.AggroLeash.PatrolAhead` | 15 | Yards of a walking mob's way ahead that count as taken (0 = only where it is). |
+| `RaidClear.AggroLeash.BossBuffer` | 8 | Extra yards kept from a boss that isn't in the fight (not on the way to the bot's own target). |
+| `RaidClear.PullDiscipline` | 1 | Only a tank starts a fight with a pack; no boss pull on top of a fight. |
+| `RaidClear.HealersStayBack` | 1 | Healer paladins don't walk into melee to judge. |
+| `RaidClear.Bots.TeachTranquilizingShot` | 1 | Hunter bots in a raid learn Tranquilizing Shot. |
+| `RaidClear.MoltenCore.Enable` | 1 | Molten Core strategy. |
+| `RaidClear.BlackwingLair.Enable` | 1 | Blackwing Lair strategy. |
+| `RaidClear.BlackwingLair.Firemaw.<Role>Spot` | "" | Fixed spots for Firemaw: `TankSpot`, `OffTankSpot`, `TankHideSpot`, `MeleeHideSpot`, `RangedSpot`, `RangedHideSpot`, `HealerSpot`, `HealerHideSpot`, each `"x y z"` (or the line `.gps` prints). Empty: bots search for cover round themselves. |
+| `RaidClear.BlackwingLair.Chromaggus.<Role>Spot` | "" | The same for Chromaggus (no `OffTankSpot` or `TankHideSpot`). |
+| `RaidClear.ZulGurub.Enable` | 1 | Zul'Gurub strategy. |
+| `RaidClear.OnyxiasLair.Enable` | 1 | Onyxia's Lair strategy. |
+| `RaidClear.RuinsOfAhnQiraj.Enable` | 1 | Ruins of Ahn'Qiraj strategy. |
+| `RaidClear.TempleOfAhnQiraj.Enable` | 1 | Temple of Ahn'Qiraj strategy. |
+| `RaidClear.TempleOfAhnQiraj.Skeram.<Role>Spot` | "" | Skeram: `TankSpot` (empty: his own platform), `RangedSpot`, `HealerSpot`. His other two platforms need no config. |
+| `RaidClear.TempleOfAhnQiraj.BugTrio.<Role>Spot` | "" | Bug Trio: `VemTankSpot` (an alcove), `YaujTankSpot`, `KriTankSpot`, `RangedSpot`, `HealerSpot`. |
+| `RaidClear.TempleOfAhnQiraj.TwinEmperors.TankSpotA` / `TankSpotB` | "" | Twin Emperors: where Vek'nilash is held, by the two torches, more than 60 yards apart. Both or neither. |
+
+## Patch Notes: Raid Clear
+
+Category: Raids
+
+- Bot raids now know more of Molten Core's and Blackwing Lair's boss mechanics.
+- Bot raids now have a main tank and off-tanks. Off-tanks pick up the mobs the main tank isn't
+  holding and tank them a few steps away, so one cleave doesn't hit both tanks.
+- Bots kill the dangerous adds first: **Lava Spawn**, then the Flamewaker healers and priests,
+  then each boss's guards, before turning to the boss.
+- Shamans drop **Tremor Totem** for Magmadar's **Panic**.
+- Bots stop attacking Majordomo's adds while **Magic Reflection** or **Damage Reflection** is up.
+- Ranged bots and healers keep out of reach of **Wrath of Ragnaros**.
+- Blackwing Lair: bots kill the **Blackwing Warlocks** before the felguards their portals keep
+  summoning, then the Taskmasters and Spellbinders.
+- Blackwing Lair: bots turn off **Suppression Devices** within the aura's full reach, not just the
+  ones right next to them.
+- Broodlord Lashlayer, Firemaw, Ebonroc and Flamegor: the off-tank builds threat on the boss, so
+  **Knock Away** and **Wing Buffet** no longer send the boss onto the healers.
+- Broodlord Lashlayer: ranged bots and healers stay out of **Blast Wave**.
+- Ebonroc: bot tanks swap on **Shadow of Ebonroc**.
+- Blackwing Lair: ranged bots and healers spread out against the Technicians' **Bombs**.
+- Razorgore: bots kill the Dragonspawn, then the Mages, then the Legionnaires.
+- Vaelastrasz: the off-tank keeps up threat so it can take over when **Burning Adrenaline** kills the
+  main tank.
+- Blackwing Lair: bots kill the Death Talon casters first and tank the Wyrmguards well apart.
+- Blackwing Lair: the three **Death Talon Wyrmguards** before Ebonroc no longer all land on the
+  main tank. Three tanks run in and each taunts one of its own, then they spread 30 yards apart.
+- Chromaggus: mages, druids and shamans remove **Brood Affliction: Black** before anything else,
+  so his fire breaths stop one-shotting the cursed.
+- Raids: every death is written to the server log with what killed it, so wipes can be traced to
+  the mechanic behind them.
+- Nefarian: priests stop healing while **Corrupted Healing** is on them, so the tanks no longer
+  die to their own healers (a tank below 35% still gets healed). Bots kill the **corrupted
+  totems** from the shaman call, walk away from the **Fire Nova** totem before it goes off, and
+  kill the warlock call's **Infernals** with the drakonids.
+- Blackwing Lair: bots revived mid-fight get their Onyxia Scale Cloak protection back at once, so
+  a **Shadow Flame** can't catch them in the gap.
+- Firemaw: bots hide behind cover to drop **Flame Buffet** stacks, a few at a time, with healers
+  taking turns.
+- Chromaggus: bots duck behind cover when he breathes, except for **Time Lapse**.
+- Nefarian: ranged bots and healers stay out of **Bellowing Roar**, and bots kill his adds first.
+- Blackwing Lair, Death Talon packs: an off-tank takes the **Death Talon Captain** away from the
+  raid, and everyone else stays out of the **Mark of Detonation** explosion. Bots kill the Wyrmkin
+  first and the Captain last, and hunters **Tranquilizing Shot** enraged Seethers.
+- Zul'Gurub, High Priest Venoxis: bots no longer let **Holy Wrath** chain through the whole raid.
+  Everyone but the tanks keeps about 16 yards from his target while he's a troll, melee wait for
+  his snake form, and his cobras die first.
+- Zul'Gurub, Hakkar: the tanks now share his threat and damage dealers stay below them, so when he
+  mind-controls his tank or wipes its threat he goes to another tank and not to a mage.
+- Zul'Gurub, High Priest Thekal: bots now bring Thekal and his two zealots down together, so they
+  stop getting back up. Skull moves to whichever of the three has the most health left, damage
+  dealers hold their area spells until the first one drops, and Lor'Khan's **Great Heal** gets
+  interrupted.
+- Zul'Gurub trash: bots walk out of a Gurubashi Bat Rider's **Unstable Concoction**, kill the
+  packs' healers first, stop casting at a Hakkari Priest while its **Anti-Magic Shield** is up,
+  and no longer attack evading mobs or mind-controlled raid members.
+- Zul'Gurub trash: bots now actually get out of a Bat Rider's **Unstable Concoction**. They used
+  to step straight back, which in the bat cave often meant into a wall or toward the next pack;
+  now they look all the way round for a clear spot, and getting out comes before everything else.
+- Zul'Gurub: a raid member who gets mind-controlled is **Polymorphed** or stunned with **Hammer of
+  Justice** until it wears off.
+- Zul'Gurub, High Priestess Jeklik: bots walk out of the **Liquid Fire** her Bat Riders drop.
+- Zul'Gurub, Hakkar: he can't be taunted, so when he turns to someone who isn't a tank a paladin
+  casts **Hand of Protection** on them and he moves on to a tank. A player who gets close to the
+  tanks' threat gets **Hand of Salvation**.
+- Onyxia: bots get out of **Deep Breath** again. They used to run to fixed spots that are now in
+  the fire for two of her eight breaths; now each bot walks out of the strip she is about to burn
+  and stays out until it has passed.
+- Onyxia: only the tank she is on and the main tank stand in front of her. The other tanks stand
+  at her side and no longer take every **Flame Breath**, **Cleave** and **Wing Buffet**.
+- Onyxia: bots leave a whelp that is evading every attack and no longer pick one, so the raid
+  doesn't spend half the air phase on a whelp it can't hurt. Hunters keep **Hunter's Mark** for
+  Onyxia.
+- Raids: bots no longer back into the next pack or the next boss when they move away from
+  something. A bot stops before it reaches an idle mob's aggro range, and steps away from a
+  patrol that walks up to it.
+- Garr: bots keep the fight within 30 yards of him and leave a **Firesworn** with **Separation
+  Anxiety** alone, so its **Eruption** no longer kills everyone around it.
+- Baron Geddon: every bot now runs out of **Inferno**, tanks and melee included. Before, only
+  bots that had already hit him did, and the rest stood in it until they died.
+- Magmadar: shamans keep **Tremor Totem** down and go back to healing and fighting. They used to
+  swap it with their Stoneskin Totem every second and a half for the whole fight.
+- Majordomo Executus: bots no longer stand on the **Hot Coal** in the middle of his room.
+- Baron Geddon: a bot with **Living Bomb** now gets clear of the raid even when it starts in the
+  middle of it. Healers used to blow up half the group.
+- Ragnaros: fixed an issue where ranged bots and healers were sent much further from him than the
+  ledge reaches, never got there, and stayed in **Wrath of Ragnaros**.
+- Onyxia: healers and casters no longer stand next to her tank in reach of **Cleave**.
+- Raids: bots don't drop a Blizzard, Volley or Chain Lightning where it would hit a pack that
+  isn't in the fight yet.
+- Onyxia: ranged bots and healers spread out while she is in the air, so one **Fireball** no
+  longer hits thirty of them.
+- Onyxia (level 60): damage dealers wait for a tank to have her before they open up, at the pull
+  and when she lands, and stay under the tanks' threat. She can't be taunted, so before this she
+  ran through the casters for the first 20 seconds of every landing.
+- Raids: bots wait for a tank to start the fight. Damage dealers no longer open on a marked
+  pack before anyone has pulled it, and nobody pulls a boss while the raid is still fighting.
+- Raids: healer paladins no longer walk into melee range to cast **Judgement of Light**.
+- Raids: hunter bots now know **Tranquilizing Shot** and use it on Flamegor's and Chromaggus's
+  **Frenzy**.
+- Firemaw, Ebonroc, Flamegor, Nefarian: bots stay out of the dragon's front. **Shadow Flame**
+  was killing a dozen of them at a time.
+- Nefarian: a paladin now tanks him, because his druid call turned the bear tank into a cat in
+  front of him. Casters and healers stand outside **Bellowing Roar**, and shamans keep
+  **Tremor Totem** down.
+- Nefarian: when he calls the rogues in front of him, his tank now turns him away from them.
+- Nefarian: when the **Bone Constructs** rise, casters and healers gather on a tank so the
+  constructs can be killed together.
+- Chromaggus: bots go behind cover before he breathes instead of when the cast starts, which
+  was too late for nearly all of them.
+- Death Talon Wyrmguards: bots that aren't tanking or in melee with one stay out of its
+  **War Stomp**.
+- Blackwing Lair, Vaelastrasz's room: bots now stop and kill the **Blackwing Technicians** that
+  run for the door when you walk in. They used to let all but one get away, loot included.
+- Raids: tanks no longer stand where a knockback throws them into the next pack. Against
+  **Wing Buffet**, **Knock Away** and **Blast Wave** they pick the side with clear ground or a
+  wall behind them.
+- Raids: off-tanks no longer drag their mob into a pack or a boss that isn't in the fight, as
+  happened with a Wyrmguard and Ebonroc.
+- Raids: bots in a fight keep out of the way of a patrol that is walking toward them, and give
+  bosses that aren't in the fight more room.
+- Firemaw, Ebonroc, Flamegor: only two tanks hold a drake, both in front of it, and only they
+  taunt it. After a **Wing Buffet** every tank used to taunt at once, the drake turned to one
+  standing at its side, and the next **Shadow Flame** went through the raid.
+- Death Talon Wyrmguards: bots get out of the way as soon as a pack is pulled, not when it
+  arrives. All three stomp 8 seconds after the pull, and that first stomp used to kill a dozen.
+- Chromaggus: bots no longer pull him off the tanks, and paladin tanks stop casting
+  **Righteous Defense** on him (he can't be taunted). No tank taunts a boss that can't be taunted.
+- Nefarian: the **Bone Construct** pile is now outside **Bellowing Roar**, where a fear can't
+  scatter it into his breath.
+- Ahn'Qiraj: bots walk out of an **Anubisath Guardian** or **Defender** about to **Explode**.
+- Ossirian: the tank takes him from crystal to crystal and one bot uses each crystal, so he no
+  longer gets his **Strength** back while the whole raid runs for the same crystal.
+- Viscidus: mages, shamans and death knights freeze him with their frost spells, bots get out of
+  the **Toxic Slime** clouds, and they kill the **Globs** before the globs reach him.
+- Raids: the death log shows the boss's own buffs and the debuffs its fight put on it, such as
+  Ossirian's **Strength** or a crystal's weakness.
+- Ahn'Qiraj: skull now follows the kill order in both raids. It was never moved before, so the
+  bots didn't go for Viscidus' **Globs** first.
+- Kurinnaxx: bots walk out of a **Sand Trap** before it goes off.
+- Moam: hunters, priests and warlocks drain his mana so he doesn't reach **Arcane Eruption**, and
+  bots kill the **Mana Fiends** first.
+- Ayamiss: bots kill the **Hive'Zara Larva** before it reaches the paralyzed player.
+- Battleguard Sartura: bots stay out of the **Whirlwinds** and keep her and her guards stunned
+  between them. The guards die first.
+- Fankriss: each **Spawn of Fankriss** gets an off-tank and dies before it goes **Berserk**.
+- Bug Trio: bots kill the bugs one at a time (Yauj, Kri, then Vem), interrupt Yauj's
+  **Great Heal**, drop **Tremor Totem** for her fear and walk out of Kri's **Poison Cloud**.
+- The Prophet Skeram: a bot he mind-controls no longer turns its area spells on the raid. Bots
+  sheep or stun it and leave it alone, interrupt his **Arcane Explosion** and **True
+  Fulfillment**, and kill his images before him.
+- Fankriss: bot tanks swap at 4 stacks of **Mortal Wound**.
+- Twin Emperors: two tanks hold the twins apart, so they stop healing each other. Only Vek'lor's
+  tank goes near him (no more **Arcane Burst** on the whole melee), melee hit only Vek'nilash and
+  casters only Vek'lor, under his tank's threat. Bots walk out of **Blizzard** and away from
+  exploding bugs, and step back before each teleport so each twin lands on a tank.
+- Viscidus: every bot takes a **Glob** of its own instead of all hitting the skull one, and area
+  spells go on clusters of globs. One shaman keeps **Nature Resistance Totem** down and one hunter
+  **Aspect of the Wild** up at Viscidus, Huhuran and the Bug Trio.
+- Princess Huhuran: bots no longer cure **Wyvern Sting** (each cure hit the sleeper for 3,000),
+  and from **Berserk** the bots that aren't tanks or in plate stand back out of **Poison Bolt**.
+- Anubisath Defenders: ranged bots and healers stand outside **Thunderclap** (or inside **Shadow
+  Storm**'s reach), and a bot with **Plague** walks away from everyone.
+- The Prophet Skeram: one interrupt is kept back for **True Fulfillment**.
+- Zul'Gurub: a mind-controlled bot (Cause Insanity, Will of Hakkar, Brain Wash) no longer casts
+  its area spells on the raid.
+- Bots no longer cast spells into a reflect: against an Anubisath's **Fire and Arcane Reflect**
+  or **Shadow and Frost Reflect**, mages switch to the school that gets through instead of hitting
+  themselves.
+- Garr: bots no longer finish a **Firesworn** with **Separation Anxiety** by accident: no more
+  Multi-Shots or Cleaves landing on one from its neighbour, and an Arcane Missiles already
+  channelling into one stops.
+- Core Hounds: bots stop hitting a hound that is playing dead (a quarter of their hits went
+  there) and finish the rest of the pack before it gets up again.
+- Core Hounds: the tanks keep the whole pack in one place instead of splitting it up, and the
+  damage dealers bring the hounds down evenly so they all die together. Two or three packs at
+  once are fine.
+- Ragnaros: ranged bots and healers each take a spot on the west side of the room, away from
+  where **Lava Burst** erupts, and stay there.
+- Molten Core: ranged bots and healers step out of a Molten Giant's **Smash** and a Molten
+  Destroyer's **Massive Tremor**.
+- Firemaw: every healer now gets a turn to drop **Flame Buffet** stacks, the ones with the most
+  first. Seven of them used to never get one and end the fight on 15 to 22 stacks.
+- Firemaw: his tanks trade him and take turns dropping their stacks, instead of all five tanks
+  ending on 14 to 21.
+- Firemaw: bots no longer think they are hidden behind a small prop that his spells go straight
+  through, and no longer walk to cover inside a pillar.
+- Firemaw, Ebonroc, Flamegor: when a drake ends up on someone who isn't a tank, any tank takes it
+  after a second and a half. Firemaw once spent 40 seconds on the raid.
+- Chromaggus: everyone but his tank gets behind cover for every breath, **Time Lapse** included.
+  His breaths used to hit almost the whole raid.
+- Firemaw and Chromaggus: the tanks, ranged and healers can be given fixed spots in the config,
+  like a raid leader's map.
+- Broodlord: his **Knock Away** is now recognised from the first one.
+- Bug Trio: bots now kill Kri first, then Yauj, then Vem, the easier order. Each bug can be given
+  a tank spot in the config, so Vem is held in an alcove where his **Charge** only finds his tank.
+- The Prophet Skeram: a tank waits on each of his three platforms. When he blinks, the tank
+  there picks him up and brings him back to the middle, so he spends less time **Earth Shocking**
+  someone who isn't a tank.
+- Twin Emperors: the twins can be given a spot by each torch in the config, and are then held
+  there.
+- Anubisath Sentinels: bots kill them in the order that passes the dangerous abilities on last,
+  and ranged bots and healers keep out of **Thunderclap** and inside **Shadow Storm** from the pull.
+- Blackwing Lair: bots interrupt the trash casters, their own target or not, one bot per cast:
+  the Warlocks' **Shadow Bolt** and the Mages' **Fireball**. No bot spends a kick on a cast that
+  can't be interrupted or a caster that is immune (Wyrmkin, Hatchers, Spellbinders), in any raid.
+- Blackwing Lair: **Death Talon Wyrmkin** and **Blackwing Technicians** die first.
+- Blackwing Lair: every bot steps out of ground fire it is standing in, not only bots led by a
+  player.
+- Blackwing Lair: bots walk out of **Rain of Fire** and **Flamestrike**, and out of the front of a
+  **Death Talon Captain** or **Overseer** (**Cleave**).
+- Death Talon Wyrmguards: their tanks hold them together instead of 30 yards apart, so the raid has
+  one place to stand outside the stomps. Bots start moving out as soon as the pack is pulled, look
+  further for a way out, and aren't walked back in by follow or the camp hold. Melee only stand by
+  a Wyrmguard a tank holds, and only while they have 75% health or more.
+- Blackwing Lair, Technician packs: ranged bots and healers find a spot 7 yards from everyone
+  instead of pushing against each other, and aren't walked straight back into the clump.
+- Firemaw, Ebonroc, Flamegor, Nefarian: follow no longer walks bots back into the dragon's front,
+  and nobody charges onto it from in front.
+- Nefarian: each tank gets a **Tremor Totem** from a shaman in its own party, put down next to it.
+  The totems used to stand out with the healers, where they freed nobody. Warriors use
+  **Berserker Rage** against **Bellowing Roar**, and a player he turns to walks to his tank.
+- Chromaggus: caster and hunter bots read his **Elemental Shield** and use the school he is weak
+  to (mages Fire Blast and Fireball, Frostbolt or Arcane Missiles; warlocks Immolate or Shadow
+  Bolt; shamans their shocks and Lightning Bolt; druids Moonfire and Starfire or Wrath; hunters
+  Arcane Shot or Serpent Sting). His shield cuts every other spell school, Holy included, to a
+  quarter, so most of their spells used to do very little.
+
+> Most vanilla bosses only had a resistance aura in the bots' playbook. This is the first raid
+> of many.
+
+### Onyxia's Lair
+
+Playerbots' own strategy keeps bots off her head and tail, away from the whelp eggs and on the
+whelps while she flies. Raid clear takes over the Deep Breath and fills seven gaps. It works for Onyxia as the core spawns her and for
+[mod-individual-progression](https://github.com/ZhengPeiRu21/mod-individual-progression)'s level 60
+Onyxia.
+
+| Fight | What the bots do |
+|---|---|
+| Onyxia, in the air | **Deep Breath** burns a strip 36 yards wide from one side of the room to the other, along one of eight lines. Playerbots sends its bots to two fixed safe spots per breath. Since Playerbot core `2a2211c` moved the strips, those spots are in the fire for two of the eight breaths. Here the strip is read from the server's own spell data instead: a bot standing in it drops its spell and walks to the nearest spot outside (never into the whelp caves or the egg trench), a bot outside stays where it is and keeps fighting, and nobody walks into or across the strip until the fire has passed. |
+| Onyxia, on the ground | Playerbots keeps bots away from her head and tail, but leaves out every tank, so a raid's second, third and fourth tank stand in front of her and take each **Flame Breath**, **Cleave** and **Wing Buffet** with the main tank. Here only the tank she is on and the main tank stay in front. Every other tank that is fighting her walks to her nearer side (one holding a whelp stays with the whelp). If she turns to one of them while the main tank is at her, it walks over to the main tank, so she faces the way she did before and not the bots at her side. |
+| Whelps and trash | A mob that can't find a way to the player it is after evades every attack, but goes on hitting. Playerbots doesn't look at that: bots keep attacking it and tanks keep taunting it. Here playerbots' target picking skips an evading mob, a bot already on one switches to what playerbots picks next (else the nearest enemy it can hurt, else Onyxia), and off-tanks don't try to pick one up (in every raid, with `RaidClear.Tanks.Split`). Playerbots' whelp rule for the core's Onyxia, which takes the first whelp it finds and never lets go of it, is replaced by one that takes the nearest whelp that isn't evading. The level 60 Onyxia's whelps are a different creature, which that rule never covered: bots pick those as they pick any other enemy. |
+| Whelps | Hunters don't put **Hunter's Mark** on whelps, which die within seconds. |
+| Onyxia, in the air | Her **Fireball** hits everyone within 8 yards of whoever it is thrown at. Playerbots only has the Fireball's own target step away, and only during the 3-second cast, so a raid standing in one pile stays in one pile and takes it thirty at a time. Here, while she is in the air and no Deep Breath is on, a ranged bot or healer with two or more raid members within 9.5 yards walks to the nearest spot with nobody that close. Tanks and melee stay on the whelps. |
+| Onyxia, on the ground | **Cleave** hits whoever she is on and up to nine more within 10 yards of that one, anywhere in the half of the room she faces. Playerbots only clears a 45 degree cone at her head. A ranged bot or healer within 13 yards of her target and in that half walks to the nearest spot 14.5 yards from the target or round past her side, out of line with her head and tail; an off-tank there goes to her side. |
+| Anywhere in the lair | A wand isn't started on a target more than 30 yards away. Playerbots' "shoot" never checks the distance, and with Onyxia out of reach casters restarted it a few times a second. |
+| Level 60 Onyxia, on the ground | She can't be taunted and zeroes everyone's threat as she comes down to land, so whoever has the most when she touches down has her until a tank out-threatens it. A bot that isn't a tank holds its damage on her at 90% of the threat of the tank with the most (of the tanks within 30 yards of her), on the ground and on her way down to land (in the air from 40% health): at the pull and at a landing that means until a tank has hit her. Swings, pets and debuffs carry on. The core's own Onyxia can be taunted and is left to that. |
+
+## Troubleshooting
+
+- **Bots don't use any of the raid mechanics.** Check that `AiPlayerbot.ApplyInstanceStrategies`
+  is `1`, that `RaidClear.Enable` and the raid's own setting (`RaidClear.MoltenCore.Enable`,
+  `RaidClear.BlackwingLair.Enable`, `RaidClear.ZulGurub.Enable`, `RaidClear.OnyxiasLair.Enable`,
+  `RaidClear.RuinsOfAhnQiraj.Enable`, `RaidClear.TempleOfAhnQiraj.Enable`) are `1`, and restart the worldserver: `RaidClear.Enable` is
+  read at startup only.
+- **Off-tanks don't pull their mob away during a boss fight.** `RaidClear.Tanks.SeparateOnBosses`
+  is `0` by default; separation only happens on trash.
+
+## Credits
+
+Started as the module mod-raid-clear, built on
+[mod-dungeon-clear](https://github.com/jrad7/mod-dungeon-clear) by jrad7, whose way of adding
+strategies to playerbots it followed, and on
+[mod-playerbots](https://github.com/mod-playerbots/mod-playerbots).
+
+Author: [buildthehomelab](https://github.com/buildthehomelab)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
