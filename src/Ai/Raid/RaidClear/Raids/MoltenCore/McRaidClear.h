@@ -91,6 +91,40 @@
  *     running Blizzard or Volley it walks into is broken off, a tank holds one below 40% with
  *     taunts only (no swings, no area spells) until Separation Anxiety is gone, and the kill
  *     order skips it.
+ *   - Baron Geddon's Armageddon (20478): below 2% health he stops and blows up 8 s later, 7,600
+ *     to 8,400 fire to everyone within 20 yd of him (20479). Every bot but the tanks leaves the
+ *     way it leaves Inferno; ranged bots finish him from outside.
+ *   - Living Bomb: nobody but its carrier walks (or charges) toward something within
+ *     LIVING_BOMB_HOLD of a carrier and closer to it than the bot. The carrier walks away from
+ *     the raid (above), but nothing stopped melee following the boss after a tank that has it,
+ *     or a healer walking into heal range, straight back to it.
+ *   - Majordomo's Damage Reflection (21075, a damage shield: 100 fire to whoever hits the add
+ *     in melee, for 10 s): melee keep hitting through it and only stop below
+ *     DAMAGE_REFLECTION_STOP_BELOW_PCT health. Standing idle for the whole shield cost more than
+ *     the 100 a hit.
+ *   - Flame Imps (11669) cast Fire Nova (20602) every 4 to 7 s: fire to everyone within 10 yd.
+ *     Ranged bots and healers keep out of it like out of a Giant's Smash, from the imps a tank
+ *     holds (a loose imp runs after whoever it is on; walking away from those would keep the
+ *     whole back line on the move).
+ *   - Shazzrah's Magic Grounding (19714): a magic buff on himself, 50% less damage taken, for
+ *     30 s, recast every 7 to 9 s. Playerbots only Purges what is on a bot's own current target,
+ *     and priests not at all. One purger takes it off every time: the first shaman (Purge) in
+ *     the group, else the first priest (Dispel Magic), within reach of him; damage dealers before
+ *     healers.
+ *   - Lucifron's, Gehennas' and Shazzrah's Curses (19703, 19716 -75% healing taken, 19713 +100%
+ *     magic damage taken) land on most of the raid at once. Playerbots' decursers each lift the
+ *     master's first, then every healer's (their own group's first), and only then the tanks':
+ *     the tank, who matters most under Gehennas' Curse, waits behind every healer in the raid.
+ *     Here, while one of the three is fighting, each cursed tank gets one mage or druid of its
+ *     own (the first in group order within reach that can cast Remove Curse right now: mana,
+ *     not silenced, its school not locked out by Shazzrah's Counterspell; not already given one)
+ *     who lifts it before anything else. The purger above is chosen the same way.
+ *   - Shadow Protection: every priest has "rshadow", and playerbots casts the single-target
+ *     buff unless at least three raid members lack it. Raid members that died lose it and come
+ *     back one or two at a time, so once the raid's buffs are out of step a whole MC run went
+ *     by on single casts (213 in one log). In MC a priest casts Shadow Protection only as
+ *     Prayer of Shadow Protection ("rc mc buffs"). Only three fights here are shadow, and
+ *     playerbots' paladins put up Shadow Resistance Aura for them.
  *
  * Released under the MIT License.
  */
@@ -140,6 +174,10 @@ namespace RaidClear::MoltenCore
         NPC_LAVA_SURGER          = 12101,  // patrols; Surge
         NPC_SULFURON             = 12098,
         NPC_CORE_HOUND           = 11671,  // packs of five: Lucifron, Magmadar
+        NPC_FLAME_IMP            = 11669,  // Fire Nova: 10 yd AoE; Lucifron's trash
+        NPC_SHAZZRAH             = 12264,
+        NPC_LUCIFRON_BOSS        = 12118,
+        NPC_GEHENNAS             = 12259,
     };
 
     enum Spells : uint32
@@ -153,6 +191,17 @@ namespace RaidClear::MoltenCore
         SPELL_SURGE              = 19196,  // Lava Surger: a charge, then everyone within 10 yd of it, 5 yd
         SPELL_HAND_OF_RAGNAROS   = 19780,  // Sulfuron: everyone within 10 yd, 6 yd
         SPELL_PLAY_DEAD          = 19822,  // Core Hound at 0 health, 10 s, takes no damage
+        SPELL_ARMAGEDDON         = 20478,  // on Baron Geddon below 2%; goes off after 8 s, 20 yd around him
+        SPELL_MAGIC_GROUNDING    = 19714,  // on Shazzrah: magic, 50% less damage taken, 30 s
+        SPELL_LUCIFRON_CURSE     = 19703,
+        SPELL_GEHENNAS_CURSE     = 19716,  // 75% less healing taken
+        SPELL_SHAZZRAH_CURSE     = 19713,  // twice the magic damage taken
+        SPELL_REMOVE_CURSE_MAGE  = 475,
+        SPELL_REMOVE_CURSE_DRUID = 2782,
+        SPELL_PURGE_1            = 370,
+        SPELL_PURGE_2            = 8012,
+        SPELL_DISPEL_MAGIC_1     = 527,
+        SPELL_DISPEL_MAGIC_2     = 988,
     };
 
     // The Living Bomb's explosion reaches 18 yd, centre to centre. Its carrier walks to the
@@ -164,6 +213,8 @@ namespace RaidClear::MoltenCore
     constexpr float LIVING_BOMB_SPOT = 24.5f;
     constexpr float LIVING_BOMB_WORTH_IT = 3.0f;
     constexpr float LIVING_BOMB_SEARCH = 40.0f;
+    // Nobody else walks toward something closer than this to a carrier (the 18 yd and a step).
+    constexpr float LIVING_BOMB_HOLD = 20.0f;
 
     // Inferno reaches 20 yd, centre to centre. A bot closer than KEEP_AWAY to him walks to the
     // nearest spot at least SPOT from him (looked for up to SEARCH yards round the bot), or to
@@ -191,6 +242,8 @@ namespace RaidClear::MoltenCore
     // nearest spot SPOT past it (looked for up to SEARCH yards round the bot).
     constexpr float SMASH_RADIUS = 10.0f;
     constexpr float MASSIVE_TREMOR_RADIUS = 13.0f;
+    // A Flame Imp's Fire Nova (20602): the same radius index as Smash.
+    constexpr float FIRE_NOVA_RADIUS = 10.0f;
     constexpr float SPLASH_TRASH_KEEP_AWAY = 2.5f;
     constexpr float SPLASH_TRASH_SPOT = 5.0f;
     constexpr float SPLASH_TRASH_WORTH_IT = 2.0f;
@@ -222,8 +275,18 @@ namespace RaidClear::MoltenCore
     constexpr float RAGNAROS_SPOT_DRY = 2.5f;
     // Where his main tank stands: this far in front of him as he was summoned.
     constexpr float RAGNAROS_TANK_SPOT = 18.0f;
-    // A layout nobody has asked for in this long belongs to an earlier pull.
-    constexpr uint32 RAGNAROS_LAYOUT_FORGET_MS = 30000;
+    // A layout nobody has asked for in this long belongs to an earlier pull. Nobody asks while he
+    // is under the lava, which lasts up to 90 s (or until his Sons are dead): longer than that,
+    // so every bot gets its own spot back when he comes up again.
+    constexpr uint32 RAGNAROS_LAYOUT_FORGET_MS = 120000;
+
+    // Melee stop swinging into Damage Reflection only below this much health.
+    constexpr float DAMAGE_REFLECTION_STOP_BELOW_PCT = 50.0f;
+
+    // Purge and Dispel Magic reach 30 yd; a purger is looked for this close to Shazzrah (edge to
+    // edge), and a decurser this close to a tank.
+    constexpr float PURGE_REACH = 28.0f;
+    constexpr float DECURSE_REACH = 28.0f;
 
     // Garr checks his Firesworn once a second: more than 40 yd from him (edge to edge) and it
     // gets Separation Anxiety. A Firesworn this far out counts as having it already.
@@ -344,6 +407,14 @@ class RcMcInfernoHoldMultiplier : public Multiplier
 {
 public:
     RcMcInfernoHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc inferno hold") {}
+    float GetValue(Action* action) override;
+};
+
+// Nobody but its carrier walks (or charges) toward something within reach of a Living Bomb.
+class RcMcLivingBombHoldMultiplier : public Multiplier
+{
+public:
+    RcMcLivingBombHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc living bomb hold") {}
     float GetValue(Action* action) override;
 };
 
@@ -552,6 +623,64 @@ public:
 
 private:
     RaidClear::WayOutWalk _walk;
+};
+
+// --- Shazzrah ---------------------------------------------------------------
+
+// Shazzrah has Magic Grounding up and this bot is the one to take it off.
+class RcMcMagicGroundingTrigger : public Trigger
+{
+public:
+    RcMcMagicGroundingTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc magic grounding") {}
+    bool IsActive() override;
+};
+
+class RcMcPurgeGroundingAction : public Action
+{
+public:
+    RcMcPurgeGroundingAction(PlayerbotAI* botAI) : Action(botAI, "rc mc purge grounding") {}
+    bool Execute(Event event) override;
+};
+
+// --- Curses ---------------------------------------------------------------
+
+// A tank has Lucifron's, Gehennas' or Shazzrah's Curse and this bot is the decurser given it.
+class RcMcCursedTankTrigger : public Trigger
+{
+public:
+    RcMcCursedTankTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc cursed tank") {}
+    bool IsActive() override;
+};
+
+class RcMcDecurseTankAction : public Action
+{
+public:
+    RcMcDecurseTankAction(PlayerbotAI* botAI) : Action(botAI, "rc mc decurse tank") {}
+    bool Execute(Event event) override;
+};
+
+// --- Buffs between pulls ------------------------------------------------------
+
+// On both engines while in Molten Core (the registry's early strategy): the buffs a priest casts
+// out of combat.
+class RaidClearMoltenCoreBuffsStrategy : public Strategy
+{
+public:
+    RaidClearMoltenCoreBuffsStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
+    std::string const getName() override { return "rc mc buffs"; }
+    void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
+};
+
+// Shadow Protection only as Prayer of Shadow Protection.
+class RcMcShadowProtectionMultiplier : public Multiplier
+{
+public:
+    RcMcShadowProtectionMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc shadow protection") {}
+    float GetValue(Action* action) override;
+
+private:
+    uint32 _checkedMs = 0;
+    bool _single = false;
 };
 
 #endif

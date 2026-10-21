@@ -26,7 +26,8 @@ namespace RaidClear
         char const* strategy;  // combat-engine strategy name
         char const* confKey;   // RaidClear.<confKey>.Enable
         // A second strategy for both engines, or nullptr: what has to happen before anything
-        // is fighting the raid (Blackwing Lair's technicians running from Vaelastrasz's room).
+        // is fighting the raid (Blackwing Lair's technicians running from Vaelastrasz's room,
+        // Molten Core's buffs between pulls).
         char const* earlyStrategy = nullptr;
     };
 
@@ -43,7 +44,7 @@ namespace RaidClear
     inline constexpr uint32 AVOID_AOE_MAP = 469;
 
     inline constexpr std::array<RaidEntry, 6> Raids = {{
-        { 409, "rc moltencore", "MoltenCore" },
+        { 409, "rc moltencore", "MoltenCore", "rc mc buffs" },
         { 469, "rc bwl", "BlackwingLair", "rc bwl runners" },
         { 309, "rc zg", "ZulGurub" },
         { 249, "rc ony", "OnyxiasLair" },
