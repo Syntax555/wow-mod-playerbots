@@ -560,6 +560,20 @@ Category: Raids
   quarter, so most of their spells used to do very little.
 - Death Talon Wyrmguards: a tank with a Wyrmguard on it drinks a **Free Action Potion**, so
   **War Stomp** no longer stuns it.
+- Blackwing Lair: no kick stops a **Death Talon Wyrmkin**'s **Fireball Volley** (it is immune), so
+  rogues **Gouge** it, hunters **Scatter Shot** it and paladins use **Repentance**. A
+  Spellbinder's **Flamestrike** and a Taskmaster's **Healing Circle** get the same, **Hammer of
+  Justice** included where it lands.
+- Blackwing Lair: warlocks **Banish** the **Enraged Felguards** from the Demon Portals and keep
+  them banished; bots leave a banished mob alone.
+- Blackwing Lair: mages only **Polymorph** the Blackwing Mages, Legionnaires and Taskmasters,
+  never a Technician the raid kills in seconds.
+- Ebonroc and Flamegor: a tank spot can be set for each (`RaidClear.BlackwingLair.Ebonroc.TankSpot`,
+  `...Flamegor.TankSpot`), where the tank he is on holds him.
+- Chromaggus, Nefarian: tanks no longer cast **Righteous Defense** on a pet the boss is on (he
+  can't be taunted, and every one came back immune).
+- Chromaggus, Nefarian: when a player's pet takes the boss, or is about to, a tank whispers its
+  owner to set it to passive: no taunt moves these bosses and no Hand goes on a pet.
 
 > Most vanilla bosses only had a resistance aura in the bots' playbook. This is the first raid
 > of many.

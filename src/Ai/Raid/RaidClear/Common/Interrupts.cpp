@@ -33,6 +33,14 @@ namespace RaidClear
             { "wind shear", 25.0f }, { "counterspell", 30.0f }, { "silence", 30.0f }, { "silencing shot", 35.0f },
         }};
 
+        // Stuns and incapacitates, which stop whatever the target is casting. Cooldowns from 10 s
+        // (Gouge) to a minute, so the raid lists the casts worth one. Kidney Shot isn't here: it
+        // needs combo points CanCastSpell doesn't see.
+        constexpr std::array<Interrupt, 6> CAST_STOPPERS = {{
+            { "gouge", 0.0f }, { "concussion blow", 0.0f }, { "bash", 0.0f },
+            { "hammer of justice", 10.0f }, { "scatter shot", 15.0f }, { "repentance", 20.0f },
+        }};
+
         // Whether this interrupt or silence gets through to the target: the spell as a whole (a
         // Counterspell carries its mechanic on the spell) and the effect that does the stopping
         // (Kick, Pummel and Wind Shear carry it on that effect, next to ones that still land).
@@ -45,6 +53,25 @@ namespace RaidClear
                 SpellEffectInfo const& effect = info->Effects[i];
                 bool const stops = effect.Effect == SPELL_EFFECT_INTERRUPT_CAST ||
                                    (effect.Effect == SPELL_EFFECT_APPLY_AURA && effect.ApplyAuraName == SPELL_AURA_MOD_SILENCE);
+                if (stops && !target->IsImmunedToSpellEffect(info, i, bot))
+                    return true;
+            }
+            return false;
+        }
+
+        // Whether this stun or incapacitate lands on the target: the effect that takes it out of
+        // action, for the mechanic it carries (a Wyrmkin is immune to stuns, not to Gouge's
+        // knockout or Scatter Shot's disorient).
+        bool Stops(Player* bot, Unit* target, SpellInfo const* info)
+        {
+            if (target->IsImmunedToSpell(info, bot))
+                return false;
+            for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            {
+                SpellEffectInfo const& effect = info->Effects[i];
+                bool const stops = effect.Effect == SPELL_EFFECT_APPLY_AURA &&
+                                   (effect.ApplyAuraName == SPELL_AURA_MOD_STUN ||
+                                    effect.ApplyAuraName == SPELL_AURA_MOD_CONFUSE);
                 if (stops && !target->IsImmunedToSpellEffect(info, i, bot))
                     return true;
             }
@@ -83,6 +110,27 @@ namespace RaidClear
                 GetsThrough(bot, target, info))
             {
                 ready = interrupt.spell;
+                break;
+            }
+        }
+        return ready && bot->IsWithinLOSInMap(target) ? ready : nullptr;
+    }
+
+    char const* ReadyCastStopper(PlayerbotAI* botAI, Player* bot, Unit* target)
+    {
+        if (PlayerbotAI::IsTank(bot) && target->GetVictim() != bot)
+            return nullptr;
+
+        char const* ready = nullptr;
+        for (Interrupt const& stopper : CAST_STOPPERS)
+        {
+            bool const inReach =
+                stopper.range > 0.0f ? bot->GetDistance(target) <= stopper.range : bot->IsWithinMeleeRange(target);
+            SpellInfo const* info = inReach ? InfoOf(botAI, stopper.spell) : nullptr;
+            if (info && botAI->CanCastSpell(stopper.spell, target) && CanPayFor(botAI, bot, stopper.spell) &&
+                Stops(bot, target, info))
+            {
+                ready = stopper.spell;
                 break;
             }
         }

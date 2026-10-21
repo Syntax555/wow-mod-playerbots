@@ -18,6 +18,7 @@
 #include "GenericSpellActions.h"
 #include "Group.h"
 #include "Map.h"
+#include "Pet.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
@@ -31,6 +32,7 @@
 #include <cmath>
 #include <list>
 #include <map>
+#include <mutex>
 
 namespace RaidClear::Tanks
 {
@@ -990,6 +992,30 @@ namespace RaidClear::Tanks
         }
         return over;
     }
+
+    Pet* PlayerPetOverThreatShare(Player* bot, Unit* boss)
+    {
+        // Where a taunt lands the tanks take the boss back off a pet themselves.
+        Group* group = bot->GetGroup();
+        if (!group || !CantBeTaunted(boss))
+            return nullptr;
+
+        float const limit = ThreatShareLimit(bot, boss);
+        ThreatManager const& threat = boss->GetThreatMgr();
+        Unit const* victim = boss->GetVictim();
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsInMap(bot) || GET_PLAYERBOT_AI(member))
+                continue;
+            Pet* pet = member->GetPet();
+            if (!pet || !pet->IsAlive())
+                continue;
+            if (pet == victim || (limit > 0.0f && threat.GetThreat(pet) >= limit * DAMAGE_SHARE))
+                return pet;
+        }
+        return nullptr;
+    }
 }
 
 using namespace RaidClear;
@@ -1022,6 +1048,8 @@ void RaidClearTanksStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("rc boss on non tank", { NextAction("rc protect boss victim", ACTION_EMERGENCY + 4) }));
     triggers.push_back(
         new TriggerNode("rc player over threat", { NextAction("rc salvation on player", ACTION_RAID + 3) }));
+    triggers.push_back(
+        new TriggerNode("rc pet over threat", { NextAction("rc warn pet owner", ACTION_RAID + 2) }));
 }
 
 void RaidClearTanksStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
@@ -1346,6 +1374,68 @@ bool RcSalvationOnPlayerAction::Execute(Event /*event*/)
     return CanHand(botAI, bot, "hand of salvation", player) && botAI->CastSpell("hand of salvation", player);
 }
 
+namespace
+{
+    // Chromaggus kill, one evening: a hunter's pet took him 36 s in and kept him to the end,
+    // with all four tanks behind it and nothing able to move him. A whisper every 20 s is
+    // enough to act on without drowning the owner's chat.
+    constexpr uint32 PET_WARNING_INTERVAL_MS = 20000;
+    // By owner. Map updates move between threads from one tick to the next: shared and locked.
+    std::map<ObjectGuid, uint32> sPetWarnedAt;
+    std::mutex sPetWarnedLock;
+
+    Unit* PetThreatBoss(PlayerbotAI* botAI, Player* bot)
+    {
+        if (!bot->IsInCombat() || !HasThreatShareBosses(bot->GetMapId()))
+            return nullptr;
+        return ThreatShareBoss(botAI, bot, botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get());
+    }
+
+    bool PetWarningDue(Pet const* pet)
+    {
+        std::lock_guard<std::mutex> lock(sPetWarnedLock);
+        auto const it = sPetWarnedAt.find(pet->GetOwnerGUID());
+        return it == sPetWarnedAt.end() || getMSTimeDiff(it->second, getMSTime()) >= PET_WARNING_INTERVAL_MS;
+    }
+
+    // Claims the next warning to this owner; false when another tank just sent one.
+    bool ClaimPetWarning(Player const* owner)
+    {
+        std::lock_guard<std::mutex> lock(sPetWarnedLock);
+        uint32 const now = getMSTime();
+        auto const it = sPetWarnedAt.find(owner->GetGUID());
+        if (it != sPetWarnedAt.end() && getMSTimeDiff(it->second, now) < PET_WARNING_INTERVAL_MS)
+            return false;
+        sPetWarnedAt[owner->GetGUID()] = now ? now : 1;
+        return true;
+    }
+}
+
+bool RcPetOverThreatTrigger::IsActive()
+{
+    Unit* boss = PetThreatBoss(botAI, bot);
+    Pet* pet = boss ? PlayerPetOverThreatShare(bot, boss) : nullptr;
+    return pet && PetWarningDue(pet);
+}
+
+bool RcWarnPetOwnerAction::Execute(Event /*event*/)
+{
+    Unit* boss = PetThreatBoss(botAI, bot);
+    Pet* pet = boss ? PlayerPetOverThreatShare(bot, boss) : nullptr;
+    Player* owner = pet ? pet->GetOwner() : nullptr;
+    if (!owner || !ClaimPetWarning(owner))
+        return false;
+
+    std::string const text =
+        boss->GetVictim() == pet
+            ? boss->GetName() + " can't be taunted and is on your " + pet->GetName() +
+                  ": set it to passive so a tank can take him back."
+            : boss->GetName() + " can't be taunted and your " + pet->GetName() +
+                  " is about to pull him off the tanks: set it to passive for a moment.";
+    bot->Whisper(text, LANG_UNIVERSAL, owner);
+    return true;
+}
+
 namespace RaidClear::Tanks
 {
     // What the threat cap holds back: anything that does damage or is cast for its threat. A
@@ -1420,8 +1510,11 @@ float RcImmuneTauntMultiplier::GetValue(Action* action)
     Unit* target = action->GetTarget();
     if (!target)
         return 1.0f;
-    if (Creature* creature = target->ToCreature())
-        return CantBeTaunted(creature) ? 0.0f : 1.0f;
+    // A pet is a creature too, and a friend: not ToCreature(). One Chromaggus kill had 60
+    // Righteous Defenses on a hunter's pet he was on, all IMMUNE, each one let through here
+    // because the pet itself can be taunted.
+    if (!target->IsFriendlyTo(bot))
+        return CantBeTaunted(target) ? 0.0f : 1.0f;
 
     // Righteous Defense is cast on a friend and taunts what is attacking it: worth it while one
     // of those can be taunted.

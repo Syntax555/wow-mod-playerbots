@@ -124,7 +124,9 @@ void AttackersValue::RemoveNonThreating(std::unordered_set<Unit*>& targets)
 
 bool AttackersValue::hasRealThreat(Unit* attacker)
 {
+    // Banished: out of the fight until it ends, and immune to everything meanwhile.
     return attacker && attacker->IsInWorld() && attacker->IsAlive() && !attacker->IsPolymorphed() &&
+           !attacker->HasAuraWithMechanic(1 << MECHANIC_BANISH) &&
            // !attacker->isInRoots() &&
            !attacker->IsFriendlyTo(bot);
 }

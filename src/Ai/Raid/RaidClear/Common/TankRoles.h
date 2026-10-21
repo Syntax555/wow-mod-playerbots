@@ -87,6 +87,7 @@
 #include <map>
 
 class Group;
+class Pet;
 class Player;
 class PlayerbotAI;
 class Unit;
@@ -190,6 +191,11 @@ namespace RaidClear::Tanks
     // A player (not a bot) who isn't a tank and is over the threat the bots stay under, without
     // Hand of Salvation on it and without this paladin's Hand of Protection: the one with the most.
     Player* PlayerOverThreatShare(Player* bot, Unit* boss);
+
+    // A player's own pet (not a bot's) that such a boss is on, or that is over the threat the
+    // bots stay under on it, where no taunt moves the boss: nothing holds a player's pet back,
+    // and no Hand goes on a pet. Its owner is told instead.
+    Pet* PlayerPetOverThreatShare(Player* bot, Unit* boss);
 
     // The most threat a tank in the bot's group has on this boss, among the tanks that can hold
     // it (alive, not mind-controlled) and are within `range` of it; -1 when there is no such tank.
@@ -303,6 +309,23 @@ class RcSalvationOnPlayerAction : public Action
 {
 public:
     RcSalvationOnPlayerAction(PlayerbotAI* botAI) : Action(botAI, "rc salvation on player") {}
+    bool Execute(Event event) override;
+};
+
+// A player's pet has, or is about to take, a threat-share boss no taunt moves.
+class RcPetOverThreatTrigger : public Trigger
+{
+public:
+    RcPetOverThreatTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc pet over threat") {}
+    bool IsActive() override;
+};
+
+// Whispers the pet's owner to set it passive. One whisper per owner every
+// PET_WARNING_INTERVAL_MS, whichever tank sends it.
+class RcWarnPetOwnerAction : public Action
+{
+public:
+    RcWarnPetOwnerAction(PlayerbotAI* botAI) : Action(botAI, "rc warn pet owner") {}
     bool Execute(Event event) override;
 };
 

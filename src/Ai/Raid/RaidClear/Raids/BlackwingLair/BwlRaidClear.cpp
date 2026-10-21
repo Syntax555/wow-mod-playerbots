@@ -201,6 +201,10 @@ void RaidClearBlackwingLairStrategy::InitTriggers(std::vector<TriggerNode*>& tri
     triggers.push_back(
         new TriggerNode("rc bwl technician spread", { NextAction("rc bwl technician stay apart", ACTION_RAID) }));
 
+    // Under the interrupts and the raid mechanics that move bots, over damage.
+    triggers.push_back(
+        new TriggerNode("rc bwl banish felguard", { NextAction("rc bwl banish felguard", ACTION_RAID) }));
+
     triggers.push_back(
         new TriggerNode("rc bwl firemaw hide", { NextAction("rc bwl firemaw hide", ACTION_RAID + 1) }));
 
@@ -284,6 +288,7 @@ void RaidClearBlackwingLairStrategy::InitMultipliers(std::vector<Multiplier*>& m
     multipliers.push_back(new RcBwlDrakeTauntMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
     multipliers.push_back(new RcBwlChromaggusSchoolMultiplier(botAI));
+    multipliers.push_back(new RcBwlPolymorphMultiplier(botAI));
 }
 
 // --- Suppression Room -----------------------------------------------------

@@ -82,6 +82,8 @@ namespace
     using SpotSet = std::array<std::optional<Position>, size_t(Spot::Count)>;
     SpotSet sFiremawSpots;
     SpotSet sChromaggusSpots;
+    SpotSet sEbonrocSpots;
+    SpotSet sFlamegorSpots;
 
     constexpr std::array<char const*, size_t(Spot::Count)> SPOT_KEYS = {
         "TankSpot", "OffTankSpot", "TankHideSpot", "MeleeHideSpot",
@@ -102,11 +104,21 @@ void RaidClear::BlackwingLair::LoadSpots()
 {
     LoadSet(sFiremawSpots, "Firemaw");
     LoadSet(sChromaggusSpots, "Chromaggus");
+    LoadSet(sEbonrocSpots, "Ebonroc");
+    LoadSet(sFlamegorSpots, "Flamegor");
 }
 
 Position const* RaidClear::BlackwingLair::BossSpot(uint32 bossEntry, Spot spot)
 {
-    SpotSet const* set = bossEntry == NPC_FIREMAW ? &sFiremawSpots : bossEntry == NPC_CHROMAGGUS ? &sChromaggusSpots : nullptr;
+    SpotSet const* set = nullptr;
+    switch (bossEntry)
+    {
+        case NPC_FIREMAW:    set = &sFiremawSpots; break;
+        case NPC_CHROMAGGUS: set = &sChromaggusSpots; break;
+        case NPC_EBONROC:    set = &sEbonrocSpots; break;
+        case NPC_FLAMEGOR:   set = &sFlamegorSpots; break;
+        default:             break;
+    }
     if (!set || spot >= Spot::Count)
         return nullptr;
     std::optional<Position> const& value = (*set)[size_t(spot)];
@@ -684,7 +696,7 @@ namespace
     {
         if (bot->GetMapId() != MAP_ID)
             return nullptr;
-        for (uint32 const entry : { NPC_FIREMAW, NPC_CHROMAGGUS })
+        for (uint32 const entry : { NPC_FIREMAW, NPC_CHROMAGGUS, NPC_EBONROC, NPC_FLAMEGOR })
             if (Creature* boss = FightingBoss(bot, entry))
                 return boss;
         return nullptr;
@@ -786,7 +798,10 @@ namespace
         if (!boss || !bot->IsAlive())
             return false;
         uint32 const entry = boss->GetEntry();
-        if (entry == NPC_FIREMAW ? HidingFromFiremaw(bot) : HideFromChromaggus(bot, boss))
+        // Only Firemaw and Chromaggus have cover to hide behind; Ebonroc and Flamegor are held
+        // where their tank spot is and nothing more.
+        if ((entry == NPC_FIREMAW && HidingFromFiremaw(bot)) ||
+            (entry == NPC_CHROMAGGUS && HideFromChromaggus(bot, boss)))
             return false;
 
         Position const* spot = nullptr;
@@ -821,9 +836,10 @@ namespace
         if (SpotDropped(bot, now))
             return false;
         want.place = PlaceAt(bot, *spot, nullptr);
-        // Not a place in Firemaw's front (where that is moves with his tank), and not one it
+        // Not a place in a drake's front (where that is moves with his tank), and not one it
         // can't heal or hit from.
-        if ((entry == NPC_FIREMAW && InDragonsWay(bot, boss, want.place.GetPositionX(), want.place.GetPositionY())) ||
+        bool const drake = entry == NPC_FIREMAW || entry == NPC_EBONROC || entry == NPC_FLAMEGOR;
+        if ((drake && InDragonsWay(bot, boss, want.place.GetPositionX(), want.place.GetPositionY())) ||
             !CanWorkFrom(bot, boss, want.place))
         {
             DropSpot(bot, now);
