@@ -32,6 +32,7 @@ public:
         creators["rc raid leash"] = &RaidClearStrategyContext::raid_leash;
         creators["rc raid discipline"] = &RaidClearStrategyContext::raid_discipline;
         creators["rc moltencore"] = &RaidClearStrategyContext::moltencore;
+        creators["rc mc buffs"] = &RaidClearStrategyContext::mc_buffs;
         creators["rc bwl"] = &RaidClearStrategyContext::bwl;
         creators["rc bwl runners"] = &RaidClearStrategyContext::bwl_runners;
         creators["rc zg"] = &RaidClearStrategyContext::zg;
@@ -45,6 +46,7 @@ private:
     static Strategy* raid_leash(PlayerbotAI* botAI) { return new RaidClearLeashStrategy(botAI); }
     static Strategy* raid_discipline(PlayerbotAI* botAI) { return new RaidClearDisciplineStrategy(botAI); }
     static Strategy* moltencore(PlayerbotAI* botAI) { return new RaidClearMoltenCoreStrategy(botAI); }
+    static Strategy* mc_buffs(PlayerbotAI* botAI) { return new RaidClearMoltenCoreBuffsStrategy(botAI); }
     static Strategy* bwl(PlayerbotAI* botAI) { return new RaidClearBlackwingLairStrategy(botAI); }
     static Strategy* bwl_runners(PlayerbotAI* botAI) { return new RaidClearBwlRunnersStrategy(botAI); }
     static Strategy* zg(PlayerbotAI* botAI) { return new RaidClearZulGurubStrategy(botAI); }
@@ -74,6 +76,8 @@ public:
         creators["rc knockback footing"] = &RaidClearActionContext::knockback_footing;
         creators["rc leave unpulled target"] = &RaidClearActionContext::leave_unpulled_target;
 
+        creators["rc mc purge grounding"] = &RaidClearActionContext::mc_purge_grounding;
+        creators["rc mc decurse tank"] = &RaidClearActionContext::mc_decurse_tank;
         creators["rc mc tremor totem"] = &RaidClearActionContext::mc_tremor_totem;
         creators["rc mc stop melee"] = &RaidClearActionContext::mc_stop_melee;
         creators["rc mc ragnaros move out"] = &RaidClearActionContext::mc_ragnaros_move_out;
@@ -175,6 +179,8 @@ private:
     static Action* knockback_footing(PlayerbotAI* botAI) { return new RcKnockbackFootingAction(botAI); }
     static Action* leave_unpulled_target(PlayerbotAI* botAI) { return new RcLeaveUnpulledTargetAction(botAI); }
 
+    static Action* mc_purge_grounding(PlayerbotAI* botAI) { return new RcMcPurgeGroundingAction(botAI); }
+    static Action* mc_decurse_tank(PlayerbotAI* botAI) { return new RcMcDecurseTankAction(botAI); }
     static Action* mc_tremor_totem(PlayerbotAI* botAI) { return new RcMcTremorTotemAction(botAI); }
     static Action* mc_stop_melee(PlayerbotAI* botAI) { return new RcMcStopMeleeAction(botAI); }
     static Action* mc_ragnaros_move_out(PlayerbotAI* botAI) { return new RcMcRagnarosMoveOutAction(botAI); }
@@ -285,6 +291,8 @@ public:
         creators["rc knockback footing tank"] = &RaidClearTriggerContext::knockback_footing_tank;
         creators["rc unpulled target"] = &RaidClearTriggerContext::unpulled_target;
 
+        creators["rc mc magic grounding"] = &RaidClearTriggerContext::mc_magic_grounding;
+        creators["rc mc cursed tank"] = &RaidClearTriggerContext::mc_cursed_tank;
         creators["rc mc magmadar tremor"] = &RaidClearTriggerContext::mc_magmadar_tremor;
         creators["rc mc damage reflection"] = &RaidClearTriggerContext::mc_damage_reflection;
         creators["rc mc ragnaros ranged"] = &RaidClearTriggerContext::mc_ragnaros_ranged;
@@ -403,6 +411,8 @@ private:
     }
     static Trigger* unpulled_target(PlayerbotAI* botAI) { return new RcUnpulledTargetTrigger(botAI); }
 
+    static Trigger* mc_magic_grounding(PlayerbotAI* botAI) { return new RcMcMagicGroundingTrigger(botAI); }
+    static Trigger* mc_cursed_tank(PlayerbotAI* botAI) { return new RcMcCursedTankTrigger(botAI); }
     static Trigger* mc_magmadar_tremor(PlayerbotAI* botAI) { return new RcMcMagmadarTremorTrigger(botAI); }
     static Trigger* mc_damage_reflection(PlayerbotAI* botAI) { return new RcMcDamageReflectionTrigger(botAI); }
     static Trigger* mc_ragnaros_ranged(PlayerbotAI* botAI) { return new RcMcRagnarosRangedTrigger(botAI); }
