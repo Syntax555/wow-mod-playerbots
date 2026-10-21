@@ -126,12 +126,16 @@ namespace
 
         // Tanks stand in front of what they hold, and take its cleave.
         bool const keepsOutOfFronts = !PlayerbotAI::IsTank(bot);
+        std::vector<uint32> trapEntries;
         for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
         {
             Unit* unit = botAI->GetUnit(guid);
             if (!unit || !unit->IsCreature() || !unit->IsInMap(bot))
                 continue;
             uint32 const entry = unit->GetEntry();
+            for (Trap const& trap : table->traps)
+                if (trap.owner == entry && unit->IsAlive())
+                    trapEntries.push_back(trap.entry);
             // The caster's fire while it burns: a Rain of Fire for its channel, a Flamestrike for
             // eight seconds.
             for (Burner const& burner : table->burners)
@@ -164,10 +168,10 @@ namespace
         }
 
         // Fire traps: as far as the trap goes off or the fire it casts reaches.
-        if (!table->traps.empty())
+        if (!trapEntries.empty())
         {
             std::list<GameObject*> traps;
-            bot->GetGameObjectListWithEntryInGrid(traps, table->traps, TRAP_SEARCH);
+            bot->GetGameObjectListWithEntryInGrid(traps, trapEntries, TRAP_SEARCH);
             for (GameObject* trap : traps)
             {
                 if (!trap->isSpawned() || trap->GetGoType() != GAMEOBJECT_TYPE_TRAP)

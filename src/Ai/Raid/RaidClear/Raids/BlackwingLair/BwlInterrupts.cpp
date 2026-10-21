@@ -58,10 +58,7 @@ namespace
     // stun or an incapacitate on the casts worth one.
     char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast)
     {
-        char const* with = RaidClear::Interruptible(cast) ? RaidClear::ReadyInterrupt(botAI, bot, caster) : nullptr;
-        if (!with && WorthACastStopper(cast->Id))
-            with = RaidClear::ReadyCastStopper(botAI, bot, caster);
-        return with;
+        return RaidClear::ReadyStop(botAI, bot, caster, cast, WorthACastStopper(cast->Id));
     }
 
     // What this caster is casting that a bot should stop, or nullptr.

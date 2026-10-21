@@ -32,7 +32,8 @@ namespace RaidClear::Hazards
     // A bot keeps this far past the edge of fire on the ground (the bot's own size: the core
     // counts a unit as in it from there), and this far past the reach of a cone beyond its own
     // size, and this far either side of the cone's angle. A walk out ends this far clear. The
-    // hazards are looked up per bot every HAZARD_FRESH_MS; fire traps within TRAP_SEARCH of it.
+    // hazards are looked up per bot every HAZARD_FRESH_MS; fire traps within TRAP_SEARCH of it,
+    // while the mob that throws them is in the bot's fight.
     constexpr float GROUND_FIRE_MARGIN = 1.5f;
     constexpr float CONE_MARGIN = 1.0f;
     constexpr float CONE_ANGLE_MARGIN = 0.1745f;  // 10 degrees
@@ -56,6 +57,13 @@ namespace RaidClear::Hazards
         float halfAngle;
     };
 
+    // A fire trap game object, looked for only while the mob that throws it is in the fight.
+    struct Trap
+    {
+        uint32 entry;
+        uint32 owner;
+    };
+
     // A mob that breathes this cone at whoever it is on.
     struct Breather
     {
@@ -66,7 +74,7 @@ namespace RaidClear::Hazards
     struct Table
     {
         std::vector<Burner> burners;
-        std::vector<uint32> traps;  // fire trap game objects
+        std::vector<Trap> traps;
         std::vector<Cleaver> cleavers;
         std::vector<Breather> breathers;
     };

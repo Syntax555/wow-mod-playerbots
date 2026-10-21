@@ -7,6 +7,7 @@
 #include "MCTriggers.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 #include "MCCoreHoundRecoveryValue.h"
 #include "MCHelpers.h"
@@ -16,6 +17,7 @@
 #include "RaidClearRegistry.h"
 #include "SharedDefines.h"
 #include "SpellAuras.h"
+#include "Timer.h"
 
 using namespace MoltenCoreHelpers;
 
@@ -68,10 +70,23 @@ bool MoltenCoreHelpers::GolemaggBacksOff(PlayerbotAI* botAI, Player* bot)
     // Twenty stacks are more than the healers keep up with on every melee at once (the logs showed
     // 20 to 26 on all of them). So the half of the group's melee bots with the most stacks stays
     // out while the rest hit him: one that comes back with its stacks still up is next in line
-    // once the others have more.
+    // once the others have more. A group walk, so the answer is kept for a moment: the trigger and
+    // the multiplier ask it every tick. One map thread updates a bot at a time.
     Group* group = bot->GetGroup();
     if (!group)
         return true;
+    constexpr uint32 ROTATION_FRESH_MS = 500;
+    struct Rotation
+    {
+        uint32 ms = 0;
+        uint32 stacks = 0;
+        bool out = false;
+    };
+    thread_local std::unordered_map<ObjectGuid, Rotation> tRotation;
+    uint32 const now = getMSTime();
+    Rotation& rotation = tRotation[bot->GetGUID()];
+    if (rotation.ms && rotation.stacks == stacks && getMSTimeDiff(rotation.ms, now) < ROTATION_FRESH_MS)
+        return rotation.out;
     uint32 melee = 0;
     uint32 ahead = 0;
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
@@ -89,7 +104,10 @@ bool MoltenCoreHelpers::GolemaggBacksOff(PlayerbotAI* botAI, Player* bot)
             (their > stacks || (their == stacks && member->GetGUID() < bot->GetGUID())))
             ++ahead;
     }
-    return ahead < std::max(1u, melee / 2);
+    rotation.ms = now ? now : 1;
+    rotation.stacks = stacks;
+    rotation.out = ahead < std::max(1u, melee / 2);
+    return rotation.out;
 }
 
 bool McGolemaggMagmaSplashTrigger::IsActive()

@@ -49,6 +49,10 @@ namespace RaidClear
     // Whether an interrupt can stop this cast at all.
     bool Interruptible(SpellInfo const* cast);
 
+    // What this bot has ready that stops the cast: an interrupt where one gets through, else (on
+    // a cast worth one) a stun or an incapacitate; nullptr when nothing.
+    char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast, bool worthACastStopper);
+
     // One of the interrupts above, by its playerbots name.
     bool IsInterrupt(std::string const& name);
 

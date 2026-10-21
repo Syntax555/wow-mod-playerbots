@@ -114,7 +114,7 @@ RaidClear::Hazards::Table const& RaidClear::MoltenCore::HazardTable()
     // out of fire that is already burning it, so the bots stood in all of these.
     static Hazards::Table const table = {
         { { NPC_GEHENNAS, SPELL_GEHENNAS_RAIN_OF_FIRE } },
-        { GO_LAVA_BOMB },
+        { { GO_LAVA_BOMB, NPC_MAGMADAR } },
         {},
         {
             // An Ancient Core Hound's Lava Breath hit 19 at once in one log; Magmadar breathes the
@@ -256,7 +256,8 @@ namespace
         return bot->GetMapId() == MAP_ID ? RaidClear::FightingCreature(bot, { NPC_SHAZZRAH }) : nullptr;
     }
 
-    bool KeepsOutOfArcaneExplosion(Player* bot)
+    // Ranged bots and healers: they keep out of Arcane Explosion and Wrath of Ragnaros.
+    bool KeepsBack(Player* bot)
     {
         return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
     }
@@ -264,7 +265,7 @@ namespace
 
 bool RcMcShazzrahRangedTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !KeepsOutOfArcaneExplosion(bot) || !botAI->CanMove())
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
     // From his middle: the spell measures from there. Every few seconds his Gate puts him on top
     // of a random player who isn't in his reach, so this fires again wherever he lands.
@@ -284,12 +285,13 @@ bool RcMcLeaveArcaneExplosionAction::Execute(Event /*event*/)
 
 float RcMcShazzrahHoldMultiplier::GetValue(Action* action)
 {
-    // Walking to a target near him (follow, formation, a healer's patient at his feet) would take a
-    // bot back in. A spell's own reach stops at its range, out here; this module's way out and the
-    // walk out of the lava go anyway.
-    bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
+    // Walking to a target near him (follow, formation, a healer's patient at his feet, a ranged
+    // bot's melee when it is out of mana) would take a bot back in. A spell's own reach stops at
+    // its range, out here; this module's way out and the walk out of the lava go anyway.
+    bool const walks = (dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action)) ||
+                       dynamic_cast<MeleeAction*>(action);
     if (!walks || action->getName().rfind("rc ", 0) == 0 || action->getName() == "mc move from lava" ||
-        !KeepsOutOfArcaneExplosion(bot))
+        !KeepsBack(bot))
         return 1.0f;
 
     Unit* target = action->GetTarget();
@@ -320,7 +322,7 @@ public:
         for (Map::PlayerList::const_iterator it = players.begin(); it != players.end(); ++it)
         {
             Player* player = it->GetSource();
-            if (!player || !player->IsAlive() || !KeepsOutOfArcaneExplosion(player) ||
+            if (!player || !player->IsAlive() || !KeepsBack(player) ||
                 player->GetExactDist(caster) >= SHAZZRAH_KEEP_AWAY)
                 continue;
             PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
@@ -337,12 +339,10 @@ public:
 
 namespace
 {
-    // A Flamewaker Priest's Dark Mending this bot can stop: with an interrupt where one gets
-    // through, else with a stun or an incapacitate (a 27,750 heal on Sulfuron is worth one).
+    // A 27,750 heal on Sulfuron is worth a stun or an incapacitate where no interrupt gets through.
     char const* ReadyStopFor(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast)
     {
-        char const* with = RaidClear::Interruptible(cast) ? RaidClear::ReadyInterrupt(botAI, bot, caster) : nullptr;
-        return with ? with : RaidClear::ReadyCastStopper(botAI, bot, caster);
+        return RaidClear::ReadyStop(botAI, bot, caster, cast, true);
     }
 
     // The Dark Mending this priest is casting, or nullptr.
@@ -1237,11 +1237,6 @@ namespace
         return boss && !boss->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE) ? boss : nullptr;
     }
 
-    bool KeepsOutOfWrath(Player* bot)
-    {
-        return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
-    }
-
     // Where Lava Burst erupts (spell_target_position of 21886, 21900-21903 and 21905-21907).
     constexpr std::array<std::array<float, 2>, 8> LAVA_BURSTS = { {
         { 871.540f, -839.115f }, { 843.509f, -798.313f }, { 827.276f, -874.028f }, { 864.573f, -806.463f },
@@ -1371,7 +1366,7 @@ namespace
         {
             Player* member = ref->GetSource();
             if (!member || !member->IsAlive() || !member->IsInMap(bot) || !GET_PLAYERBOT_AI(member) ||
-                !KeepsOutOfWrath(member) || layout.holder.count(member->GetGUID()))
+                !KeepsBack(member) || layout.holder.count(member->GetGUID()))
                 continue;
             (PlayerbotAI::IsHeal(member) ? healers : ranged).push_back(member);
         }
@@ -1425,16 +1420,23 @@ namespace
                 floorGap = std::min(floorGap, layout.spots[index].gap);
             }
 
+        // Then the same bots again, the wide spacing first and the tight one where that has no
+        // room, never closer to an eruption than that. Only if all of them fit that way does the
+        // wide layout replace the tight one.
+        Holders wide = layout.holder;
         for (bool const healer : { true, false })
             for (Player* member : healer ? healers : ranged)
             {
-                std::size_t index = pick(layout.holder, healer, RAGNAROS_WIDE_SPOT_SPACING, floorGap, false);
+                std::size_t index = pick(wide, healer, RAGNAROS_WIDE_SPOT_SPACING, floorGap, false);
                 if (index == none)
-                    index = pickTight(layout.holder, healer);
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, floorGap, false);
+                if (index == none && healer)
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, floorGap, true);
                 if (index == none)
                     break;
-                layout.holder[member->GetGUID()] = index;
+                wide[member->GetGUID()] = index;
             }
+        layout.holder = wide.size() == tight.size() ? wide : tight;
 
         auto const mine = layout.holder.find(bot->GetGUID());
         if (mine == layout.holder.end())
@@ -1446,7 +1448,7 @@ namespace
 
 bool RcMcRagnarosRangedTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !KeepsOutOfWrath(bot) || !botAI->CanMove())
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
 
     // From his middle: the spell measures from there, and he is 20 yd wide.
@@ -1478,7 +1480,7 @@ bool RcMcRagnarosMoveOutAction::Execute(Event /*event*/)
 
 bool RcMcRagnarosSpotTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !KeepsOutOfWrath(bot) || !botAI->CanMove())
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
     Creature* boss = EmergedRagnaros(bot);
     RagnarosSpot spot;
@@ -1503,7 +1505,7 @@ float RcMcRagnarosHoldMultiplier::GetValue(Action* action)
     bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
     if (!walks && !dynamic_cast<CastReachTargetSpellAction*>(action))
         return 1.0f;
-    if (!KeepsOutOfWrath(bot))
+    if (!KeepsBack(bot))
         return 1.0f;
 
     // On its spot, a bot doesn't walk off it for anything but this module's own way out, or out
@@ -1544,7 +1546,10 @@ bool RcMcRagnarosTankTrigger::IsActive()
     if (!boss)
         return false;
     Position const spot = RagnarosTankSpot(boss);
-    return !bot->IsWithinMeleeRange(boss) || bot->GetExactDist2d(&spot) > RAGNAROS_TANK_SPOT_LEAVE;
+    if (bot->IsWithinMeleeRange(boss) && bot->GetExactDist2d(&spot) <= RAGNAROS_TANK_SPOT_LEAVE)
+        return false;
+    // Never a walk into the lava: this outranks the way out of it.
+    return DryAt(bot->GetMap(), bot->GetPhaseMask(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ());
 }
 
 bool RcMcRagnarosTankAction::Execute(Event /*event*/)

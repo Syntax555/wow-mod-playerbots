@@ -147,6 +147,14 @@ namespace RaidClear
         return ready && bot->IsWithinLOSInMap(target) ? ready : nullptr;
     }
 
+    char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast, bool worthACastStopper)
+    {
+        char const* with = Interruptible(cast) ? ReadyInterrupt(botAI, bot, caster) : nullptr;
+        if (!with && worthACastStopper)
+            with = ReadyCastStopper(botAI, bot, caster);
+        return with;
+    }
+
     bool Interruptible(SpellInfo const* cast)
     {
         // What the core's interrupt effect asks of the cast it stops (Spell::EffectInterruptCast).
