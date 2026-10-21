@@ -64,6 +64,8 @@ namespace
         ObjectGuid veknilash;
         ObjectGuid veklorTank;
         ObjectGuid veknilashTank;
+        // The healer bots that keep the two tanks up (see HealersTank).
+        std::vector<ObjectGuid> healers;
         bool landing = false;
         std::vector<Blizzard> blizzards;
     };
@@ -121,6 +123,25 @@ namespace
             view.veklorTank = firstHasNilash ? second->GetGUID() : first->GetGUID();
     }
 
+    // The living healer bots of the raid in the fight that aren't one of the two tanks (which tank
+    // each keeps up is HealersTank's). Only those in combat: one that never looks for its tank
+    // would hold the others' sides as they are.
+    void PickTwinHealers(Player* bot, TwinsView& view)
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsAlive() || !member->IsInCombat() || !member->IsInMap(bot) ||
+                !GET_PLAYERBOT_AI(member) || !PlayerbotAI::IsHeal(member) || RaidClear::Charmed::IsCharmedByEnemy(member) ||
+                member->GetGUID() == view.veklorTank || member->GetGUID() == view.veknilashTank)
+                continue;
+            view.healers.push_back(member->GetGUID());
+        }
+    }
+
     void FindBlizzards(Creature* veklor, TwinsView& view)
     {
         // His Blizzard goes on a random player within 45 yd of him.
@@ -164,6 +185,7 @@ namespace
             tView.veknilash = veknilash->GetGUID();
             tView.landing = Landing(veklor, veknilash);
             PickTwinTanks(bot, veknilash, tView);
+            PickTwinHealers(bot, tView);
             FindBlizzards(veklor, tView);
         }
         return tFound ? &tView : nullptr;
@@ -177,6 +199,8 @@ namespace
             return TwinRole::VeknilashTank;
         return TwinRole::None;
     }
+
+    Player* HealersTank(Player* bot, TwinsView const& view);
 
     bool IsTwin(Unit const* unit, TwinsView const& view)
     {
@@ -231,6 +255,7 @@ namespace
         uint32 seenMs = 0;
         uint32 lastTeleportMs = 0;  // 0: none yet in this fight
         int8 veknilashSpot = -1;    // torch spot Vek'nilash is held at: 0 A, 1 B, -1 not picked yet
+        std::map<ObjectGuid, ObjectGuid> healerTanks;  // the tank each healer keeps up
     };
     // A fight nobody has looked at for this long is over: the next look starts a new one.
     constexpr uint32 TELEPORT_CLOCK_STALE_MS = 10000;
@@ -270,6 +295,55 @@ namespace
         return clock.lastTeleportMs ? getMSTimeDiff(clock.lastTeleportMs, now) : 0xFFFFFFFF;
     }
 
+    // The tank this healer keeps in reach, or nullptr: not one of the twins' healers, or no tank.
+    // With one tank, every healer's. Else each healer keeps the tank it was given for the fight, as
+    // a teleport swaps the twins and not where the tanks stand, until that one is no longer either
+    // twin's (dead, or another took its place). It is then given the one with fewer healers, the
+    // nearer on a tie. One moves to the other only once every healer has a tank (those left
+    // without one fill the short side first) and while its own has more without it: a healer's
+    // death leaves the two at most one apart, and only one walks across.
+    Player* HealersTank(Player* bot, TwinsView const& view)
+    {
+        if (std::find(view.healers.begin(), view.healers.end(), bot->GetGUID()) == view.healers.end())
+            return nullptr;
+        Player* a = view.veklorTank.IsEmpty() ? nullptr : ObjectAccessor::GetPlayer(*bot, view.veklorTank);
+        Player* b = view.veknilashTank.IsEmpty() ? nullptr : ObjectAccessor::GetPlayer(*bot, view.veknilashTank);
+        // Not remembered: a second tank later gets its half.
+        if (!a || !b)
+            return a ? a : b;
+        Creature* veklor = ObjectAccessor::GetCreature(*bot, view.veklor);
+        if (!veklor)
+            return nullptr;
+
+        uint32 const now = getMSTime();
+        std::lock_guard<std::mutex> guard(sClockLock);
+        TeleportClock& clock = ClockOf(veklor, now);
+        // The other healers on each, and those without either tank yet.
+        uint32 onA = 0;
+        uint32 onB = 0;
+        uint32 unplaced = 0;
+        for (ObjectGuid const& healer : view.healers)
+        {
+            if (healer == bot->GetGUID())
+                continue;
+            auto const it = clock.healerTanks.find(healer);
+            if (it != clock.healerTanks.end() && it->second == a->GetGUID())
+                ++onA;
+            else if (it != clock.healerTanks.end() && it->second == b->GetGUID())
+                ++onB;
+            else
+                ++unplaced;
+        }
+        ObjectGuid& mine = clock.healerTanks[bot->GetGUID()];
+        bool onSideA = mine == a->GetGUID();
+        if (!onSideA && mine != b->GetGUID())
+            onSideA = onA != onB ? onA < onB : bot->GetExactDist(a) <= bot->GetExactDist(b);
+        else if (!unplaced && (onSideA ? onA > onB : onB > onA))
+            onSideA = !onSideA;
+        mine = onSideA ? a->GetGUID() : b->GetGUID();
+        return onSideA ? a : b;
+    }
+
     // From TWINS_TELEPORT_LEAD_MS before the earliest the next teleport can come until it comes,
     // or until TWINS_TELEPORT_LATE_MS after the latest (one this clock missed): melee wait at
     // most the 10 s the script leaves open, plus a second each side.
@@ -297,6 +371,10 @@ namespace
         float veknilashY = 0.0f;
         float veknilashReach = 0.0f;
         float veknilashKeep = 0.0f;  // 0: no rule
+        float healTankX = 0.0f;
+        float healTankY = 0.0f;
+        float healTankReach = 0.0f;
+        float healTankRange = 0.0f;  // a healer's tank, this far at most: 0, no rule
         bool hold = false;           // a tank standing still while the twins land
         std::vector<Blizzard> const* blizzards = nullptr;
         std::vector<RaidClear::AhnQiraj::LitBlast> blasts;
@@ -330,6 +408,14 @@ namespace
                 rules.veknilashKeep = VEKNILASH_KEEP;
             else if (veknilash->GetVictim() != bot && TeleportDue(veklor))
                 rules.veknilashKeep = VEKNILASH_DUE_KEEP;
+            // A healer within reach of its tank (the walk back goes to TWINS_HEALER_NEAR).
+            if (Player* tank = HealersTank(bot, view))
+            {
+                rules.healTankX = tank->GetPositionX();
+                rules.healTankY = tank->GetPositionY();
+                rules.healTankReach = tank->GetCombatReach();
+                rules.healTankRange = TWINS_HEALER_FAR;
+            }
         }
         return true;
     }
@@ -348,6 +434,12 @@ namespace
             float const toVeknilash = std::hypot(x - rules.veknilashX, y - rules.veknilashY) - rules.veknilashReach -
                                       rules.botReach;
             gap = std::min(gap, toVeknilash - rules.veknilashKeep);
+        }
+        if (rules.healTankRange > 0.0f)
+        {
+            float const toTank = std::hypot(x - rules.healTankX, y - rules.healTankY) - rules.healTankReach -
+                                 rules.botReach;
+            gap = std::min(gap, rules.healTankRange - toTank);
         }
         for (Blizzard const& blizzard : *rules.blizzards)
             gap = std::min(gap, std::hypot(x - blizzard.x, y - blizzard.y) - blizzard.radius - rules.botReach -
@@ -550,10 +642,33 @@ bool RcAq40TwinsPositionAction::Execute(Event /*event*/)
     // A copy: the view is looked up again while the walk is planned.
     std::vector<Blizzard> const blizzards = view->blizzards;
     rules.blizzards = &blizzards;
+    // A healer that has to walk at all ends up well within reach of its tank, not at the edge.
+    if (rules.healTankRange > 0.0f)
+        rules.healTankRange = TWINS_HEALER_NEAR;
     if (RulesGap(rules, bot->GetPositionX(), bot->GetPositionY()) >= 0.0f)
         return false;
     auto const gapAt = [&rules](float x, float y, float /*z*/) { return RulesGap(rules, x, y); };
     return _walk.Go(gapAt, 0.0f, TWINS_SPOT, TWINS_WORTH_IT, TWINS_SEARCH);
+}
+
+namespace
+{
+    // A healer's walk after someone (to heal them) it can't reach without leaving its tank: the
+    // walk stops in heal range of them, which can be outside TWINS_HEALER_FAR of the tank, and
+    // "rc aq40 twins position" would only walk it back again. The other tank's healers have them.
+    bool LeavesItsTank(Player* bot, TwinsView const& view, Action* action)
+    {
+        if (RoleOf(bot, view) != TwinRole::None)
+            return false;
+        Unit* target = action->GetTarget();
+        if (!target || target == bot || bot->IsValidAttackTarget(target))
+            return false;
+        Player* tank = HealersTank(bot, view);
+        if (!tank || target == tank)
+            return false;
+        return target->GetExactDist2d(tank) - target->GetCombatReach() - tank->GetCombatReach() >
+               TWINS_HEALER_FAR + TWINS_HEALER_WALK;
+    }
 }
 
 float RcAq40TwinsHoldMultiplier::GetValue(Action* action)
@@ -564,6 +679,8 @@ float RcAq40TwinsHoldMultiplier::GetValue(Action* action)
     TwinsView const* view = Twins(bot);
     if (!view || !bot->IsInCombat())
         return 1.0f;
+    if (LeavesItsTank(bot, *view, action))
+        return 0.0f;
     TwinRole const role = RoleOf(bot, *view);
     // While they land, each tank stands where its new twin will find it nearest.
     if (view->landing && role != TwinRole::None)
