@@ -111,6 +111,7 @@ public:
         creators["rc bwl remove black affliction"] = &RaidClearActionContext::bwl_remove_black_affliction;
         creators["rc bwl fire nova totem move away"] = &RaidClearActionContext::bwl_fire_nova_totem_move_away;
         creators["rc bwl captain hand off"] = &RaidClearActionContext::bwl_captain_hand_off;
+        creators["rc bwl free action"] = &RaidClearActionContext::bwl_free_action;
 
         creators["rc zg holy wrath keep away"] = &RaidClearActionContext::zg_holy_wrath_keep_away;
         creators["rc zg thekal even kill"] = &RaidClearActionContext::zg_thekal_even_kill;
@@ -211,6 +212,7 @@ private:
     static Action* bwl_remove_black_affliction(PlayerbotAI* botAI) { return new RcBwlBlackAfflictionAction(botAI); }
     static Action* bwl_fire_nova_totem_move_away(PlayerbotAI* botAI) { return new RcBwlFireNovaTotemMoveAwayAction(botAI); }
     static Action* bwl_captain_hand_off(PlayerbotAI* botAI) { return new RcBwlCaptainHandOffAction(botAI); }
+    static Action* bwl_free_action(PlayerbotAI* botAI) { return new RcBwlFreeActionAction(botAI); }
 
     static Action* zg_holy_wrath_keep_away(PlayerbotAI* botAI) { return new RcZgHolyWrathKeepAwayAction(botAI); }
     static Action* zg_thekal_even_kill(PlayerbotAI* botAI) { return new RcZgThekalEvenKillAction(botAI); }
@@ -313,6 +315,7 @@ public:
         creators["rc bwl black affliction"] = &RaidClearTriggerContext::bwl_black_affliction;
         creators["rc bwl fire nova totem"] = &RaidClearTriggerContext::bwl_fire_nova_totem;
         creators["rc bwl captain hand off"] = &RaidClearTriggerContext::bwl_captain_hand_off;
+        creators["rc bwl wyrmguard free action"] = &RaidClearTriggerContext::bwl_wyrmguard_free_action;
 
         creators["rc zg holy wrath keep away"] = &RaidClearTriggerContext::zg_holy_wrath_keep_away;
         creators["rc zg thekal even kill"] = &RaidClearTriggerContext::zg_thekal_even_kill;
@@ -431,6 +434,7 @@ private:
     static Trigger* bwl_black_affliction(PlayerbotAI* botAI) { return new RcBwlBlackAfflictionTrigger(botAI); }
     static Trigger* bwl_fire_nova_totem(PlayerbotAI* botAI) { return new RcBwlFireNovaTotemTrigger(botAI); }
     static Trigger* bwl_captain_hand_off(PlayerbotAI* botAI) { return new RcBwlCaptainHandOffTrigger(botAI); }
+    static Trigger* bwl_wyrmguard_free_action(PlayerbotAI* botAI) { return new RcBwlWyrmguardFreeActionTrigger(botAI); }
 
     static Trigger* zg_holy_wrath_keep_away(PlayerbotAI* botAI) { return new RcZgHolyWrathKeepAwayTrigger(botAI); }
     static Trigger* zg_thekal_even_kill(PlayerbotAI* botAI) { return new RcZgThekalEvenKillTrigger(botAI); }

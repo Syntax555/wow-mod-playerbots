@@ -259,6 +259,10 @@ void RaidClearBlackwingLairStrategy::InitTriggers(std::vector<TriggerNode*>& tri
     triggers.push_back(new TriggerNode("rc bwl black affliction",
                                        { NextAction("rc bwl remove black affliction", ACTION_RAID + 1) }));
 
+    // Off the global cooldown, so it costs the tank nothing; before the taunts and the hand-offs.
+    triggers.push_back(
+        new TriggerNode("rc bwl wyrmguard free action", { NextAction("rc bwl free action", ACTION_RAID + 4) }));
+
     // Above playerbots' "tank assist" (50), below the raid mechanics.
     triggers.push_back(
         new TriggerNode("rc bwl captain hand off", { NextAction("rc bwl captain hand off", ACTION_RAID - 3) }));
@@ -1015,6 +1019,48 @@ bool RcBwlFireNovaTotemMoveAwayAction::Execute(Event /*event*/)
     if (!totem)
         return false;
     return MoveAway(totem, FIRE_NOVA_KEEP_AWAY + 2.0f - bot->GetExactDist2d(totem));
+}
+
+// --- Death Talon Wyrmguards: Free Action ----------------------------------
+
+namespace
+{
+    // The tank a Wyrmguard is hitting stands in every stomp of it, and a stunned tank can't take
+    // the next one or taunt back the one that walked off.
+    bool WyrmguardOn(Player* bot)
+    {
+        for (Unit* attacker : bot->getAttackers())
+            if (attacker && attacker->IsAlive() && attacker->GetEntry() == NPC_DEATH_TALON_WYRMGUARD)
+                return true;
+        return false;
+    }
+
+    Item* FreeActionPotion(Player* bot)
+    {
+        return bot->GetItemByEntry(ITEM_FREE_ACTION_POTION);
+    }
+}
+
+bool RcBwlWyrmguardFreeActionTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !bot->IsInCombat() || !PlayerbotAI::IsTank(bot) ||
+        bot->HasAura(SPELL_FREE_ACTION) || !WyrmguardOn(bot))
+        return false;
+    // A potion of its own goes first; the cheat only stands in for one it doesn't have. The
+    // potions share a cooldown, which the core puts on each of their spells.
+    if (FreeActionPotion(bot))
+        return !bot->HasSpellCooldown(SPELL_FREE_ACTION);
+    return botAI->HasCheat(BotCheatMask::raid);
+}
+
+bool RcBwlFreeActionAction::Execute(Event /*event*/)
+{
+    if (Item* potion = FreeActionPotion(bot))
+        return !bot->HasSpellCooldown(SPELL_FREE_ACTION) && UseItemAuto(potion);
+    if (!botAI->HasCheat(BotCheatMask::raid))
+        return false;
+    bot->CastSpell(bot, SPELL_FREE_ACTION, true);
+    return bot->HasAura(SPELL_FREE_ACTION);
 }
 
 class RaidClearBwlPlayerScript : public PlayerScript
