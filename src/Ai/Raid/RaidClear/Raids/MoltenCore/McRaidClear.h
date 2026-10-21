@@ -42,8 +42,8 @@
  *     told to drop it the moment Inferno starts, and one still inside casts nothing it has to
  *     stand still for.
  *   - Majordomo: nobody casts a spell at an enemy with Magic Reflection that the core would
- *     send back (Common/SpellReflect.h: abilities, taunts, Auto Shot still go), and melee (not
- *     tanks) stop swinging at one with Damage Reflection. Both shields cover all of his adds.
+ *     send back (Common/SpellReflect.h: abilities, taunts, Auto Shot still go); for Damage
+ *     Reflection see below. Both shields cover all of his adds.
  *     The Hot Coal in the middle of his room (the pit his Teleport throws players into) is a
  *     trap: with a player within about 7 yd of its middle, everyone within 10 yd takes Intense
  *     Heat (20533, about 750 fire a second, logged as environmental damage). Nothing in
