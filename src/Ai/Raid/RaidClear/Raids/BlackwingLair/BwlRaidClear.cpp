@@ -257,7 +257,7 @@ void RaidClearBlackwingLairStrategy::InitTriggers(std::vector<TriggerNode*>& tri
     triggers.push_back(
         new TriggerNode("rc bwl detonation keep away", { NextAction("rc bwl detonation stay clear", ACTION_RAID + 1) }));
 
-    triggers.push_back(new TriggerNode("rc bwl tranq", { NextAction("rc bwl tranq", ACTION_RAID + 1) }));
+    triggers.push_back(new TriggerNode("rc tranq", { NextAction("rc tranq", ACTION_RAID + 1) }));
     triggers.push_back(new TriggerNode("rc bwl fire nova totem",
                                        { NextAction("rc bwl fire nova totem move away", ACTION_RAID + 3) }));
     triggers.push_back(new TriggerNode("rc bwl black affliction",
@@ -764,69 +764,16 @@ float RcBwlCaptainMainTankMultiplier::GetValue(Action* action)
     return MainTankLeaves(botAI, bot, action->GetTarget()) ? 0.0f : 1.0f;
 }
 
-namespace
+std::vector<RaidClear::Tranq::Enrage> const& RaidClear::BlackwingLair::TranqEnrages()
 {
-    // The bosses whose Frenzy a Tranquilizing Shot takes off (both auras are called "Enrage").
-    // Flamegor's fires a Fire Nova at the whole raid every two seconds while it is up.
-    struct BossEnrage
-    {
-        uint32 entry;
-        uint32 aura;
+    // Both bosses' Frenzy is called "Enrage" in the client. Flamegor's fires a Fire Nova at the
+    // whole raid every two seconds while it is up; a Seether's Enrage doubles its attack speed.
+    static std::vector<Tranq::Enrage> const enrages = {
+        { NPC_DEATH_TALON_SEETHER, SPELL_SEETHER_ENRAGE, false },
+        { NPC_FLAMEGOR, SPELL_FLAMEGOR_FRENZY, true },
+        { NPC_CHROMAGGUS, SPELL_CHROMAGGUS_FRENZY, true },
     };
-    constexpr std::array<BossEnrage, 2> BOSS_ENRAGES = {{
-        { NPC_FLAMEGOR, SPELL_FLAMEGOR_FRENZY },
-        { NPC_CHROMAGGUS, SPELL_CHROMAGGUS_FRENZY },
-    }};
-
-    // An enraged Seether or boss in Tranquilizing Shot range that this hunter should take: the
-    // nearest of the group's hunter bots that can shoot it now, so they don't all fire at the
-    // same one.
-    Creature* EnragedToTranq(PlayerbotAI* botAI, Player* bot)
-    {
-        std::list<Creature*> enraged;
-        bot->GetCreatureListWithEntryInGrid(enraged, NPC_DEATH_TALON_SEETHER, TRANQUILIZING_SHOT_RANGE);
-        enraged.remove_if([](Creature* seether) { return !seether->IsAlive() || !seether->HasAura(SPELL_SEETHER_ENRAGE); });
-        for (BossEnrage const& enrage : BOSS_ENRAGES)
-            if (Creature* boss = FightingBoss(bot, enrage.entry))
-                if (boss->HasAura(enrage.aura))
-                    enraged.push_back(boss);
-
-        for (Creature* mob : enraged)
-        {
-            // CanCastSpell lets an out-of-range target through.
-            if (!bot->IsWithinCombatRange(mob, TRANQUILIZING_SHOT_RANGE) ||
-                !botAI->CanCastSpell("tranquilizing shot", mob))
-                continue;
-
-            float const mine = bot->GetExactDist(mob);
-            bool closer = false;
-            if (Group* group = bot->GetGroup())
-                for (GroupReference* ref = group->GetFirstMember(); ref && !closer; ref = ref->next())
-                    if (Player* member = ref->GetSource())
-                    {
-                        if (member == bot || !member->IsAlive() || !member->IsClass(CLASS_HUNTER) ||
-                            !member->IsInMap(bot) || member->GetExactDist(mob) >= mine ||
-                            !member->IsWithinCombatRange(mob, TRANQUILIZING_SHOT_RANGE))
-                            continue;
-                        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
-                        closer = memberAI && memberAI->CanCastSpell("tranquilizing shot", mob);
-                    }
-            if (!closer)
-                return mob;
-        }
-        return nullptr;
-    }
-}
-
-bool RcBwlTranqTrigger::IsActive()
-{
-    return bot->IsClass(CLASS_HUNTER) && bot->IsInCombat() && EnragedToTranq(botAI, bot);
-}
-
-bool RcBwlTranqAction::Execute(Event /*event*/)
-{
-    Creature* mob = EnragedToTranq(botAI, bot);
-    return mob && botAI->CastSpell("tranquilizing shot", mob);
+    return enrages;
 }
 
 // --- Chromaggus: Brood Affliction: Black ----------------------------------

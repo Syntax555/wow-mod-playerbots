@@ -21,6 +21,8 @@
 #ifndef MOD_RAID_CLEAR_INTERRUPTS_H
 #define MOD_RAID_CLEAR_INTERRUPTS_H
 
+#include "Define.h"
+
 #include <string>
 
 class Player;
@@ -47,8 +49,20 @@ namespace RaidClear
     // Whether an interrupt can stop this cast at all.
     bool Interruptible(SpellInfo const* cast);
 
+    // What this bot has ready that stops the cast: an interrupt where one gets through, else (on
+    // a cast worth one) a stun or an incapacitate; nullptr when nothing.
+    char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast, bool worthACastStopper);
+
     // One of the interrupts above, by its playerbots name.
     bool IsInterrupt(std::string const& name);
+
+    // After a bot sends an interrupt at a caster, the other bots leave that caster alone this long:
+    // one interrupt per cast, the next bot's kept for the next one.
+    constexpr uint32 INTERRUPT_SPREAD_MS = 400;
+    // Whether some bot has just sent an interrupt at this caster; and that one has. Map updates
+    // move between threads from one tick to the next, so this is shared and locked.
+    bool InterruptJustSent(Unit const* caster);
+    void InterruptSent(Unit const* caster);
 }
 
 #endif

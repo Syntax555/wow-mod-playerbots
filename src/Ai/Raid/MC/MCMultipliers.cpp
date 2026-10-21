@@ -131,13 +131,12 @@ float GolemaggMultiplier::GetValue(Action* action)
         if (!burnPhase && PlayerbotAI::IsRanged(bot) && dynamic_cast<MeleeAction*>(action))
             return 0.0f;
 
-        // Backed-off melee stay out until their whole Magma Splash stack expires (30s after the last application).
-        Aura* splash = bot->GetAura(SPELL_MAGMA_SPLASH);
-        bool backedOff = splash && splash->GetStackAmount() >= MAGMA_SPLASH_BACK_OFF_STACKS;
+        // Backed-off melee stay out until their whole Magma Splash stack expires (30s after the last
+        // application), or with raid clear on until their turn comes round again.
         bool engagesBoss = !dynamic_cast<McGolemaggBackOffAction*>(action) &&
                            (dynamic_cast<AttackAction*>(action) || dynamic_cast<MeleeAction*>(action) ||
                             dynamic_cast<CastReachTargetSpellAction*>(action));
-        if (!burnPhase && !PlayerbotAI::IsTank(bot) && backedOff && engagesBoss)
+        if (!burnPhase && !PlayerbotAI::IsTank(bot) && engagesBoss && GolemaggBacksOff(botAI, bot))
             return 0.0f;
     }
     return 1.0f;

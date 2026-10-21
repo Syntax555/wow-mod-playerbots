@@ -13,9 +13,14 @@
 #include "SpellDefines.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "Timer.h"
 
 #include <algorithm>
 #include <array>
+#include <iterator>
+#include <map>
+#include <mutex>
+#include <utility>
 
 namespace RaidClear
 {
@@ -78,6 +83,11 @@ namespace RaidClear
             return false;
         }
 
+        // When a bot last sent an interrupt at each caster (getMSTime()), by instance and caster.
+        using InterruptKey = std::pair<uint32, ObjectGuid>;
+        std::map<InterruptKey, uint32> sInterruptsSent;
+        std::mutex sInterruptsLock;
+
         SpellInfo const* InfoOf(PlayerbotAI* botAI, char const* spell)
         {
             uint32 const spellId = botAI->GetAiObjectContext()->GetValue<uint32>("spell id", spell)->Get();
@@ -137,6 +147,14 @@ namespace RaidClear
         return ready && bot->IsWithinLOSInMap(target) ? ready : nullptr;
     }
 
+    char const* ReadyStop(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast, bool worthACastStopper)
+    {
+        char const* with = Interruptible(cast) ? ReadyInterrupt(botAI, bot, caster) : nullptr;
+        if (!with && worthACastStopper)
+            with = ReadyCastStopper(botAI, bot, caster);
+        return with;
+    }
+
     bool Interruptible(SpellInfo const* cast)
     {
         // What the core's interrupt effect asks of the cast it stops (Spell::EffectInterruptCast).
@@ -150,5 +168,22 @@ namespace RaidClear
     {
         return std::any_of(INTERRUPTS.begin(), INTERRUPTS.end(),
                            [&name](Interrupt const& interrupt) { return name == interrupt.spell; });
+    }
+
+    bool InterruptJustSent(Unit const* caster)
+    {
+        std::lock_guard<std::mutex> lock(sInterruptsLock);
+        auto it = sInterruptsSent.find({ caster->GetInstanceId(), caster->GetGUID() });
+        return it != sInterruptsSent.end() && getMSTimeDiff(it->second, getMSTime()) < INTERRUPT_SPREAD_MS;
+    }
+
+    void InterruptSent(Unit const* caster)
+    {
+        std::lock_guard<std::mutex> lock(sInterruptsLock);
+        uint32 const now = getMSTime();
+        // Stamps that have run out (dead casters, other raids) go.
+        for (auto it = sInterruptsSent.begin(); it != sInterruptsSent.end();)
+            it = getMSTimeDiff(it->second, now) >= INTERRUPT_SPREAD_MS ? sInterruptsSent.erase(it) : std::next(it);
+        sInterruptsSent[{ caster->GetInstanceId(), caster->GetGUID() }] = now ? now : 1;
     }
 }
