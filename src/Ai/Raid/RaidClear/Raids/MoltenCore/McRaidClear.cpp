@@ -8,6 +8,7 @@
 
 #include "RaidClearConfig.h"
 #include "Common/BossLookup.h"
+#include "Common/Interrupts.h"
 #include "Common/SpellReflect.h"
 #include "Common/SplashSpells.h"
 #include "Common/TankRoles.h"
@@ -99,6 +100,34 @@ std::vector<RaidClear::Knockback::Thrower> const& RaidClear::MoltenCore::Thrower
     return throwers;
 }
 
+std::vector<RaidClear::Tranq::Enrage> const& RaidClear::MoltenCore::TranqEnrages()
+{
+    // Magmadar's Frenzy (an enrage): +150% attack speed, and a Lava Breath every 4 s while it lasts.
+    static std::vector<Tranq::Enrage> const enrages = {
+        { NPC_MAGMADAR, SPELL_MAGMADAR_FRENZY, true },
+    };
+    return enrages;
+}
+
+RaidClear::Hazards::Table const& RaidClear::MoltenCore::HazardTable()
+{
+    // Playerbots' "avoid aoe" only goes on bots with a real player as master, and only takes a bot
+    // out of fire that is already burning it, so the bots stood in all of these.
+    static Hazards::Table const table = {
+        { { NPC_GEHENNAS, SPELL_GEHENNAS_RAIN_OF_FIRE } },
+        { { GO_LAVA_BOMB, NPC_MAGMADAR } },
+        {},
+        {
+            // An Ancient Core Hound's Lava Breath hit 19 at once in one log; Magmadar breathes the
+            // same one every 4 s while his Frenzy lasts (its periodic trigger), and not otherwise.
+            { NPC_ANCIENT_CORE_HOUND, SPELL_LAVA_BREATH, 0 },
+            { NPC_MAGMADAR, SPELL_LAVA_BREATH, SPELL_MAGMADAR_FRENZY },
+            { NPC_FLAMEGUARD, SPELL_CONE_OF_FIRE, 0 },
+        },
+    };
+    return table;
+}
+
 void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     // Under a reflect: the spell of the other school that playerbots ranks below the wand (a
@@ -107,6 +136,17 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     triggers.push_back(new TriggerNode("rc warlock target reflects", { NextAction("immolate", 5.15f) }));
 
     triggers.push_back(new TriggerNode("rc kill order", { NextAction("rc mark kill order", ACTION_RAID + 2) }));
+
+    // Rain of Fire, Lava Bombs and the breaths (Common/Hazards.h), with the other ways out of a
+    // blast; under Inferno's and the Living Bomb's.
+    triggers.push_back(new TriggerNode("rc hazard", { NextAction("rc hazard stay clear", ACTION_EMERGENCY + 3) }));
+    triggers.push_back(new TriggerNode("rc tranq", { NextAction("rc tranq", ACTION_RAID + 1) }));
+    // Like the other raids' interrupts, above the heals: a Dark Mending puts 27,750 back on
+    // Sulfuron or a priest.
+    triggers.push_back(
+        new TriggerNode("rc mc dark mending", { NextAction("rc mc interrupt dark mending", ACTION_RAID + 4) }));
+    triggers.push_back(
+        new TriggerNode("rc mc shazzrah ranged", { NextAction("rc mc leave arcane explosion", ACTION_RAID + 1) }));
 
     triggers.push_back(
         new TriggerNode("rc mc magmadar tremor", { NextAction("rc mc tremor totem", ACTION_RAID + 1) }));
@@ -119,6 +159,11 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     // Above the way out of his Wrath: the spot is out of it too, and further from the eruptions.
     triggers.push_back(
         new TriggerNode("rc mc ragnaros spot", { NextAction("rc mc ragnaros spot", ACTION_RAID + 2) }));
+    // Above the heals: four seconds out of his reach and he Magma Blasts for 6,000 every 4 s.
+    triggers.push_back(
+        new TriggerNode("rc mc ragnaros tank", { NextAction("rc mc ragnaros tank", ACTION_EMERGENCY + 2) }));
+    triggers.push_back(
+        new TriggerNode("rc mc ragnaros taunt", { NextAction("rc mc ragnaros taunt", ACTION_RAID + 3) }));
 
     // Above the heals: eight pulses of Inferno are more than anyone is healed through.
     triggers.push_back(new TriggerNode("rc mc inferno", { NextAction("rc mc leave inferno", ACTION_EMERGENCY + 7) }));
@@ -151,6 +196,7 @@ void RaidClearMoltenCoreStrategy::InitMultipliers(std::vector<Multiplier*>& mult
     multipliers.push_back(new RcMcLivingBombHoldMultiplier(botAI));
     multipliers.push_back(new RcMcHotCoalHoldMultiplier(botAI));
     multipliers.push_back(new RcMcRagnarosHoldMultiplier(botAI));
+    multipliers.push_back(new RcMcShazzrahHoldMultiplier(botAI));
     multipliers.push_back(new RcMcReflectionMultiplier(botAI));
     multipliers.push_back(new RcMcAnxiousFireswornMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
@@ -205,6 +251,200 @@ float RcMcTremorMultiplier::GetValue(Action* action)
     // A shaman without Tremor Totem keeps what it has.
     return NearMagmadar(bot) && AI_VALUE2(uint32, "spell id", "tremor totem") ? 0.0f : 1.0f;
 }
+
+// --- Shazzrah ------------------------------------------------------------
+
+namespace
+{
+    // Shazzrah, alive and fighting. Not through playerbots' "find target": his Gate wipes his
+    // threat list, and a bot revived mid-fight or on a healer's duty has none on him either.
+    Creature* FightingShazzrah(Player* bot)
+    {
+        return bot->GetMapId() == MAP_ID ? RaidClear::FightingCreature(bot, { NPC_SHAZZRAH }) : nullptr;
+    }
+
+    // Ranged bots and healers: they keep out of Arcane Explosion and Wrath of Ragnaros.
+    bool KeepsBack(Player* bot)
+    {
+        return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
+    }
+}
+
+bool RcMcShazzrahRangedTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
+        return false;
+    // From his middle: the spell measures from there. Every 45 s his Gate puts him on top of a
+    // random player who isn't in his reach, so this fires again wherever he lands. Not for the one
+    // he is on: he follows it, and his tanks take him back.
+    Creature* boss = FightingShazzrah(bot);
+    return boss && boss->GetVictim() != bot && bot->GetExactDist(boss) < SHAZZRAH_KEEP_AWAY;
+}
+
+bool RcMcLeaveArcaneExplosionAction::Execute(Event /*event*/)
+{
+    Creature* boss = FightingShazzrah(bot);
+    if (!boss || boss->GetVictim() == bot || bot->GetExactDist(boss) >= SHAZZRAH_KEEP_AWAY)
+        return false;
+    // Any spot SPOT out is as good as another: the nearest wins, not the furthest, so the bot
+    // stays in reach of its spells.
+    Position const centre = boss->GetPosition();
+    auto const gapAt = [&centre](float x, float y, float z)
+    { return std::min(centre.GetExactDist(x, y, z), SHAZZRAH_SPOT); };
+    return _walk.Go(gapAt, SHAZZRAH_KEEP_AWAY, SHAZZRAH_SPOT, SHAZZRAH_WORTH_IT, SHAZZRAH_SEARCH, true);
+}
+
+float RcMcShazzrahHoldMultiplier::GetValue(Action* action)
+{
+    // Walking to a target near him (follow, formation, a healer's patient at his feet, a ranged
+    // bot's melee when it is out of mana) would take a bot back in. A spell's own reach stops at
+    // its range, out here; this module's way out and the walk out of the lava go anyway.
+    bool const walks = (dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action)) ||
+                       dynamic_cast<MeleeAction*>(action);
+    if (!walks || action->getName().rfind("rc ", 0) == 0 || action->getName() == "mc move from lava" ||
+        !KeepsBack(bot))
+        return 1.0f;
+
+    Unit* target = action->GetTarget();
+    if (!target || target == bot)
+        return 1.0f;
+    Creature* boss = FightingShazzrah(bot);
+    if (!boss || bot->GetExactDist(boss) > SHAZZRAH_HOLD)
+        return 1.0f;
+    // Reaching him to cast stops at spell range, out here: only a melee walk at him is held.
+    if (target == boss && !dynamic_cast<MeleeAction*>(action))
+        return 1.0f;
+    return target->GetExactDist(boss) < SHAZZRAH_KEEP_AWAY ? 0.0f : 1.0f;
+}
+
+// A bot in the middle of a cast doesn't run its engine until the cast ends. The Arcane Explosion
+// right after his Gate lands before anyone can be out of it; the next one comes three to six
+// seconds later. So the bots inside are told to drop the cast and look at once.
+class RaidClearMcArcaneExplosionSpellScript : public AllSpellScript
+{
+public:
+    RaidClearMcArcaneExplosionSpellScript()
+        : AllSpellScript("RaidClearMcArcaneExplosionSpellScript", { ALLSPELLHOOK_ON_PREPARE }) {}
+
+    void OnSpellPrepare(Spell* /*spell*/, Unit* caster, SpellInfo const* spellInfo) override
+    {
+        if (!caster || !spellInfo || spellInfo->Id != SPELL_ARCANE_EXPLOSION || caster->GetMapId() != MAP_ID ||
+            caster->GetEntry() != NPC_SHAZZRAH || !RaidClear::GetConfig().IsRaidEnabled(MAP_ID))
+            return;
+
+        Map::PlayerList const& players = caster->GetMap()->GetPlayers();
+        for (Map::PlayerList::const_iterator it = players.begin(); it != players.end(); ++it)
+        {
+            Player* player = it->GetSource();
+            if (!player || !player->IsAlive() || !KeepsBack(player) || caster->GetVictim() == player ||
+                player->GetExactDist(caster) >= SHAZZRAH_KEEP_AWAY)
+                continue;
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+            if (!botAI || !botAI->HasStrategy("rc moltencore", BOT_STATE_COMBAT))
+                continue;
+
+            botAI->RequestSpellInterrupt();
+            botAI->ResetActionDuration();
+        }
+    }
+};
+
+// --- Sulfuron Harbinger: Dark Mending -------------------------------------
+
+namespace
+{
+    // A 27,750 heal on Sulfuron is worth a stun or an incapacitate where no interrupt gets through.
+    char const* ReadyStopFor(PlayerbotAI* botAI, Player* bot, Unit* caster, SpellInfo const* cast)
+    {
+        return RaidClear::ReadyStop(botAI, bot, caster, cast, true);
+    }
+
+    // The Dark Mending this priest is casting, or nullptr.
+    SpellInfo const* DarkMendingOf(Unit const* caster)
+    {
+        if (caster->GetEntry() != NPC_FLAMEWALKER_PRIEST)
+            return nullptr;
+        Spell const* spell = caster->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        SpellInfo const* info = spell ? spell->GetSpellInfo() : nullptr;
+        return info && info->Id == SPELL_DARK_MENDING ? info : nullptr;
+    }
+
+    // The nearest priest fighting the raid that this bot should stop now, and with what. Its own
+    // target or not.
+    Unit* PriestToInterrupt(PlayerbotAI* botAI, Player* bot, char const*& with)
+    {
+        Unit* best = nullptr;
+        float bestDist = 0.0f;
+        for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (!unit || !unit->IsCreature() || !unit->IsAlive())
+                continue;
+            SpellInfo const* cast = DarkMendingOf(unit);
+            if (!cast || RaidClear::InterruptJustSent(unit))
+                continue;
+            char const* stop = ReadyStopFor(botAI, bot, unit, cast);
+            if (!stop)
+                continue;
+            float const dist = bot->GetDistance(unit);
+            if (!best || dist < bestDist)
+            {
+                best = unit;
+                bestDist = dist;
+                with = stop;
+            }
+        }
+        return best;
+    }
+}
+
+bool RcMcDarkMendingTrigger::IsActive()
+{
+    if (bot->GetMapId() != MAP_ID || !bot->IsAlive() || !bot->IsInCombat())
+        return false;
+    char const* with = nullptr;
+    return PriestToInterrupt(botAI, bot, with) != nullptr;
+}
+
+bool RcMcInterruptDarkMendingAction::Execute(Event /*event*/)
+{
+    char const* with = nullptr;
+    Unit* priest = PriestToInterrupt(botAI, bot, with);
+    // Claimed once it has gone out: a cast that fails leaves the next bot free to try.
+    if (!priest || !botAI->CastSpell(with, priest))
+        return false;
+    RaidClear::InterruptSent(priest);
+    return true;
+}
+
+// Dark Mending is a two second cast: the moment one starts, the bots near the priest that could
+// stop it and aren't casting look at once.
+class RaidClearMcDarkMendingSpellScript : public AllSpellScript
+{
+public:
+    RaidClearMcDarkMendingSpellScript()
+        : AllSpellScript("RaidClearMcDarkMendingSpellScript", { ALLSPELLHOOK_ON_PREPARE }) {}
+
+    void OnSpellPrepare(Spell* /*spell*/, Unit* caster, SpellInfo const* spellInfo) override
+    {
+        if (!caster || !spellInfo || spellInfo->Id != SPELL_DARK_MENDING || caster->GetMapId() != MAP_ID ||
+            caster->GetEntry() != NPC_FLAMEWALKER_PRIEST || !RaidClear::GetConfig().IsRaidEnabled(MAP_ID))
+            return;
+
+        Map::PlayerList const& players = caster->GetMap()->GetPlayers();
+        for (Map::PlayerList::const_iterator it = players.begin(); it != players.end(); ++it)
+        {
+            Player* player = it->GetSource();
+            if (!player || !player->IsAlive() || player->GetExactDist(caster) > DARK_MENDING_WAKE_RANGE ||
+                player->GetCurrentSpell(CURRENT_GENERIC_SPELL) || player->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+                continue;
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+            if (botAI && botAI->HasStrategy("rc moltencore", BOT_STATE_COMBAT) &&
+                ReadyStopFor(botAI, player, caster, spellInfo))
+                botAI->ResetActionDuration();
+        }
+    }
+};
 
 // --- Baron Geddon ---------------------------------------------------------
 
@@ -316,6 +556,8 @@ public:
 void RaidClear::MoltenCore::AddScripts()
 {
     new RaidClearMcInfernoSpellScript();
+    new RaidClearMcArcaneExplosionSpellScript();
+    new RaidClearMcDarkMendingSpellScript();
 }
 
 // --- Majordomo Executus ---------------------------------------------------
@@ -1228,11 +1470,6 @@ namespace
         return boss && !boss->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE) ? boss : nullptr;
     }
 
-    bool KeepsOutOfWrath(Player* bot)
-    {
-        return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
-    }
-
     // Where Lava Burst erupts (spell_target_position of 21886, 21900-21903 and 21905-21907).
     constexpr std::array<std::array<float, 2>, 8> LAVA_BURSTS = { {
         { 871.540f, -839.115f }, { 843.509f, -798.313f }, { 827.276f, -874.028f }, { 864.573f, -806.463f },
@@ -1304,10 +1541,25 @@ namespace
         std::map<ObjectGuid, std::size_t> holder;
     };
 
+    // Where his main tank stands: in front of him as he was summoned (he turns to the tank, but
+    // at the pull the tank is still running in, or thrown back by his Wrath).
+    Position RagnarosTankSpot(Creature* boss)
+    {
+        Position const& home = boss->GetHomePosition();
+        float const x = home.GetPositionX() + std::cos(home.GetOrientation()) * RAGNAROS_TANK_SPOT;
+        float const y = home.GetPositionY() + std::sin(home.GetOrientation()) * RAGNAROS_TANK_SPOT;
+        float z = boss->GetMap()->GetHeight(boss->GetPhaseMask(), x, y, home.GetPositionZ() + 10.0f);
+        if (z <= INVALID_HEIGHT)
+            z = home.GetPositionZ();
+        return Position(x, y, z);
+    }
+
     // This bot's spot. The first time a bot of the group has none, every ranged bot and healer
     // still without one gets one: healers first and each in group order, every one the spot
     // furthest from the eruptions that is a spacing clear of those already held; a healer's
-    // within reach of where the main tank stands, if any is. Map updates run on several
+    // within reach of where the main tank stands, if any is. The spacing is the wide one (against
+    // Might of Ragnaros) on the spots no closer to an eruption than the tight one would hand out
+    // to the same bots, and the tight one for whoever is left. Map updates run on several
     // threads, hence the lock.
     bool SpotFor(Player* bot, Creature* boss, RagnarosSpot& out)
     {
@@ -1347,50 +1599,94 @@ namespace
         {
             Player* member = ref->GetSource();
             if (!member || !member->IsAlive() || !member->IsInMap(bot) || !GET_PLAYERBOT_AI(member) ||
-                !KeepsOutOfWrath(member) || layout.holder.count(member->GetGUID()))
+                !KeepsBack(member) || layout.holder.count(member->GetGUID()))
                 continue;
             (PlayerbotAI::IsHeal(member) ? healers : ranged).push_back(member);
         }
 
-        // Where the main tank stands: in front of him as he was summoned (he turns to the tank, but
-        // at the pull the tank is still running in, or thrown back by his Wrath).
-        Position const& home = boss->GetHomePosition();
-        float const tankX = home.GetPositionX() + std::cos(home.GetOrientation()) * RAGNAROS_TANK_SPOT;
-        float const tankY = home.GetPositionY() + std::sin(home.GetOrientation()) * RAGNAROS_TANK_SPOT;
-        auto const clear = [&layout](RagnarosSpot const& spot)
+        Position const tank = RagnarosTankSpot(boss);
+        using Holders = std::map<ObjectGuid, std::size_t>;
+        std::size_t const none = layout.spots.size();
+        auto const clear = [&layout](Holders const& holders, RagnarosSpot const& spot, float spacing)
         {
-            for (auto const& [guid, index] : layout.holder)
+            for (auto const& [guid, index] : holders)
             {
                 RagnarosSpot const& other = layout.spots[index];
-                if (std::hypot(spot.x - other.x, spot.y - other.y) < RAGNAROS_SPOT_SPACING - 0.1f)
+                if (std::hypot(spot.x - other.x, spot.y - other.y) < spacing - 0.1f)
                     return false;
             }
             return true;
         };
-        auto const pick = [&](bool healer) -> std::size_t
+        // The first spot (furthest from the eruptions) a spacing clear of the holders and at least
+        // `floorGap` from every eruption; for a healer within reach of the tank, unless `anyReach`.
+        auto const pick = [&](Holders const& holders, bool healer, float spacing, float floorGap, bool anyReach)
         {
-            std::size_t fallback = layout.spots.size();
             for (std::size_t i = 0; i < layout.spots.size(); ++i)
             {
                 RagnarosSpot const& spot = layout.spots[i];
-                if (!clear(spot))
+                if (spot.gap < floorGap)
+                    break;  // sorted: the rest are closer still
+                if (!clear(holders, spot, spacing))
                     continue;
-                if (!healer || std::hypot(spot.x - tankX, spot.y - tankY) <= RAGNAROS_HEAL_REACH)
+                if (!healer || anyReach || std::hypot(spot.x - tank.GetPositionX(), spot.y - tank.GetPositionY()) <=
+                                               RAGNAROS_HEAL_REACH)
                     return i;
-                if (fallback == layout.spots.size())
-                    fallback = i;
             }
-            return fallback;
+            return none;
+        };
+        auto const pickTight = [&](Holders const& holders, bool healer)
+        {
+            std::size_t index = pick(holders, healer, RAGNAROS_SPOT_SPACING, 0.0f, false);
+            return index == none && healer ? pick(holders, healer, RAGNAROS_SPOT_SPACING, 0.0f, true) : index;
         };
 
+        // How close to an eruption the tight packing would put any of them.
+        Holders tight = layout.holder;
+        float floorGap = 1000.0f;
         for (bool const healer : { true, false })
             for (Player* member : healer ? healers : ranged)
             {
-                std::size_t const index = pick(healer);
-                if (index == layout.spots.size())
+                std::size_t const index = pickTight(tight, healer);
+                if (index == none)
                     break;
-                layout.holder[member->GetGUID()] = index;
+                tight[member->GetGUID()] = index;
+                floorGap = std::min(floorGap, layout.spots[index].gap);
             }
+
+        // Then the same bots again, the wide spacing first and the tight one where that has no
+        // room, never more than RAGNAROS_WIDE_LAVA_SLACK closer to an eruption than that (the
+        // tight packing alone takes exactly the spots furthest from them, so spreading out needs
+        // some room). Only if all of them fit, and no healer is out of the tank's reach that the
+        // tight layout had in it, does the wide layout replace the tight one.
+        float const wideFloor = floorGap - RAGNAROS_WIDE_LAVA_SLACK;
+        Holders wide = layout.holder;
+        for (bool const healer : { true, false })
+            for (Player* member : healer ? healers : ranged)
+            {
+                std::size_t index = pick(wide, healer, RAGNAROS_WIDE_SPOT_SPACING, wideFloor, false);
+                if (index == none)
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, wideFloor, false);
+                if (index == none && healer)
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, wideFloor, true);
+                if (index == none)
+                    break;
+                wide[member->GetGUID()] = index;
+            }
+        auto const healersInReach = [&](Holders const& holders)
+        {
+            std::size_t count = 0;
+            for (Player* member : healers)
+            {
+                auto const it = holders.find(member->GetGUID());
+                if (it != holders.end() &&
+                    std::hypot(layout.spots[it->second].x - tank.GetPositionX(),
+                               layout.spots[it->second].y - tank.GetPositionY()) <= RAGNAROS_HEAL_REACH)
+                    ++count;
+            }
+            return count;
+        };
+        layout.holder =
+            wide.size() == tight.size() && healersInReach(wide) >= healersInReach(tight) ? wide : tight;
 
         auto const mine = layout.holder.find(bot->GetGUID());
         if (mine == layout.holder.end())
@@ -1402,7 +1698,7 @@ namespace
 
 bool RcMcRagnarosRangedTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !KeepsOutOfWrath(bot) || !botAI->CanMove())
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
 
     // From his middle: the spell measures from there, and he is 20 yd wide.
@@ -1434,7 +1730,7 @@ bool RcMcRagnarosMoveOutAction::Execute(Event /*event*/)
 
 bool RcMcRagnarosSpotTrigger::IsActive()
 {
-    if (!bot->IsAlive() || !KeepsOutOfWrath(bot) || !botAI->CanMove())
+    if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
     Creature* boss = EmergedRagnaros(bot);
     RagnarosSpot spot;
@@ -1459,7 +1755,7 @@ float RcMcRagnarosHoldMultiplier::GetValue(Action* action)
     bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
     if (!walks && !dynamic_cast<CastReachTargetSpellAction*>(action))
         return 1.0f;
-    if (!KeepsOutOfWrath(bot))
+    if (!KeepsBack(bot))
         return 1.0f;
 
     // On its spot, a bot doesn't walk off it for anything but this module's own way out, or out
@@ -1481,6 +1777,58 @@ float RcMcRagnarosHoldMultiplier::GetValue(Action* action)
     if (!boss || bot->GetExactDist(boss) > RAGNAROS_HOLD)
         return 1.0f;
     return target->GetExactDist(boss) < RAGNAROS_KEEP_AWAY ? 0.0f : 1.0f;
+}
+
+namespace
+{
+    // The tank that holds Ragnaros: the group's acting main tank.
+    bool HoldsRagnaros(Player* bot)
+    {
+        return PlayerbotAI::IsTank(bot) && RaidClear::Tanks::ActingMainTank(bot->GetGroup()) == bot;
+    }
+}
+
+bool RcMcRagnarosTankTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !botAI->CanMove() || !HoldsRagnaros(bot))
+        return false;
+    Creature* boss = EmergedRagnaros(bot);
+    if (!boss)
+        return false;
+    Position const spot = RagnarosTankSpot(boss);
+    if (bot->IsWithinMeleeRange(boss) && bot->GetExactDist2d(&spot) <= RAGNAROS_TANK_SPOT_LEAVE)
+        return false;
+    // Never a walk into the lava: this outranks the way out of it.
+    return DryAt(bot->GetMap(), bot->GetPhaseMask(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ());
+}
+
+bool RcMcRagnarosTankAction::Execute(Event /*event*/)
+{
+    Creature* boss = EmergedRagnaros(bot);
+    if (!boss)
+        return false;
+    Position const spot = RagnarosTankSpot(boss);
+    if (bot->GetExactDist2d(&spot) <= RAGNAROS_TANK_SPOT_LEAVE && bot->IsWithinMeleeRange(boss))
+        return false;
+    return MoveTo(bot->GetMapId(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ(), false, false, false,
+                  true, MovementPriority::MOVEMENT_FORCED);
+}
+
+bool RcMcRagnarosTauntTrigger::IsActive()
+{
+    // Back in his reach first: taunted from where Wrath threw it, he would be on a tank out of his
+    // reach, and Magma Blast it.
+    if (!bot->IsAlive() || !HoldsRagnaros(bot))
+        return false;
+    Creature* boss = EmergedRagnaros(bot);
+    return boss && boss->GetVictim() && boss->GetVictim() != bot && bot->IsWithinMeleeRange(boss) &&
+           RaidClear::Tanks::CanTaunt(botAI, boss);
+}
+
+bool RcMcRagnarosTauntAction::Execute(Event /*event*/)
+{
+    Creature* boss = EmergedRagnaros(bot);
+    return boss && boss->GetVictim() != bot && RaidClear::Tanks::Taunt(botAI, boss);
 }
 
 // --- Baron Geddon: Living Bomb --------------------------------------------

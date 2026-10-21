@@ -134,7 +134,7 @@
  *     Only a bot with someone that close moves, to the nearest spot with nobody that close (a
  *     search all the way round it; pushes away from each neighbour cancel out in a ring of
  *     them), and its follow, formation or camp hold doesn't walk it straight back.
- *   - Trash ground fire and cleaves (BwlHazards.cpp): bots walk out of the Warlocks' Rain of
+ *   - Trash ground fire and cleaves (BwlHazards.cpp, Common/Hazards.h): bots walk out of the Warlocks' Rain of
  *     Fire and the Spellbinders' and Hatchers' Flamestrike while they burn (the fire on the
  *     ground, not the cast), and everyone but the tanks out of the front of a Death Talon
  *     Captain or Overseer it isn't on (Cleave). The way out is the one the leash allows.
@@ -156,9 +156,11 @@
 #ifndef MOD_RAID_CLEAR_BLACKWING_LAIR_H
 #define MOD_RAID_CLEAR_BLACKWING_LAIR_H
 
+#include "Common/Hazards.h"
 #include "Common/KillOrder.h"
 #include "Common/Knockback.h"
 #include "Common/TankRoles.h"
+#include "Common/Tranquilize.h"
 #include "Common/WayOut.h"
 
 #include "Action.h"
@@ -464,19 +466,13 @@ namespace RaidClear::BlackwingLair
     constexpr float WYRMGUARD_MELEE_HEALTH_PCT = 75.0f;
     constexpr uint32 WYRMGUARD_STOMPS_FRESH_MS = 100;
 
-    // Ground fire (BwlHazards.cpp): a bot keeps this far past its edge. A Captain's or Overseer's
-    // Cleave reaches this far past its own size, this far either side of its facing. The hazards
-    // are looked up per bot every HAZARD_FRESH_MS.
-    constexpr float GROUND_FIRE_MARGIN = 1.5f;
+    // A Captain's or Overseer's Cleave (BwlHazards.cpp) reaches this far past its own size, this
+    // far either side of its facing.
     constexpr float CLEAVE_REACH = 6.0f;
     constexpr float CLEAVE_HALF_ANGLE = 1.0472f;  // 60 degrees
-    constexpr float HAZARD_SPOT = 2.0f;
-    constexpr uint32 HAZARD_FRESH_MS = 100;
 
-    // Interrupts (BwlInterrupts.cpp). After a bot sends one at a caster the rest leave that
-    // caster alone this long; bots this close to a caster when it starts a cast are woken to
-    // look (Silencing Shot, the farthest, reaches 35 yd).
-    constexpr uint32 INTERRUPT_SPREAD_MS = 400;
+    // Interrupts (BwlInterrupts.cpp): bots this close to a caster when it starts a cast are woken
+    // to look (Silencing Shot, the farthest, reaches 35 yd).
     constexpr float INTERRUPT_WAKE_RANGE = 40.0f;
 
     // Mark of Detonation's explosion (22439) hits the marked player's allies within 30 yd.
@@ -492,8 +488,6 @@ namespace RaidClear::BlackwingLair
     constexpr float FIRE_NOVA_KEEP_AWAY = 13.0f;
     // Priests under Corrupted Healing still heal a tank below this.
     constexpr float CORRUPTED_HEALING_TANK_PCT = 35.0f;
-    // Tranquilizing Shot's range.
-    constexpr float TRANQUILIZING_SHOT_RANGE = 35.0f;
     // Wyrmguards fighting the group count within this of the bot (which ones they are is looked
     // up once per instance every WYRMGUARD_CACHE_MS). One further than WYRMGUARD_RUNNING from
     // whoever it is on is still running there, and that spot counts too.
@@ -544,6 +538,12 @@ namespace RaidClear::BlackwingLair
     // Nefarian and Chromaggus: no taunt lands on them, so the tanks share threat and the
     // damage dealers stay under them (see Common/TankRoles.h).
     std::vector<uint32> const& TankSplitThreatShareBosses();
+
+    // The Seethers' Enrage and Flamegor's and Chromaggus' Frenzy (Common/Tranquilize.h).
+    std::vector<Tranq::Enrage> const& TranqEnrages();
+
+    // Rain of Fire, Flamestrike and the Captains' and Overseers' Cleave (Common/Hazards.h).
+    Hazards::Table const& HazardTable();
 
     // Firemaw, Ebonroc and Flamegor: whether this tank is one of the two that hold the drake (the
     // main tank, the first spare bot off-tank in group order, or whoever it is on now).
@@ -729,28 +729,6 @@ class RcBwlTechnicianHoldMultiplier : public Multiplier
 public:
     RcBwlTechnicianHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc bwl technician hold") {}
     float GetValue(Action* action) override;
-};
-
-// --- Trash ground fire and cleaves (BwlHazards.cpp) ------------------------
-
-// The bot stands in a Rain of Fire or Flamestrike that is burning, or (not a tank) in front of a
-// Death Talon Captain or Overseer that isn't on it. On both engines, in "rc bwl runners".
-class RcBwlTrashHazardTrigger : public Trigger
-{
-public:
-    RcBwlTrashHazardTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc bwl trash hazard") {}
-    bool IsActive() override;
-};
-
-// With "stay" in the name for the passive camp hold (see the Wyrmguard one).
-class RcBwlTrashHazardAction : public Action
-{
-public:
-    RcBwlTrashHazardAction(PlayerbotAI* botAI) : Action(botAI, "rc bwl hazard stay clear"), _walk(botAI) {}
-    bool Execute(Event event) override;
-
-private:
-    RaidClear::WayOutWalk _walk;
 };
 
 // --- Vaelastrasz's room: the technicians that run (BwlRunners.cpp) --------
@@ -1066,22 +1044,6 @@ class RcBwlBlackAfflictionAction : public Action
 {
 public:
     RcBwlBlackAfflictionAction(PlayerbotAI* botAI) : Action(botAI, "rc bwl remove black affliction") {}
-    bool Execute(Event event) override;
-};
-
-// --- Tranquilizing Shot: Seethers, Flamegor, Chromaggus -------------------
-
-class RcBwlTranqTrigger : public Trigger
-{
-public:
-    RcBwlTranqTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc bwl tranq") {}
-    bool IsActive() override;
-};
-
-class RcBwlTranqAction : public Action
-{
-public:
-    RcBwlTranqAction(PlayerbotAI* botAI) : Action(botAI, "rc bwl tranq") {}
     bool Execute(Event event) override;
 };
 

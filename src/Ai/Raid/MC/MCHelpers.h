@@ -7,6 +7,11 @@
 #ifndef PLAYERBOTS_MCHELPERS_H
 #define PLAYERBOTS_MCHELPERS_H
 
+#include "Define.h"
+
+class Player;
+class PlayerbotAI;
+
 namespace MoltenCoreHelpers
 {
 enum MoltenCoreNPCs
@@ -38,6 +43,13 @@ constexpr float CORE_HOUND_REKINDLE_RANGE = 80.0f;
 
 constexpr uint32 MAGMA_SPLASH_BACK_OFF_STACKS = 20;
 constexpr float MAGMA_SPLASH_BACK_OFF_DISTANCE = 12.0f;
+// With raid clear's Molten Core strategy on, melee take turns instead: one backs off from this
+// many stacks while fewer than half of the group's melee bots are out, and stays out until its
+// stacks are gone (MAGMA_SPLASH_BACK_OFF_STACKS still sends anyone out).
+constexpr uint32 MAGMA_SPLASH_ROTATE_STACKS = 8;
+
+// Whether this bot should be away from Golemagg for its Magma Splash stacks to run out.
+bool GolemaggBacksOff(PlayerbotAI* botAI, Player* bot);
 
 // Shazzrah's Arcane Explosion radius
 constexpr float ARCANE_EXPLOSION_DISTANCE = 26.0f;

@@ -9,11 +9,13 @@
 
 #include "Common/AggroLeash.h"
 #include "Common/Charmed.h"
+#include "Common/Hazards.h"
 #include "Common/KillOrder.h"
 #include "Common/Knockback.h"
 #include "Common/RaidDiscipline.h"
 #include "Common/SpellReflect.h"
 #include "Common/TankRoles.h"
+#include "Common/Tranquilize.h"
 #include "Raids/AhnQiraj/AqRaidClear.h"
 #include "Raids/BlackwingLair/BwlRaidClear.h"
 #include "Raids/MoltenCore/McRaidClear.h"
@@ -90,6 +92,10 @@ public:
         creators["rc mc leave inferno"] = &RaidClearActionContext::mc_leave_inferno;
         creators["rc mc leave hot coal"] = &RaidClearActionContext::mc_leave_hot_coal;
         creators["rc mc carry living bomb"] = &RaidClearActionContext::mc_carry_living_bomb;
+        creators["rc mc leave arcane explosion"] = &RaidClearActionContext::mc_leave_arcane_explosion;
+        creators["rc mc interrupt dark mending"] = &RaidClearActionContext::mc_interrupt_dark_mending;
+        creators["rc mc ragnaros tank"] = &RaidClearActionContext::mc_ragnaros_tank;
+        creators["rc mc ragnaros taunt"] = &RaidClearActionContext::mc_ragnaros_taunt;
 
         creators["rc bwl disarm suppression"] = &RaidClearActionContext::bwl_disarm_suppression;
         creators["rc bwl broodlord move out"] = &RaidClearActionContext::bwl_broodlord_move_out;
@@ -103,7 +109,6 @@ public:
         creators["rc bwl dragon move"] = &RaidClearActionContext::bwl_dragon_move;
         creators["rc bwl nefarian fear ward"] = &RaidClearActionContext::bwl_nefarian_fear_ward;
         creators["rc bwl wyrmguard stay clear"] = &RaidClearActionContext::bwl_wyrmguard_keep_away;
-        creators["rc bwl hazard stay clear"] = &RaidClearActionContext::bwl_hazard_stay_clear;
         creators["rc bwl stay and interrupt"] = &RaidClearActionContext::bwl_interrupt;
         creators["rc bwl banish felguard"] = &RaidClearActionContext::bwl_banish_felguard;
         creators["rc bwl tremor for tank"] = &RaidClearActionContext::bwl_tremor_for_tank;
@@ -113,7 +118,6 @@ public:
         creators["rc bwl nefarian turn"] = &RaidClearActionContext::bwl_nefarian_turn;
         creators["rc bwl construct gather"] = &RaidClearActionContext::bwl_construct_gather;
         creators["rc bwl detonation stay clear"] = &RaidClearActionContext::bwl_detonation_keep_away;
-        creators["rc bwl tranq"] = &RaidClearActionContext::bwl_tranq;
         creators["rc bwl remove black affliction"] = &RaidClearActionContext::bwl_remove_black_affliction;
         creators["rc bwl fire nova totem move away"] = &RaidClearActionContext::bwl_fire_nova_totem_move_away;
         creators["rc bwl captain hand off"] = &RaidClearActionContext::bwl_captain_hand_off;
@@ -162,6 +166,8 @@ public:
         creators["rc aq40 veklor tank threat"] = &RaidClearActionContext::aq40_veklor_tank_threat;
         creators["rc control charmed"] = &RaidClearActionContext::control_charmed;
         creators["rc leave charmed target"] = &RaidClearActionContext::leave_charmed_target;
+        creators["rc tranq"] = &RaidClearActionContext::tranq;
+        creators["rc hazard stay clear"] = &RaidClearActionContext::hazard_stay_clear;
     }
 
 private:
@@ -191,6 +197,10 @@ private:
     static Action* mc_leave_inferno(PlayerbotAI* botAI) { return new RcMcLeaveInfernoAction(botAI); }
     static Action* mc_leave_hot_coal(PlayerbotAI* botAI) { return new RcMcLeaveHotCoalAction(botAI); }
     static Action* mc_carry_living_bomb(PlayerbotAI* botAI) { return new RcMcCarryLivingBombAction(botAI); }
+    static Action* mc_leave_arcane_explosion(PlayerbotAI* botAI) { return new RcMcLeaveArcaneExplosionAction(botAI); }
+    static Action* mc_interrupt_dark_mending(PlayerbotAI* botAI) { return new RcMcInterruptDarkMendingAction(botAI); }
+    static Action* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankAction(botAI); }
+    static Action* mc_ragnaros_taunt(PlayerbotAI* botAI) { return new RcMcRagnarosTauntAction(botAI); }
 
     static Action* bwl_disarm_suppression(PlayerbotAI* botAI) { return new RcBwlDisarmSuppressionAction(botAI); }
     static Action* bwl_broodlord_move_out(PlayerbotAI* botAI)
@@ -208,7 +218,6 @@ private:
     static Action* bwl_dragon_move(PlayerbotAI* botAI) { return new RcBwlDragonMoveAction(botAI); }
     static Action* bwl_nefarian_fear_ward(PlayerbotAI* botAI) { return new RcBwlFearWardAction(botAI); }
     static Action* bwl_wyrmguard_keep_away(PlayerbotAI* botAI) { return new RcBwlWyrmguardKeepAwayAction(botAI); }
-    static Action* bwl_hazard_stay_clear(PlayerbotAI* botAI) { return new RcBwlTrashHazardAction(botAI); }
     static Action* bwl_interrupt(PlayerbotAI* botAI) { return new RcBwlInterruptAction(botAI); }
     static Action* bwl_banish_felguard(PlayerbotAI* botAI) { return new RcBwlBanishFelguardAction(botAI); }
     static Action* bwl_tremor_for_tank(PlayerbotAI* botAI) { return new RcBwlTremorTankAction(botAI); }
@@ -218,7 +227,6 @@ private:
     static Action* bwl_nefarian_turn(PlayerbotAI* botAI) { return new RcBwlNefarianTurnAction(botAI); }
     static Action* bwl_construct_gather(PlayerbotAI* botAI) { return new RcBwlConstructGatherAction(botAI); }
     static Action* bwl_detonation_keep_away(PlayerbotAI* botAI) { return new RcBwlDetonationKeepAwayAction(botAI); }
-    static Action* bwl_tranq(PlayerbotAI* botAI) { return new RcBwlTranqAction(botAI); }
     static Action* bwl_remove_black_affliction(PlayerbotAI* botAI) { return new RcBwlBlackAfflictionAction(botAI); }
     static Action* bwl_fire_nova_totem_move_away(PlayerbotAI* botAI) { return new RcBwlFireNovaTotemMoveAwayAction(botAI); }
     static Action* bwl_captain_hand_off(PlayerbotAI* botAI) { return new RcBwlCaptainHandOffAction(botAI); }
@@ -267,6 +275,8 @@ private:
     static Action* aq40_veklor_tank_threat(PlayerbotAI* botAI) { return new RcAq40VeklorTankThreatAction(botAI); }
     static Action* control_charmed(PlayerbotAI* botAI) { return new RcControlCharmedAction(botAI); }
     static Action* leave_charmed_target(PlayerbotAI* botAI) { return new RcLeaveCharmedTargetAction(botAI); }
+    static Action* tranq(PlayerbotAI* botAI) { return new RcTranqAction(botAI); }
+    static Action* hazard_stay_clear(PlayerbotAI* botAI) { return new RcHazardAction(botAI); }
 };
 
 class RaidClearTriggerContext : public NamedObjectContext<Trigger>
@@ -301,6 +311,10 @@ public:
         creators["rc mc inferno"] = &RaidClearTriggerContext::mc_inferno;
         creators["rc mc hot coal"] = &RaidClearTriggerContext::mc_hot_coal;
         creators["rc mc living bomb"] = &RaidClearTriggerContext::mc_living_bomb;
+        creators["rc mc shazzrah ranged"] = &RaidClearTriggerContext::mc_shazzrah_ranged;
+        creators["rc mc dark mending"] = &RaidClearTriggerContext::mc_dark_mending;
+        creators["rc mc ragnaros tank"] = &RaidClearTriggerContext::mc_ragnaros_tank;
+        creators["rc mc ragnaros taunt"] = &RaidClearTriggerContext::mc_ragnaros_taunt;
 
         creators["rc bwl suppression device"] = &RaidClearTriggerContext::bwl_suppression_device;
         creators["rc bwl broodlord ranged"] = &RaidClearTriggerContext::bwl_broodlord_ranged;
@@ -316,7 +330,6 @@ public:
         creators["rc bwl nefarian tremor"] = &RaidClearTriggerContext::bwl_nefarian_tremor;
         creators["rc bwl nefarian fear ward"] = &RaidClearTriggerContext::bwl_nefarian_fear_ward;
         creators["rc bwl wyrmguard keep away"] = &RaidClearTriggerContext::bwl_wyrmguard_keep_away;
-        creators["rc bwl trash hazard"] = &RaidClearTriggerContext::bwl_trash_hazard;
         creators["rc bwl interrupt"] = &RaidClearTriggerContext::bwl_interrupt;
         creators["rc bwl banish felguard"] = &RaidClearTriggerContext::bwl_banish_felguard;
         creators["rc bwl bellowing roar"] = &RaidClearTriggerContext::bwl_bellowing_roar;
@@ -325,7 +338,6 @@ public:
         creators["rc bwl nefarian rogue call"] = &RaidClearTriggerContext::bwl_nefarian_rogue_call;
         creators["rc bwl construct gather"] = &RaidClearTriggerContext::bwl_construct_gather;
         creators["rc bwl detonation keep away"] = &RaidClearTriggerContext::bwl_detonation_keep_away;
-        creators["rc bwl tranq"] = &RaidClearTriggerContext::bwl_tranq;
         creators["rc bwl black affliction"] = &RaidClearTriggerContext::bwl_black_affliction;
         creators["rc bwl fire nova totem"] = &RaidClearTriggerContext::bwl_fire_nova_totem;
         creators["rc bwl captain hand off"] = &RaidClearTriggerContext::bwl_captain_hand_off;
@@ -377,6 +389,8 @@ public:
         creators["rc charmed target"] = &RaidClearTriggerContext::charmed_target;
         creators["rc mage target reflects"] = &RaidClearTriggerContext::mage_target_reflects;
         creators["rc warlock target reflects"] = &RaidClearTriggerContext::warlock_target_reflects;
+        creators["rc tranq"] = &RaidClearTriggerContext::tranq;
+        creators["rc hazard"] = &RaidClearTriggerContext::hazard;
         // One per class and school, named in ChromaggusSchoolSpellList.
         for (auto const& entry : RaidClear::BlackwingLair::ChromaggusSchoolSpellList())
         {
@@ -419,6 +433,10 @@ private:
     static Trigger* mc_inferno(PlayerbotAI* botAI) { return new RcMcInfernoTrigger(botAI); }
     static Trigger* mc_hot_coal(PlayerbotAI* botAI) { return new RcMcHotCoalTrigger(botAI); }
     static Trigger* mc_living_bomb(PlayerbotAI* botAI) { return new RcMcLivingBombTrigger(botAI); }
+    static Trigger* mc_shazzrah_ranged(PlayerbotAI* botAI) { return new RcMcShazzrahRangedTrigger(botAI); }
+    static Trigger* mc_dark_mending(PlayerbotAI* botAI) { return new RcMcDarkMendingTrigger(botAI); }
+    static Trigger* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankTrigger(botAI); }
+    static Trigger* mc_ragnaros_taunt(PlayerbotAI* botAI) { return new RcMcRagnarosTauntTrigger(botAI); }
 
     static Trigger* bwl_suppression_device(PlayerbotAI* botAI) { return new RcBwlSuppressionDeviceTrigger(botAI); }
     static Trigger* bwl_broodlord_ranged(PlayerbotAI* botAI)
@@ -439,7 +457,6 @@ private:
     static Trigger* bwl_nefarian_tremor(PlayerbotAI* botAI) { return new RcBwlNefarianTremorTrigger(botAI); }
     static Trigger* bwl_nefarian_fear_ward(PlayerbotAI* botAI) { return new RcBwlFearWardTrigger(botAI); }
     static Trigger* bwl_wyrmguard_keep_away(PlayerbotAI* botAI) { return new RcBwlWyrmguardKeepAwayTrigger(botAI); }
-    static Trigger* bwl_trash_hazard(PlayerbotAI* botAI) { return new RcBwlTrashHazardTrigger(botAI); }
     static Trigger* bwl_interrupt(PlayerbotAI* botAI) { return new RcBwlInterruptTrigger(botAI); }
     static Trigger* bwl_banish_felguard(PlayerbotAI* botAI) { return new RcBwlBanishFelguardTrigger(botAI); }
     static Trigger* bwl_bellowing_roar(PlayerbotAI* botAI) { return new RcBwlBellowingRoarTrigger(botAI); }
@@ -448,7 +465,6 @@ private:
     static Trigger* bwl_nefarian_rogue_call(PlayerbotAI* botAI) { return new RcBwlNefarianRogueCallTrigger(botAI); }
     static Trigger* bwl_construct_gather(PlayerbotAI* botAI) { return new RcBwlConstructGatherTrigger(botAI); }
     static Trigger* bwl_detonation_keep_away(PlayerbotAI* botAI) { return new RcBwlDetonationKeepAwayTrigger(botAI); }
-    static Trigger* bwl_tranq(PlayerbotAI* botAI) { return new RcBwlTranqTrigger(botAI); }
     static Trigger* bwl_black_affliction(PlayerbotAI* botAI) { return new RcBwlBlackAfflictionTrigger(botAI); }
     static Trigger* bwl_fire_nova_totem(PlayerbotAI* botAI) { return new RcBwlFireNovaTotemTrigger(botAI); }
     static Trigger* bwl_captain_hand_off(PlayerbotAI* botAI) { return new RcBwlCaptainHandOffTrigger(botAI); }
@@ -498,6 +514,8 @@ private:
     static Trigger* aq40_veklor_tank_threat(PlayerbotAI* botAI) { return new RcAq40VeklorTankThreatTrigger(botAI); }
     static Trigger* charmed_member(PlayerbotAI* botAI) { return new RcCharmedMemberTrigger(botAI); }
     static Trigger* charmed_target(PlayerbotAI* botAI) { return new RcCharmedTargetTrigger(botAI); }
+    static Trigger* tranq(PlayerbotAI* botAI) { return new RcTranqTrigger(botAI); }
+    static Trigger* hazard(PlayerbotAI* botAI) { return new RcHazardTrigger(botAI); }
     static Trigger* mage_target_reflects(PlayerbotAI* botAI)
     {
         return new RcTargetReflectsTrigger(botAI, "rc mage target reflects", CLASS_MAGE);

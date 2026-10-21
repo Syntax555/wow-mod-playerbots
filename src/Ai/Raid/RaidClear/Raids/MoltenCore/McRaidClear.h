@@ -1,15 +1,36 @@
 /*
  * Raid clear: Molten Core (map 409).
  *
- * Runs next to mod-playerbots' "moltencore" strategy, which already handles Shazzrah's Arcane
- * Explosion range, the Golemagg / Core Rager tank split, Core Hound
- * skull rotation, lava escape and the resistance auras/totems. Fire patches (Lava Bomb traps)
- * and Rain of Fire are left to playerbots' generic "avoid aoe".
+ * Runs next to mod-playerbots' "moltencore" strategy, which already handles the Golemagg / Core
+ * Rager tank split and Magma Splash back-off (with this strategy on, the melee take turns there:
+ * see MCHelpers.h), Core Hound skull rotation, lava escape and the resistance auras/totems. Its
+ * own Shazzrah rule stands down while this one runs.
  *
  * Added here (mechanics from the core scripts in scripts/EasternKingdoms/BlackrockMountain/
  * MoltenCore):
  *   - Kill order: Lava Spawn (splits every 15s), the healing adds (Sulfuron's priests,
  *     Majordomo's healers), then the other boss adds and Ragnaros' Sons of Flame.
+ *   - Fire on the ground and breaths (Common/Hazards.h): bots walk out of Gehennas' Rain of Fire
+ *     while it burns and out of Magmadar's Lava Bombs (fire traps, 5 yd), and everyone but the
+ *     tanks out of the front of an Ancient Core Hound (Lava Breath, a 54 degree cone 35 yd long:
+ *     one hit 19 players in a log), of Magmadar while his Frenzy breathes the same, or of a
+ *     Flameguard (Cone of Fire) it isn't on.
+ *     Playerbots' "avoid aoe" only goes on bots with a real player as master, and only steps a
+ *     bot back out of fire that is already burning it.
+ *   - Magmadar's Frenzy (an enrage, and a Lava Breath every 4 s while it lasts; a log showed no
+ *     Tranquilizing Shot on any of five): the nearest hunter takes it off (Common/Tranquilize.h).
+ *   - Sulfuron's Flamewaker Priests cast Dark Mending (19775, 2 s), which heals the friend
+ *     lowest on health for 27,750. Any bot with an interrupt ready and in reach stops it, its own
+ *     target or not, one bot per cast (Common/Interrupts.h); where no interrupt gets through, a
+ *     stun or an incapacitate. A bot that isn't casting is woken to look the moment one starts.
+ *   - Shazzrah's Arcane Explosion (19712) reaches 30 yd from his middle, and every 45 s his
+ *     Gate puts him on top of a random player out of his reach (wiping his threat) and he casts
+ *     one at once. Playerbots kept its ranged 26 yd from his edge, by a step straight back, found
+ *     him only through threat and left the healers out. Here every ranged bot and healer within
+ *     32.5 yd of his middle (but the one he is on: he follows it) walks to the nearest spot 34.5
+ *     yd out (28.5 from his edge, where its spells still reach him), wherever he has gone, a bot
+ *     in the middle of a cast is told to drop it when he starts one, and nobody walks back toward
+ *     anything that close to him but to cast at him.
  *   - Magmadar: every shaman keeps Tremor Totem down. Panic is a 45 yd raid-wide fear.
  *     Playerbots keeps each shaman's own earth totem (Stoneskin, Strength of Earth) down the
  *     same way, and the two share a slot: left alone they replace each other every second and
@@ -39,11 +60,19 @@
  *     of 2026-10-15/16: 157 and 252 hits, up to 38 players by one eruption; Wrath of Ragnaros hit
  *     no ranged bot or healer at all). Ranged bots and healers each take a spot of their own on
  *     the rock 30 to 42 yd from him, as far from all eight as there is, dry and in his line of
- *     sight, 3.5 yd apart: the west side of the room. Healers pick first, among spots within
- *     36 yd of the main tank so he stays in reach of their heals. Spots are handed out once and
+ *     sight, 7 yd apart (Might of Ragnaros puts a Flame on a random mana user whose Intense Heat
+ *     throws everyone within 20 yd of it) where there is room for that at most 4 yd closer to the
+ *     eruptions than 3.5 yd apart would put them, else 3.5 yd apart: the west side of the
+ *     room. Healers pick first, among spots within 36 yd of the main tank so he stays in reach
+ *     of their heals. Spots are handed out once and
  *     kept, a dead bot's too, so a death or the tank thrown back doesn't move everyone. While he
  *     is up a bot walks back to its spot when it is more than 4 yd off, and doesn't walk away
  *     from it for anything else but the lava (a heal out of reach is somebody else's).
+ *   - Ragnaros' main tank holds him from a spot 18 yd in front of him (in his reach: he is
+ *     rooted and 20 yd wide). Out of his reach for 4 s and he Magma Blasts his target for 6,000
+ *     every 4 s, and his Wrath throws the tank out every 25 s: the tank walks straight back when
+ *     it is out of his reach or 6 yd off the spot, ahead of anything else. Back in his reach it
+ *     taunts him off whoever he is on (he picks a random target when he comes out of the lava).
  *   - Ragnaros: ranged and healers stay out of Wrath of Ragnaros (20566), which reaches 25 yd
  *     from his middle. He is 20 yd wide himself (his combat reach), so this is measured centre
  *     to centre: 27.5 yd from his middle is only 6 yd from his edge. A bot closer than that
@@ -132,9 +161,11 @@
 #ifndef MOD_RAID_CLEAR_MOLTEN_CORE_H
 #define MOD_RAID_CLEAR_MOLTEN_CORE_H
 
+#include "Common/Hazards.h"
 #include "Common/KillOrder.h"
 #include "Common/Knockback.h"
 #include "Common/TankRoles.h"
+#include "Common/Tranquilize.h"
 #include "Common/WayOut.h"
 
 #include "Action.h"
@@ -178,6 +209,13 @@ namespace RaidClear::MoltenCore
         NPC_SHAZZRAH             = 12264,
         NPC_LUCIFRON_BOSS        = 12118,
         NPC_GEHENNAS             = 12259,
+        NPC_ANCIENT_CORE_HOUND   = 11673,  // Lava Breath
+        NPC_FLAMEGUARD           = 11667,  // Cone of Fire
+    };
+
+    enum GameObjects : uint32
+    {
+        GO_LAVA_BOMB             = 177704, // Magmadar's Lava Bomb: a fire trap (Conflagration, 19428)
     };
 
     enum Spells : uint32
@@ -202,6 +240,12 @@ namespace RaidClear::MoltenCore
         SPELL_PURGE_2            = 8012,
         SPELL_DISPEL_MAGIC_1     = 527,
         SPELL_DISPEL_MAGIC_2     = 988,
+        SPELL_ARCANE_EXPLOSION   = 19712,  // Shazzrah: 30 yd round his middle, also right after his Gate
+        SPELL_DARK_MENDING       = 19775,  // Flamewaker Priest: 2 s cast, heals a friend for 27,750
+        SPELL_MAGMADAR_FRENZY    = 19451,  // an enrage; breathes Lava Breath every 4 s while it lasts
+        SPELL_LAVA_BREATH        = 19272,  // a 54 degree cone, 35 yd
+        SPELL_CONE_OF_FIRE       = 19630,  // a cone, 20 yd (82 degrees in the spell_cone table)
+        SPELL_GEHENNAS_RAIN_OF_FIRE = 19717,  // 10 yd round where it lands
     };
 
     // The Living Bomb's explosion reaches 18 yd, centre to centre. Its carrier walks to the
@@ -251,6 +295,19 @@ namespace RaidClear::MoltenCore
 
     // Panic (19408) radius.
     constexpr float PANIC_RANGE = 45.0f;
+    // Arcane Explosion (19712) reaches 30 yd from Shazzrah's middle, and the core counts a player
+    // in it out to its own size past that (1.5 yd). Ranged and healers closer than KEEP_AWAY to his
+    // middle walk to the nearest spot at least SPOT from it: 28.5 yd from his edge (he is 4.5 yd
+    // wide), playerbots' own spell distance, so they can still cast at him. Within HOLD of him they
+    // don't walk toward anything closer to him than KEEP_AWAY.
+    constexpr float SHAZZRAH_KEEP_AWAY = 32.5f;
+    constexpr float SHAZZRAH_SPOT = 34.5f;
+    constexpr float SHAZZRAH_WORTH_IT = 2.0f;
+    constexpr float SHAZZRAH_SEARCH = 24.0f;
+    constexpr float SHAZZRAH_HOLD = 36.0f;
+    // Bots this close to a Flamewaker Priest when it starts Dark Mending are woken to look for an
+    // interrupt (Silencing Shot, the farthest, reaches 35 yd).
+    constexpr float DARK_MENDING_WAKE_RANGE = 40.0f;
     // Wrath of Ragnaros (20566) reaches 25 yd from his middle. Ranged and healers closer than
     // KEEP_AWAY to his middle walk to the nearest dry spot at least SPOT from it.
     constexpr float RAGNAROS_KEEP_AWAY = 27.5f;
@@ -268,13 +325,24 @@ namespace RaidClear::MoltenCore
     constexpr std::array<float, 4> RAGNAROS_RINGS = { 30.0f, 34.0f, 38.0f, 42.0f };
     constexpr float RAGNAROS_SPOT_SPACING = 3.5f;
     constexpr float RAGNAROS_HEAL_REACH = 36.0f;
+    // Might of Ragnaros (21154) puts a Flame of Ragnaros on a random mana user, and its Intense
+    // Heat (21155) hits and throws everyone within 20 yd of it. Spots go out this far apart while
+    // there are enough of them at most SLACK closer to the eruptions than the tight packing above
+    // would hand out, with every healer it had in the tank's reach still in it; otherwise the
+    // tight packing stands.
+    constexpr float RAGNAROS_WIDE_SPOT_SPACING = 7.0f;
+    constexpr float RAGNAROS_WIDE_LAVA_SLACK = 4.0f;
     // A bot further than this from its spot walks back to it; one this close holds it.
     constexpr float RAGNAROS_SPOT_LEAVE = 4.0f;
     constexpr float RAGNAROS_SPOT_HOLD = 6.0f;
     // A spot has dry ground this far round it too.
     constexpr float RAGNAROS_SPOT_DRY = 2.5f;
-    // Where his main tank stands: this far in front of him as he was summoned.
+    // Where his main tank stands: this far in front of him as he was summoned. He is rooted and
+    // 20 yd wide, so that is in his melee reach. Wrath of Ragnaros throws it out, and once nobody
+    // is in his reach he Magma Blasts his target for 6,000 every 4 s: the main tank walks back
+    // when it is out of his reach or this far off the spot.
     constexpr float RAGNAROS_TANK_SPOT = 18.0f;
+    constexpr float RAGNAROS_TANK_SPOT_LEAVE = 6.0f;
     // A layout nobody has asked for in this long belongs to an earlier pull. Nobody asks while he
     // is under the lava, which lasts up to 90 s (or until his Sons are dead): longer than that,
     // so every bot gets its own spot back when he comes up again.
@@ -283,10 +351,12 @@ namespace RaidClear::MoltenCore
     // Melee stop swinging into Damage Reflection only below this much health.
     constexpr float DAMAGE_REFLECTION_STOP_BELOW_PCT = 50.0f;
 
-    // Purge and Dispel Magic reach 30 yd; a purger is looked for this close to Shazzrah (edge to
-    // edge), and a decurser this close to a tank.
-    constexpr float PURGE_REACH = 28.0f;
-    constexpr float DECURSE_REACH = 28.0f;
+    // Purge and Dispel Magic reach 30 yd, Remove Curse and Remove Lesser Curse 40; a purger is
+    // looked for this close to Shazzrah (edge to edge), and a decurser this close to a tank.
+    // The ranged and healers stand 28.5 yd from Shazzrah's edge (SHAZZRAH_SPOT), so the purge
+    // reach has to take them in.
+    constexpr float PURGE_REACH = 29.5f;
+    constexpr float DECURSE_REACH = 38.0f;
 
     // Garr checks his Firesworn once a second: more than 40 yd from him (edge to edge) and it
     // gets Separation Anxiety. A Firesworn this far out counts as having it already.
@@ -324,6 +394,13 @@ namespace RaidClear::MoltenCore
     // The mobs that throw players about, with the spell they do it with (Common/Knockback.h).
     std::vector<Knockback::Thrower> const& Throwers();
 
+    // Magmadar's Frenzy (Common/Tranquilize.h).
+    std::vector<Tranq::Enrage> const& TranqEnrages();
+
+    // Gehennas' Rain of Fire, Magmadar's Lava Bombs, the Ancient Core Hounds' Lava Breath,
+    // Magmadar's own and the Flameguards' Cone of Fire (Common/Hazards.h).
+    Hazards::Table const& HazardTable();
+
     void AddScripts();
 }
 
@@ -358,6 +435,52 @@ class RcMcTremorMultiplier : public Multiplier
 public:
     RcMcTremorMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc tremor") {}
     float GetValue(Action* action) override;
+};
+
+// --- Shazzrah ------------------------------------------------------------
+
+// A ranged bot or healer inside Shazzrah's Arcane Explosion.
+class RcMcShazzrahRangedTrigger : public Trigger
+{
+public:
+    RcMcShazzrahRangedTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc shazzrah ranged") {}
+    bool IsActive() override;
+};
+
+class RcMcLeaveArcaneExplosionAction : public Action
+{
+public:
+    RcMcLeaveArcaneExplosionAction(PlayerbotAI* botAI) : Action(botAI, "rc mc leave arcane explosion"), _walk(botAI) {}
+    bool Execute(Event event) override;
+
+private:
+    RaidClear::WayOutWalk _walk;
+};
+
+// Ranged bots and healers near Shazzrah don't walk toward something inside his Arcane Explosion.
+class RcMcShazzrahHoldMultiplier : public Multiplier
+{
+public:
+    RcMcShazzrahHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc shazzrah hold") {}
+    float GetValue(Action* action) override;
+};
+
+// --- Sulfuron Harbinger ---------------------------------------------------
+
+// A Flamewaker Priest is casting Dark Mending, this bot can stop it now and no other bot has just
+// sent an interrupt at that priest.
+class RcMcDarkMendingTrigger : public Trigger
+{
+public:
+    RcMcDarkMendingTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc dark mending") {}
+    bool IsActive() override;
+};
+
+class RcMcInterruptDarkMendingAction : public Action
+{
+public:
+    RcMcInterruptDarkMendingAction(PlayerbotAI* botAI) : Action(botAI, "rc mc interrupt dark mending") {}
+    bool Execute(Event event) override;
 };
 
 // --- Baron Geddon ---------------------------------------------------------
@@ -613,6 +736,37 @@ class RcMcRagnarosHoldMultiplier : public Multiplier
 public:
     RcMcRagnarosHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc ragnaros hold") {}
     float GetValue(Action* action) override;
+};
+
+// The main tank, with Ragnaros up, out of his reach or off its spot in front of him.
+class RcMcRagnarosTankTrigger : public Trigger
+{
+public:
+    RcMcRagnarosTankTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc ragnaros tank") {}
+    bool IsActive() override;
+};
+
+class RcMcRagnarosTankAction : public MovementAction
+{
+public:
+    RcMcRagnarosTankAction(PlayerbotAI* botAI) : MovementAction(botAI, "rc mc ragnaros tank") {}
+    bool Execute(Event event) override;
+};
+
+// The main tank is back in his reach and he is on someone else (he picks a random target when he
+// comes out of the lava, and anyone in his reach while the tank was thrown out).
+class RcMcRagnarosTauntTrigger : public Trigger
+{
+public:
+    RcMcRagnarosTauntTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc ragnaros taunt") {}
+    bool IsActive() override;
+};
+
+class RcMcRagnarosTauntAction : public Action
+{
+public:
+    RcMcRagnarosTauntAction(PlayerbotAI* botAI) : Action(botAI, "rc mc ragnaros taunt") {}
+    bool Execute(Event event) override;
 };
 
 class RcMcRagnarosMoveOutAction : public Action
