@@ -39,6 +39,10 @@
  *     its aggro radius and the buffer, for every walk that isn't toward the bot's target and
  *     every spot a "move out" action looks at. Not for a walk to the target, not for a boss the
  *     target stands next to (the fight is where it is), and not for the step back out.
+ *     Its own aggro radius plus 3 yd holds for every walk all the same, even one to a target
+ *     standing next to it, and a bot inside that steps back out, even one in melee with its
+ *     target. Trash standing just outside a boss's radius (Broodlord's whelps) must not let a
+ *     bot walk into it.
  *   - A mob that throws players about (Common/Knockback.h) is not fought from a spot where the
  *     throw ends in one of those idle packs.
  *
