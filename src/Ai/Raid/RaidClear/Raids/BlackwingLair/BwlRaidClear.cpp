@@ -1,0 +1,1043 @@
+/*
+ * Raid clear: Blackwing Lair (map 469). See BwlRaidClear.h.
+ *
+ * Released under the MIT License.
+ */
+
+#include "BwlRaidClear.h"
+
+#include "RaidClearConfig.h"
+#include "Common/BossLookup.h"
+#include "Common/SpellReflect.h"
+
+#include "GameObject.h"
+#include "GameTime.h"
+#include "Group.h"
+#include "Map.h"
+#include "ObjectAccessor.h"
+#include "GenericSpellActions.h"
+#include "PathGenerator.h"
+#include "PlayerScript.h"
+#include "Playerbots.h"
+#include "Spell.h"
+#include "Timer.h"
+
+#include <mutex>
+#include <unordered_map>
+#include "PlayerbotAI.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <list>
+#include <string>
+#include <vector>
+
+using namespace RaidClear::BlackwingLair;
+
+std::vector<RaidClear::KillOrderEntry> const& RaidClear::BlackwingLair::KillOrder()
+{
+    static std::vector<KillOrderEntry> const table = {
+        // Each living warlock keeps opening portals that keep summoning felguards.
+        { NPC_BLACKWING_WARLOCK, 0 },
+        // Each technician throws a Bomb at someone every few seconds, and goes down in a few.
+        { NPC_BLACKWING_TECHNICIAN, 0 },
+
+        // Heals the pack (Healing Circle), polymorphs.
+        { NPC_BLACKWING_TASKMASTER, 1 },
+        { NPC_BLACKWING_SPELLBINDER, 1 },
+        // The Suppression Room elites, before Broodlord if he gets pulled with them.
+        { NPC_DEATH_TALON_HATCHER, 1 },
+
+        // Death Talon packs: the Wyrmkin's Fireball Volley hits everyone within 45 yd (one evening:
+        // 45 casts, 38 deaths), and nothing stops it: they are immune to interrupts, silences and
+        // stuns. So they go first, ahead of everything. The Captain is off on his own tank (Mark
+        // of Detonation) and dies last, once the melee has nothing else to hit near the main tank.
+        { NPC_DEATH_TALON_WYRMKIN, 0 },
+        { NPC_DEATH_TALON_FLAMESCALE, 2 },
+        { NPC_DEATH_TALON_SEETHER, 2 },
+        { NPC_DEATH_TALON_CAPTAIN, 3 },
+
+        // Razorgore's adds: dragonkin, then mages, then the melee.
+        { NPC_DEATH_TALON_DRAGONSPAWN, 1 },
+        { NPC_BLACKWING_MAGE, 2 },
+        { NPC_BLACKWING_LEGIONNAIRE, 3 },
+
+        // Nefarian's shaman call: corrupted totems. The Healing Stream heals him, so it dies first;
+        // Stoneskin and Windfury buff him and his adds within 40 yd. They're immune to area
+        // damage, so it takes the skull. The Fire Nova totem isn't here: it goes off 4s after it
+        // lands whatever happens, so bots walk away from it instead of running onto it.
+        { NPC_CORRUPTED_HEALING_TOTEM, 0 },
+        { NPC_CORRUPTED_STONESKIN_TOTEM, 1 },
+        { NPC_CORRUPTED_WINDFURY_TOTEM, 1 },
+
+        // Nefarian: adds always before him.
+        { NPC_CHROMATIC_DRAKONID, 1 },
+        { NPC_BLUE_DRAKONID, 1 },
+        { NPC_GREEN_DRAKONID, 1 },
+        { NPC_BRONZE_DRAKONID, 1 },
+        { NPC_RED_DRAKONID, 1 },
+        { NPC_BLACK_DRAKONID, 1 },
+        { NPC_BONE_CONSTRUCT, 2 },
+        // His warlock call summons them on the warlocks, in the middle of the ranged and healers.
+        { NPC_CORRUPTED_INFERNAL, 1 },
+
+        // Whatever the portals let out before the warlocks died.
+        { NPC_ENRAGED_FELGUARD, 2 },
+    };
+    return table;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitCoTankBosses()
+{
+    // Broodlord: Knock Away (25778) halves his victim's threat. The drakes: Wing Buffet takes 75%.
+    // Ebonroc also needs a second tank for Shadow of Ebonroc. Vaelastrasz can't be taunted, so
+    // whoever is next on threat when Burning Adrenaline kills his tank gets him. Chromaggus can't
+    // be taunted either, and Time Lapse stuns his tank for 6 s.
+    static std::vector<uint32> const bosses = {
+        NPC_BROODLORD, NPC_FIREMAW, NPC_EBONROC, NPC_FLAMEGOR, NPC_VAELASTRASZ, NPC_CHROMAGGUS, NPC_NEFARIAN,
+    };
+    return bosses;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitThreatShareBosses()
+{
+    // No taunt lands on Nefarian (417 Growls in one evening's log, none took) or Chromaggus (all
+    // of 120 Righteous Defenses in one kill IMMUNE, while he spent most of it on rogues, warlocks
+    // and a death knight), so the tanks' threat order is all that puts them back on a tank, and
+    // the damage dealers stay under it.
+    static std::vector<uint32> const bosses = { NPC_CHROMAGGUS, NPC_NEFARIAN };
+    return bosses;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitSkipBosses()
+{
+    static std::vector<uint32> const bosses = { NPC_RAZORGORE };
+    return bosses;
+}
+
+std::vector<RaidClear::Tanks::SplashRadius> const& RaidClear::BlackwingLair::TankSplitSplashRadii()
+{
+    // War Stomp (24375) reaches 15 yd: a Wyrmguard is held 15 yd further from other mobs.
+    // (Not from another Wyrmguard: those stay together, see Tanks::WantedSeparation.)
+    static std::vector<Tanks::SplashRadius> const radii = {
+        { NPC_DEATH_TALON_WYRMGUARD, 15.0f },
+        // Not his own AoE: the Mark of Detonation on his tank, 30 yd around it.
+        { NPC_DEATH_TALON_CAPTAIN, CAPTAIN_SPLASH },
+    };
+    return radii;
+}
+
+std::vector<RaidClear::Knockback::Thrower> const& RaidClear::BlackwingLair::Throwers()
+{
+    static std::vector<Knockback::Thrower> const throwers = {
+        { NPC_FIREMAW, SPELL_WING_BUFFET },
+        { NPC_EBONROC, SPELL_WING_BUFFET },
+        { NPC_FLAMEGOR, SPELL_WING_BUFFET },
+        { NPC_BROODLORD, SPELL_BROODLORD_KNOCK_AWAY },
+        { NPC_BROODLORD, SPELL_BROODLORD_BLAST_WAVE },
+    };
+    return throwers;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitOwnTankAdds()
+{
+    static std::vector<uint32> const adds = { NPC_DEATH_TALON_CAPTAIN };
+    return adds;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitSpreadAdds()
+{
+    // Three of them before Ebonroc (and before Flamegor), each hitting like a drake and stomping
+    // 15 yd: two on one tank kill it.
+    static std::vector<uint32> const adds = { NPC_DEATH_TALON_WYRMGUARD };
+    return adds;
+}
+
+std::vector<uint32> const& RaidClear::BlackwingLair::TankSplitIgnore()
+{
+    // ~160 of them on a 30s respawn; there's no picking them all up, and every one an off-tank
+    // chases is time it isn't on Broodlord.
+    static std::vector<uint32> const whelps = {
+        NPC_CORRUPTED_RED_WHELP, NPC_CORRUPTED_GREEN_WHELP, NPC_CORRUPTED_BLUE_WHELP, NPC_CORRUPTED_BRONZE_WHELP,
+    };
+    return whelps;
+}
+
+namespace
+{
+    // The boss, alive and fighting. Looked up on the map, not through playerbots' "find target":
+    // that only knows what the bot itself has threat on, so a bot that was just revived, or has
+    // only healed or hit the adds, would not find it.
+    Creature* FightingBoss(Player* bot, uint32 entry)
+    {
+        return bot->GetMapId() == MAP_ID ? RaidClear::FightingCreature(bot, { entry }) : nullptr;
+    }
+}
+
+void RaidClearBlackwingLairStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
+{
+    // Under a reflect: the spell of the other school that playerbots ranks below the wand (a
+    // frost mage's Fireball), just above it. "rc spell reflect" zeroes whichever is reflected.
+    triggers.push_back(new TriggerNode("rc mage target reflects", { NextAction("fireball", 5.15f) }));
+    triggers.push_back(new TriggerNode("rc warlock target reflects", { NextAction("immolate", 5.15f) }));
+
+    triggers.push_back(new TriggerNode("rc kill order", { NextAction("rc mark kill order", ACTION_RAID + 2) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl suppression device", { NextAction("rc bwl disarm suppression", ACTION_RAID + 1) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl broodlord ranged", { NextAction("rc bwl broodlord move out", ACTION_RAID + 1) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl ebonroc taunt", { NextAction("rc bwl ebonroc taunt", ACTION_RAID + 3) }));
+    // The drake's second tank in front, next to the one he is on: above playerbots' walk to his
+    // flank (34) and the knockback footing, under the raid mechanics that keep bots alive.
+    triggers.push_back(
+        new TriggerNode("rc bwl drake front", { NextAction("rc bwl drake front", ACTION_RAID + 1) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl technician spread", { NextAction("rc bwl technician stay apart", ACTION_RAID) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl firemaw hide", { NextAction("rc bwl firemaw hide", ACTION_RAID + 1) }));
+
+    triggers.push_back(
+        new TriggerNode("rc bwl chromaggus breath", { NextAction("rc bwl chromaggus hide", ACTION_RAID + 4) }));
+    // His weak school's spells ahead of the rotation (ACTION_NORMAL and the damage-over-time
+    // triggers), best first; under everything that moves, dispels or heals.
+    for (RaidClear::BlackwingLair::ChromaggusSchoolSpells const& entry :
+         RaidClear::BlackwingLair::ChromaggusSchoolSpellList())
+    {
+        std::vector<NextAction> spells;
+        float relevance = ACTION_HIGH + 2.0f;
+        for (char const* spell : entry.spells)
+        {
+            spells.push_back(NextAction(spell, relevance));
+            relevance -= 0.1f;
+        }
+        triggers.push_back(new TriggerNode(entry.trigger, spells));
+    }
+    // A role's fixed spot (Firemaw, Chromaggus): under the hiding and the dodges, over the rest.
+    triggers.push_back(new TriggerNode("rc bwl boss spot", { NextAction("rc bwl boss spot", ACTION_RAID) }));
+    // Firemaw's tanks trade him; like the Ebonroc swap.
+    triggers.push_back(new TriggerNode("rc bwl drake swap", { NextAction("rc bwl drake swap", ACTION_RAID + 3) }));
+
+    // The dragons. Out of the front (and Nefarian's tail and roar) as a standing rule; out of a
+    // breath that is being cast before anything else, heals included: it one-shots a non-tank.
+    triggers.push_back(
+        new TriggerNode("rc bwl dragon position", { NextAction("rc bwl dragon move", ACTION_RAID + 2) }));
+    triggers.push_back(
+        new TriggerNode("rc bwl dragon breath", { NextAction("rc bwl dragon move", ACTION_EMERGENCY + 6) }));
+    triggers.push_back(
+        new TriggerNode("rc bwl nefarian tremor", { NextAction("rc bwl tremor for tank", ACTION_RAID + 1) }));
+    // Berserker Rage before the roar lands; with the breath escapes.
+    triggers.push_back(
+        new TriggerNode("rc bwl bellowing roar", { NextAction("rc bwl berserker rage", ACTION_EMERGENCY + 5) }));
+    // He is on a non-tank: it takes his front to his tank before anything else but a breath.
+    triggers.push_back(
+        new TriggerNode("rc bwl nefarian loose", { NextAction("rc bwl nefarian to tank", ACTION_EMERGENCY + 3) }));
+    triggers.push_back(
+        new TriggerNode("rc bwl nefarian fear ward", { NextAction("rc bwl nefarian fear ward", ACTION_RAID + 4) }));
+    triggers.push_back(
+        new TriggerNode("rc bwl nefarian rogue call", { NextAction("rc bwl nefarian turn", ACTION_RAID + 5) }));
+    // Under the standing rule (out of his front and tail first) and under the heals that can't
+    // wait: the walk to the pile can take a while.
+    triggers.push_back(
+        new TriggerNode("rc bwl construct gather", { NextAction("rc bwl construct gather", ACTION_MOVE + 5) }));
+
+    // Above the heals, like the other blasts a bot can simply walk out of.
+
+    triggers.push_back(
+        new TriggerNode("rc bwl detonation keep away", { NextAction("rc bwl detonation stay clear", ACTION_RAID + 1) }));
+
+    triggers.push_back(new TriggerNode("rc bwl tranq", { NextAction("rc bwl tranq", ACTION_RAID + 1) }));
+    triggers.push_back(new TriggerNode("rc bwl fire nova totem",
+                                       { NextAction("rc bwl fire nova totem move away", ACTION_RAID + 3) }));
+    triggers.push_back(new TriggerNode("rc bwl black affliction",
+                                       { NextAction("rc bwl remove black affliction", ACTION_RAID + 1) }));
+
+    // Above playerbots' "tank assist" (50), below the raid mechanics.
+    triggers.push_back(
+        new TriggerNode("rc bwl captain hand off", { NextAction("rc bwl captain hand off", ACTION_RAID - 3) }));
+}
+
+void RaidClearBlackwingLairStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+{
+    multipliers.push_back(new RcBwlShadowOfEbonrocMultiplier(botAI));
+    multipliers.push_back(new RcBwlHoldCoverMultiplier(botAI));
+    multipliers.push_back(new RcBwlSpotHoldMultiplier(botAI));
+    multipliers.push_back(new RcBwlDetonationHoldMultiplier(botAI));
+    multipliers.push_back(new RcBwlTechnicianHoldMultiplier(botAI));
+    multipliers.push_back(new RcBwlCaptainMainTankMultiplier(botAI));
+    multipliers.push_back(new RcBwlCorruptedHealingMultiplier(botAI));
+    multipliers.push_back(new RcBwlDragonHoldMultiplier(botAI));
+    multipliers.push_back(new RcBwlNefarianTankMultiplier(botAI));
+    multipliers.push_back(new RcBwlNefarianTremorMultiplier(botAI));
+    multipliers.push_back(new RcBwlConstructAnchorMultiplier(botAI));
+    multipliers.push_back(new RcBwlDrakeTauntMultiplier(botAI));
+    multipliers.push_back(new RcSpellReflectMultiplier(botAI));
+    multipliers.push_back(new RcBwlChromaggusSchoolMultiplier(botAI));
+}
+
+// --- Suppression Room -----------------------------------------------------
+
+namespace
+{
+    // The Suppression Room's devices, with the aura's reach around them. Outside it there's
+    // nothing to look for, so the grid search is skipped for most of the instance.
+    bool InSuppressionRoom(Player* bot)
+    {
+        float const x = bot->GetPositionX();
+        float const y = bot->GetPositionY();
+        return x > -7706.0f && x < -7547.0f && y > -1149.0f && y < -939.0f;
+    }
+
+    // Same rule as mod-playerbots' own disarm: rogues always, everyone else with the "raid" cheat.
+    bool MayDisarm(PlayerbotAI* botAI, Player* bot)
+    {
+        return bot->IsClass(CLASS_ROGUE) || botAI->HasCheat(BotCheatMask::raid);
+    }
+
+    // Armed devices in reach, despawned ones included: before core 2a2211c, a device a player
+    // disarmed despawns but stays in the "ready" state and keeps casting. From 2a2211c the
+    // device script retracts a player-disarmed device instead (GO_STATE_ACTIVE), so the state
+    // check below skips it.
+    void ArmedDevicesInReach(Player* bot, std::list<GameObject*>& out)
+    {
+        std::list<GameObject*> found;
+        bot->GetGameObjectListWithEntryInGrid(found, GO_SUPPRESSION_DEVICE, SUPPRESSION_DISARM_RANGE);
+        for (GameObject* go : found)
+            if (go && go->GetGoState() == GO_STATE_READY)
+                out.push_back(go);
+    }
+}
+
+bool RcBwlSuppressionDeviceTrigger::IsActive()
+{
+    if (!InSuppressionRoom(bot) || !MayDisarm(botAI, bot))
+        return false;
+
+    std::list<GameObject*> armed;
+    ArmedDevicesInReach(bot, armed);
+    return !armed.empty();
+}
+
+bool RcBwlDisarmSuppressionAction::Execute(Event /*event*/)
+{
+    std::list<GameObject*> armed;
+    ArmedDevicesInReach(bot, armed);
+
+    // What mod-playerbots' disarm does. The device's cast checks for GO_STATE_READY, so this stops
+    // it on any core. From core 2a2211c the device script re-arms a device 30-120s after a
+    // player's Disarm Trap, but it only hears about loot state changes, so a device turned off
+    // here stays off.
+    for (GameObject* go : armed)
+        go->SetGoState(GO_STATE_ACTIVE);
+    return !armed.empty();
+}
+
+// --- Technician packs -----------------------------------------------------
+
+namespace
+{
+    bool SpreadsFromBombs(Player* bot)
+    {
+        return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
+    }
+
+    // Where the other living group members stand, those close enough to matter for a spot
+    // within TECHNICIAN_SEARCH of the bot.
+    void Neighbours(Player* bot, std::vector<Position>& out)
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member != bot && member->IsAlive() && member->IsInMap(bot) &&
+                bot->GetExactDist2d(member) < TECHNICIAN_SEARCH + TECHNICIAN_SPREAD)
+                out.push_back(member->GetPosition());
+        }
+    }
+
+    // Yards from a spot to the nearest of them.
+    float SpreadGap(std::vector<Position> const& others, float x, float y)
+    {
+        float gap = 1000.0f;
+        for (Position const& other : others)
+            gap = std::min(gap, other.GetExactDist2d(x, y));
+        return gap;
+    }
+
+    // A technician fighting within TECHNICIAN_RANGE, per bot for TECHNICIAN_FRESH_MS: the hold
+    // below asks once for every action.
+    // When this bot last walked out of a clump (getMSTime()). One map thread updates a bot at
+    // a time.
+    thread_local std::unordered_map<ObjectGuid, uint32> tSpreadMs;
+
+    bool TechnicianFighting(Player* bot)
+    {
+        struct Entry
+        {
+            uint32 ms = 0;
+            bool fighting = false;
+        };
+        thread_local std::unordered_map<ObjectGuid, Entry> tSeen;
+        uint32 const now = getMSTime();
+        Entry& entry = tSeen[bot->GetGUID()];
+        if (entry.ms && getMSTimeDiff(entry.ms, now) < TECHNICIAN_FRESH_MS)
+            return entry.fighting;
+
+        std::list<Creature*> technicians;
+        bot->GetCreatureListWithEntryInGrid(technicians, NPC_BLACKWING_TECHNICIAN, TECHNICIAN_RANGE);
+        entry.fighting = std::any_of(technicians.begin(), technicians.end(), [](Creature* technician)
+        {
+            return technician && technician->IsAlive() && technician->IsInCombat();
+        });
+        entry.ms = now ? now : 1;
+        return entry.fighting;
+    }
+}
+
+bool RcBwlTechnicianSpreadTrigger::IsActive()
+{
+    if (!SpreadsFromBombs(bot) || !bot->IsInCombat() || !botAI->CanMove())
+        return false;
+
+    uint64 const now = GameTime::GetGameTimeMS().count();
+    if (now < _nextStepMs)
+        return false;
+
+    // The cheap test first: only a bot with someone too close has anything to do.
+    std::vector<Position> others;
+    Neighbours(bot, others);
+    if (SpreadGap(others, bot->GetPositionX(), bot->GetPositionY()) >= TECHNICIAN_SPREAD)
+        return false;
+
+    if (!TechnicianFighting(bot))
+        return false;
+
+    _nextStepMs = now + TECHNICIAN_STEP_INTERVAL_MS;
+    return true;
+}
+
+bool RcBwlTechnicianSpreadAction::Execute(Event /*event*/)
+{
+    // To the nearest spot with nobody within TECHNICIAN_SPREAD, looked for all the way round:
+    // pushes away from each neighbour add up to nothing in the middle of a ring of them. Not out
+    // of reach of the bot's target, so casters don't step out of their own fight.
+    std::vector<Position> others;
+    Neighbours(bot, others);
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (target && (target == bot || !target->IsInMap(bot)))
+        target = nullptr;
+    auto const gapAt = [&others, target](float x, float y, float /*z*/)
+    {
+        float const gap = SpreadGap(others, x, y);
+        return target ? std::min(gap, TECHNICIAN_TARGET_REACH - target->GetExactDist2d(x, y)) : gap;
+    };
+    if (gapAt(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()) >= TECHNICIAN_SPREAD)
+        return false;
+    if (!_walk.Go(gapAt, TECHNICIAN_SPREAD, TECHNICIAN_SPREAD + 1.0f, 1.0f, TECHNICIAN_SEARCH))
+        return false;
+    uint32 const now = getMSTime();
+    tSpreadMs[bot->GetGUID()] = now ? now : 1;
+    return true;
+}
+
+float RcBwlTechnicianHoldMultiplier::GetValue(Action* action)
+{
+    // A bot that spread out isn't walked straight back into the clump by its follow, its
+    // formation or mod-dungeon-clear's camp hold. Picking targets, casting, and walking to a
+    // target still go.
+    if (!action || !dynamic_cast<MovementAction*>(action) || dynamic_cast<AttackAction*>(action) ||
+        !SpreadsFromBombs(bot) || !bot->IsInCombat())
+        return 1.0f;
+    Position to;
+    bool known = false;
+    if (!WalksBack(botAI, action, to, known) || !TechnicianFighting(bot))
+        return 1.0f;
+    // A walk that ends somewhere unknown (mod-dungeon-clear's) is only held for a few seconds
+    // after the bot spread out: long enough not to be walked straight back, short enough that a
+    // bot the camp needs elsewhere isn't left standing for the whole fight.
+    if (!known)
+    {
+        auto const it = tSpreadMs.find(bot->GetGUID());
+        return it != tSpreadMs.end() && getMSTimeDiff(it->second, getMSTime()) < TECHNICIAN_SPREAD_HOLD_MS ? 0.0f
+                                                                                                           : 1.0f;
+    }
+    std::vector<Position> others;
+    Neighbours(bot, others);
+    return SpreadGap(others, to.GetPositionX(), to.GetPositionY()) < TECHNICIAN_SPREAD ? 0.0f : 1.0f;
+}
+
+// --- Keep out of a boss's AoE (Broodlord, Nefarian) -----------------------
+
+namespace
+{
+    // Healers stay this close to the boss's target, whatever the AoE: an out-of-range healer
+    // costs more than one Blast Wave or fear.
+    constexpr float HEALER_REACH = 38.0f;
+
+    bool KeepsOut(Player* bot)
+    {
+        return !PlayerbotAI::IsTank(bot) && (PlayerbotAI::IsRanged(bot) || PlayerbotAI::IsHeal(bot));
+    }
+
+    // The spot `distance` yards (edge to edge) straight out from the boss through the bot.
+    Position KeepOutSpot(Player* bot, Unit* boss, float distance)
+    {
+        float angle = boss->GetAngle(bot);
+        if (boss->GetExactDist2d(bot) < 0.5f)
+            angle = boss->GetOrientation() + float(M_PI);
+
+        float const reach = distance + boss->GetObjectSize() + bot->GetObjectSize();
+        float const x = boss->GetPositionX() + std::cos(angle) * reach;
+        float const y = boss->GetPositionY() + std::sin(angle) * reach;
+        float const z = bot->GetMap()->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 5.0f);
+        return Position(x, y, z > INVALID_HEIGHT ? z : bot->GetPositionZ());
+    }
+
+    // A healer only backs off if it can still reach whoever the boss is hitting from there.
+    bool SpotKeepsHealerInReach(Player* bot, Unit* boss, Position const& spot)
+    {
+        if (!PlayerbotAI::IsHeal(bot))
+            return true;
+        Unit* victim = boss->GetVictim();
+        return !victim || victim->GetExactDist2d(spot.GetPositionX(), spot.GetPositionY()) <= HEALER_REACH;
+    }
+}
+
+bool RcBwlKeepOutTrigger::IsActive()
+{
+    if (!KeepsOut(bot))
+        return false;
+
+    Creature* boss = FightingBoss(bot, _bossEntry);
+    if (!boss || bot->GetDistance2d(boss) >= _minDistance)
+        return false;
+
+    return SpotKeepsHealerInReach(bot, boss, KeepOutSpot(bot, boss, _targetDistance));
+}
+
+bool RcBwlKeepOutAction::Execute(Event /*event*/)
+{
+    Creature* boss = FightingBoss(bot, _bossEntry);
+    if (!boss || bot->GetDistance2d(boss) >= _targetDistance)
+        return false;
+
+    Position const spot = KeepOutSpot(bot, boss, _targetDistance);
+    if (!SpotKeepsHealerInReach(bot, boss, spot))
+        return false;
+
+    return MoveTo(bot->GetMapId(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ(), false, false, false,
+                  false, MovementPriority::MOVEMENT_COMBAT);
+}
+
+// --- Ebonroc --------------------------------------------------------------
+
+bool RcBwlEbonrocTauntTrigger::IsActive()
+{
+    if (!PlayerbotAI::IsTank(bot) || bot->HasAura(SPELL_SHADOW_OF_EBONROC))
+        return false;
+
+    // His other tank, not every tank: four taunts at once handed him to one at his flank, and
+    // the next Shadow Flame went through the raid.
+    Creature* boss = FightingBoss(bot, NPC_EBONROC);
+    if (!boss || !HoldsDrake(bot, boss))
+        return false;
+
+    Unit* victim = boss->GetVictim();
+    return victim && victim != bot && victim->HasAura(SPELL_SHADOW_OF_EBONROC);
+}
+
+bool RcBwlEbonrocTauntAction::Execute(Event /*event*/)
+{
+    Creature* boss = FightingBoss(bot, NPC_EBONROC);
+    if (!boss)
+        return false;
+
+    return RaidClear::Tanks::Taunt(botAI, boss);
+}
+
+float RcBwlShadowOfEbonrocMultiplier::GetValue(Action* action)
+{
+    if (!action || !bot->HasAura(SPELL_SHADOW_OF_EBONROC) || !FightingBoss(bot, NPC_EBONROC))
+        return 1.0f;
+
+    // Death Grip included: it pulls him back as surely as a taunt.
+    return RaidClear::Tanks::IsTauntAction(action) ? 0.0f : 1.0f;
+}
+
+// --- Death Talon packs ----------------------------------------------------
+
+namespace
+{
+    // A Captain or a Wyrmguard the main tank leaves to an off-tank (see Tanks::HandedOffAdds).
+    bool MainTankLeaves(PlayerbotAI* botAI, Player* bot, Unit* unit)
+    {
+        if (!RaidClear::GetConfig().tankSplit || !unit ||
+            (!RaidClear::Tanks::IsOwnTankAdd(unit) && !RaidClear::Tanks::IsSpreadAdd(unit)))
+            return false;
+        if (RaidClear::Tanks::ActingMainTank(bot->GetGroup()) != bot)
+            return false;
+
+        GuidVector const& attackers = botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get();
+        return RaidClear::Tanks::HandedOffAdds(botAI, bot, attackers).count(unit->GetGUID()) != 0;
+    }
+
+    // The explosion hits the marked player's allies; tanks stay with their mobs. A non-tank that
+    // carries a Mark itself still keeps out of another one.
+    bool AvoidsDetonation(Player* bot)
+    {
+        return !PlayerbotAI::IsTank(bot);
+    }
+
+    // The nearest other group member carrying Mark of Detonation within `range` of `pos`.
+    Player* MarkedAllyNear(Player* bot, WorldObject const* pos, float range)
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return nullptr;
+
+        Player* nearest = nullptr;
+        float best = range;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || member == bot || !member->IsAlive() || !member->IsInMap(bot) ||
+                !member->HasAura(SPELL_MARK_OF_DETONATION))
+                continue;
+
+            float const dist = pos->GetExactDist(member);
+            if (dist < best)
+            {
+                nearest = member;
+                best = dist;
+            }
+        }
+        return nearest;
+    }
+}
+
+void RaidClearBlackwingLairStrategy::AppendTargetExclusions(GuidSet& exclusions, TargetValueExclusionType type)
+{
+    // The main tank's own target picking skips the Captains and Wyrmguards its off-tanks take.
+    if (type != TargetValueExclusionType::TankTarget || !RaidClear::GetConfig().tankSplit)
+        return;
+
+    Player* bot = botAI->GetBot();
+    if (RaidClear::Tanks::ActingMainTank(bot->GetGroup()) != bot)
+        return;
+
+    GuidVector const& attackers = botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get();
+    for (ObjectGuid const& guid : RaidClear::Tanks::HandedOffAdds(botAI, bot, attackers))
+        exclusions.insert(guid);
+}
+
+bool RcBwlCaptainHandOffTrigger::IsActive()
+{
+    return bot->IsInCombat() && MainTankLeaves(botAI, bot, AI_VALUE(Unit*, "current target"));
+}
+
+bool RcBwlCaptainHandOffAction::Execute(Event /*event*/)
+{
+    // "tank target" already skips the Captain (the exclusions above). "tank assist" only switches
+    // targets while the tank has aggro on its current one, so it never moves off him by itself.
+    Unit* next = AI_VALUE(Unit*, "tank target");
+    if (next && next != AI_VALUE(Unit*, "current target") && !MainTankLeaves(botAI, bot, next))
+        return Attack(next);
+
+    // Nothing else to hold: stop rather than follow him to his tank.
+    bot->AttackStop();
+    context->GetValue<Unit*>("current target")->Set(nullptr);
+    return true;
+}
+
+bool RcBwlDetonationKeepAwayTrigger::IsActive()
+{
+    return bot->IsInCombat() && AvoidsDetonation(bot) && MarkedAllyNear(bot, bot, DETONATION_KEEP_AWAY);
+}
+
+bool RcBwlDetonationKeepAwayAction::Execute(Event /*event*/)
+{
+    Player* marked = MarkedAllyNear(bot, bot, DETONATION_KEEP_AWAY);
+    Group* group = bot->GetGroup();
+    if (!marked || !group)
+        return false;
+
+    // Out of the circle, on the side nearest the main tank: that's where the healers, the melee
+    // and the rest of the pack are.
+    Player* mainTank = RaidClear::Tanks::ActingMainTank(bot->GetGroup());
+    Map* map = bot->GetMap();
+    float const base = marked->GetAngle(bot);
+    float const reach = DETONATION_KEEP_AWAY_TARGET + marked->GetObjectSize() + bot->GetObjectSize();
+
+    static float const offsets[] = { 0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 1.5f, -1.5f, 2.0f, -2.0f };
+    bool found = false;
+    float bestX = 0.0f, bestY = 0.0f, bestZ = 0.0f, bestScore = 0.0f;
+    for (float const offset : offsets)
+    {
+        float const angle = base + offset;
+        float const x = marked->GetPositionX() + std::cos(angle) * reach;
+        float const y = marked->GetPositionY() + std::sin(angle) * reach;
+        float const z = map->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + 5.0f);
+        if (z <= INVALID_HEIGHT || std::fabs(z - bot->GetPositionZ()) > 5.0f)
+            continue;
+        if (!bot->IsWithinLOS(x, y, z + 2.0f))
+            continue;
+        // Not into another marked player's circle.
+        Position const spot(x, y, z);
+        bool inOther = false;
+        for (GroupReference* ref = group->GetFirstMember(); ref && !inOther; ref = ref->next())
+            if (Player* member = ref->GetSource())
+                inOther = member != bot && member != marked && member->IsAlive() && member->IsInMap(bot) &&
+                          member->HasAura(SPELL_MARK_OF_DETONATION) &&
+                          member->GetExactDist(&spot) < DETONATION_KEEP_AWAY;
+        if (inOther)
+            continue;
+
+        float const score = mainTank && mainTank != marked ? mainTank->GetExactDist(&spot) : bot->GetExactDist(&spot);
+        if (!found || score < bestScore)
+        {
+            found = true;
+            bestX = x;
+            bestY = y;
+            bestZ = z;
+            bestScore = score;
+        }
+    }
+
+    return found &&
+           MoveTo(bot->GetMapId(), bestX, bestY, bestZ, false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+}
+
+float RcBwlDetonationHoldMultiplier::GetValue(Action* action)
+{
+    // Picking a target isn't movement; only walking somewhere is held.
+    if (!dynamic_cast<MovementAction*>(action) || dynamic_cast<AttackAction*>(action) ||
+        dynamic_cast<RcBwlDetonationKeepAwayAction*>(action))
+        return 1.0f;
+
+    if (!bot->IsInCombat() || !AvoidsDetonation(bot))
+        return 1.0f;
+
+    // Only movement toward something inside a marked player's circle, and only once the bot is
+    // already close enough to work from where it stands. A healer further out may still come in
+    // to heal the marked tank; it stops at spell range, outside the circle.
+    Unit* target = action->GetTarget();
+    if (!target || target == bot)
+        return 1.0f;
+
+    // Walking toward the marked player itself only happens to heal it (into range or line of
+    // sight); keep-away pulls the healer back out if that takes it too close.
+    if (target->ToPlayer() && target->ToPlayer()->HasAura(SPELL_MARK_OF_DETONATION))
+        return 1.0f;
+
+    Player* marked = MarkedAllyNear(bot, target, DETONATION_KEEP_AWAY);
+    if (!marked || bot->GetExactDist(marked) > DETONATION_HOLD + 4.0f)
+        return 1.0f;
+    return 0.0f;
+}
+
+float RcBwlCaptainMainTankMultiplier::GetValue(Action* action)
+{
+    bool const taunt = RaidClear::Tanks::IsTauntAction(action);
+    if (!taunt && !dynamic_cast<AttackAction*>(action))
+        return 1.0f;
+    if (dynamic_cast<RcBwlCaptainHandOffAction*>(action) || !PlayerbotAI::IsTank(bot))
+        return 1.0f;
+
+    return MainTankLeaves(botAI, bot, action->GetTarget()) ? 0.0f : 1.0f;
+}
+
+namespace
+{
+    // The bosses whose Frenzy a Tranquilizing Shot takes off (both auras are called "Enrage").
+    // Flamegor's fires a Fire Nova at the whole raid every two seconds while it is up.
+    struct BossEnrage
+    {
+        uint32 entry;
+        uint32 aura;
+    };
+    constexpr std::array<BossEnrage, 2> BOSS_ENRAGES = {{
+        { NPC_FLAMEGOR, SPELL_FLAMEGOR_FRENZY },
+        { NPC_CHROMAGGUS, SPELL_CHROMAGGUS_FRENZY },
+    }};
+
+    // An enraged Seether or boss in Tranquilizing Shot range that this hunter should take: the
+    // nearest of the group's hunter bots that can shoot it now, so they don't all fire at the
+    // same one.
+    Creature* EnragedToTranq(PlayerbotAI* botAI, Player* bot)
+    {
+        std::list<Creature*> enraged;
+        bot->GetCreatureListWithEntryInGrid(enraged, NPC_DEATH_TALON_SEETHER, TRANQUILIZING_SHOT_RANGE);
+        enraged.remove_if([](Creature* seether) { return !seether->IsAlive() || !seether->HasAura(SPELL_SEETHER_ENRAGE); });
+        for (BossEnrage const& enrage : BOSS_ENRAGES)
+            if (Creature* boss = FightingBoss(bot, enrage.entry))
+                if (boss->HasAura(enrage.aura))
+                    enraged.push_back(boss);
+
+        for (Creature* mob : enraged)
+        {
+            // CanCastSpell lets an out-of-range target through.
+            if (!bot->IsWithinCombatRange(mob, TRANQUILIZING_SHOT_RANGE) ||
+                !botAI->CanCastSpell("tranquilizing shot", mob))
+                continue;
+
+            float const mine = bot->GetExactDist(mob);
+            bool closer = false;
+            if (Group* group = bot->GetGroup())
+                for (GroupReference* ref = group->GetFirstMember(); ref && !closer; ref = ref->next())
+                    if (Player* member = ref->GetSource())
+                    {
+                        if (member == bot || !member->IsAlive() || !member->IsClass(CLASS_HUNTER) ||
+                            !member->IsInMap(bot) || member->GetExactDist(mob) >= mine ||
+                            !member->IsWithinCombatRange(mob, TRANQUILIZING_SHOT_RANGE))
+                            continue;
+                        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+                        closer = memberAI && memberAI->CanCastSpell("tranquilizing shot", mob);
+                    }
+            if (!closer)
+                return mob;
+        }
+        return nullptr;
+    }
+}
+
+bool RcBwlTranqTrigger::IsActive()
+{
+    return bot->IsClass(CLASS_HUNTER) && bot->IsInCombat() && EnragedToTranq(botAI, bot);
+}
+
+bool RcBwlTranqAction::Execute(Event /*event*/)
+{
+    Creature* mob = EnragedToTranq(botAI, bot);
+    return mob && botAI->CastSpell("tranquilizing shot", mob);
+}
+
+// --- Chromaggus: Brood Affliction: Black ----------------------------------
+
+namespace
+{
+    // Remove Curse (mage and druid) and Cleanse Spirit all reach 40 yd.
+    constexpr float CURSE_REMOVAL_RANGE = 40.0f;
+    constexpr std::array<char const*, 2> CURSE_REMOVALS = { "remove curse", "cleanse spirit" };
+    // Healers leave Black alone while a tank is this low: their global cooldown is a heal first.
+    constexpr float BLACK_HEALER_TANK_PCT = 50.0f;
+    // The trigger's answer, reused by the action that follows it on the same tick.
+    constexpr uint32 BLACK_CACHE_MS = 100;
+
+    bool CanRemoveCurses(Player* player)
+    {
+        switch (player->getClass())
+        {
+            case CLASS_MAGE:   return player->HasSpell(SPELL_MAGE_REMOVE_CURSE);
+            case CLASS_DRUID:  return player->HasSpell(SPELL_DRUID_REMOVE_CURSE);
+            case CLASS_SHAMAN: return player->HasSpell(SPELL_CLEANSE_SPIRIT);
+            default:           return false;
+        }
+    }
+
+    // The Black-afflicted group member this bot should cleanse. Everyone who can remove curses
+    // takes every n-th cursed player (n = removers), so they don't all hit the same one and waste
+    // the global cooldown; if its own is out of reach, the first one it can reach. Healers sit it
+    // out while a tank is low.
+    Player* FindBlackToRemove(PlayerbotAI* botAI, Player* bot)
+    {
+        Group* group = bot->GetGroup();
+        if (!group || !CanRemoveCurses(bot) || !FightingBoss(bot, NPC_CHROMAGGUS))
+            return nullptr;
+
+        std::vector<Player*> cursed;
+        std::vector<Player*> members;
+        bool tankLow = false;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsAlive() || !member->IsInMap(bot))
+                continue;
+            members.push_back(member);
+            if (member->HasAura(SPELL_BROOD_AFFLICTION_BLACK))
+                cursed.push_back(member);
+            if (PlayerbotAI::IsTank(member) && member->GetHealthPct() < BLACK_HEALER_TANK_PCT)
+                tankLow = true;
+        }
+        if (cursed.empty())
+            return nullptr;
+
+        auto removes = [&](Player* member)
+        {
+            return GET_PLAYERBOT_AI(member) && CanRemoveCurses(member) && !(tankLow && PlayerbotAI::IsHeal(member));
+        };
+        if (!removes(bot))
+            return nullptr;
+
+        size_t removers = 0;
+        size_t mine = 0;
+        for (Player* member : members)
+            if (removes(member))
+            {
+                if (member == bot)
+                    mine = removers;
+                ++removers;
+            }
+
+        std::stable_sort(cursed.begin(), cursed.end(), [](Player* a, Player* b)
+        {
+            bool const aTank = PlayerbotAI::IsTank(a);
+            bool const bTank = PlayerbotAI::IsTank(b);
+            if (aTank != bTank)
+                return aTank;
+            return a->GetHealthPct() < b->GetHealthPct();
+        });
+
+        auto reachable = [&](Player* target)
+        {
+            if (bot->GetExactDist(target) > CURSE_REMOVAL_RANGE)
+                return false;
+            bool castable = false;
+            for (char const* spell : CURSE_REMOVALS)
+                castable = castable || botAI->CanCastSpell(spell, target);
+            return castable && bot->IsWithinLOSInMap(target);
+        };
+
+        Player* assigned = cursed[mine % cursed.size()];
+        if (reachable(assigned))
+            return assigned;
+        for (Player* target : cursed)
+            if (target != assigned && reachable(target))
+                return target;
+        return nullptr;
+    }
+
+    struct BlackCache
+    {
+        ObjectGuid bot;
+        ObjectGuid target;
+        uint32 ms = 0;
+    };
+    thread_local BlackCache tBlackCache;
+
+    Player* BlackToRemove(PlayerbotAI* botAI, Player* bot, bool fresh)
+    {
+        uint32 const now = getMSTime();
+        if (!fresh && tBlackCache.bot == bot->GetGUID() && getMSTimeDiff(tBlackCache.ms, now) <= BLACK_CACHE_MS)
+        {
+            Player* target = tBlackCache.target ? ObjectAccessor::GetPlayer(*bot, tBlackCache.target) : nullptr;
+            return target && target->IsAlive() && target->HasAura(SPELL_BROOD_AFFLICTION_BLACK) ? target : nullptr;
+        }
+
+        Player* target = FindBlackToRemove(botAI, bot);
+        tBlackCache = { bot->GetGUID(), target ? target->GetGUID() : ObjectGuid::Empty, now };
+        return target;
+    }
+}
+
+bool RcBwlBlackAfflictionTrigger::IsActive()
+{
+    return bot->IsInCombat() && BlackToRemove(botAI, bot, true);
+}
+
+bool RcBwlBlackAfflictionAction::Execute(Event /*event*/)
+{
+    Player* target = BlackToRemove(botAI, bot, false);
+    if (!target)
+        return false;
+    for (char const* spell : CURSE_REMOVALS)
+        if (botAI->CanCastSpell(spell, target) && botAI->CastSpell(spell, target))
+            return true;
+    return false;
+}
+
+// --- Nefarian: class calls -------------------------------------------------
+
+namespace
+{
+    // The priests' debuff. Matched by id and, as a fallback, by name, in case the call applies
+    // its aura under a different id than the call spell itself.
+    bool HasCorruptedHealing(Player* bot)
+    {
+        if (bot->HasAura(SPELL_CORRUPTED_HEALING))
+            return true;
+        for (auto const& [id, aurApp] : bot->GetAppliedAuras())
+            if (!aurApp->IsPositive() &&
+                std::strcmp(aurApp->GetBase()->GetSpellInfo()->SpellName[LOCALE_enUS], "Corrupted Healing") == 0)
+                return true;
+        return false;
+    }
+
+    Creature* FireNovaTotemNear(Player* bot)
+    {
+        std::list<Creature*> totems;
+        bot->GetCreatureListWithEntryInGrid(totems, NPC_CORRUPTED_FIRE_NOVA_TOTEM, FIRE_NOVA_KEEP_AWAY);
+        for (Creature* totem : totems)
+            if (totem->IsAlive())
+                return totem;
+        return nullptr;
+    }
+}
+
+float RcBwlCorruptedHealingMultiplier::GetValue(Action* action)
+{
+    // Every heal a priest casts under Corrupted Healing puts a shadow DoT on its target, so the
+    // priests' heals land on the tanks as damage. Power Word: Shield isn't a heal and still goes
+    // out, and a tank about to die still gets healed (the DoT is the lesser evil); otherwise the
+    // other healers carry the raid until the call wears off.
+    if (!action || !bot->IsClass(CLASS_PRIEST))
+        return 1.0f;
+    auto* heal = dynamic_cast<CastHealingSpellAction*>(action);
+    if (!heal || heal->getSpell() == "power word: shield" || !FightingBoss(bot, NPC_NEFARIAN) ||
+        !HasCorruptedHealing(bot))
+        return 1.0f;
+
+    Unit* target = action->GetTarget();
+    Player* player = target ? target->ToPlayer() : nullptr;
+    if (player && PlayerbotAI::IsTank(player) && player->GetHealthPct() < CORRUPTED_HEALING_TANK_PCT)
+        return 1.0f;
+    return 0.0f;
+}
+
+bool RcBwlFireNovaTotemTrigger::IsActive()
+{
+    // Tanks stay with their mobs; everyone else walks out before the totem goes off.
+    return bot->IsInCombat() && !PlayerbotAI::IsTank(bot) && FightingBoss(bot, NPC_NEFARIAN) &&
+           FireNovaTotemNear(bot);
+}
+
+bool RcBwlFireNovaTotemMoveAwayAction::Execute(Event /*event*/)
+{
+    Creature* totem = FireNovaTotemNear(bot);
+    if (!totem)
+        return false;
+    return MoveAway(totem, FIRE_NOVA_KEEP_AWAY + 2.0f - bot->GetExactDist2d(totem));
+}
+
+class RaidClearBwlPlayerScript : public PlayerScript
+{
+public:
+    RaidClearBwlPlayerScript() : PlayerScript("RaidClearBwlPlayerScript", { PLAYERHOOK_ON_PLAYER_RESURRECT }) {}
+
+    // Playerbots puts the Onyxia Scale Cloak's aura on its bots in Blackwing Lair from a random
+    // check every few seconds, so a bot revived in front of Nefarian or a drake could eat a
+    // Shadow Flame without it. Death strips it; this puts it back the moment the bot stands up.
+    void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
+    {
+        using namespace RaidClear::BlackwingLair;
+        if (player->GetMapId() != MAP_ID || !RaidClear::GetConfig().IsRaidEnabled(MAP_ID) || !GET_PLAYERBOT_AI(player))
+            return;
+        if (!player->HasAura(SPELL_ONYXIA_SCALE_CLOAK))
+            player->AddAura(SPELL_ONYXIA_SCALE_CLOAK, player);
+    }
+};
+
+void RaidClear::BlackwingLair::AddScripts()
+{
+    new RaidClearBwlPlayerScript();
+    RaidClear::BlackwingLair::AddPositionScripts();
+    RaidClear::BlackwingLair::AddInterruptScripts();
+}

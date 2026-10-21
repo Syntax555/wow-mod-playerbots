@@ -1,0 +1,236 @@
+/*
+ * Raid clear (formerly mod-raid-clear): the per-map strategy gate for the vanilla raids.
+ *
+ * The "rc" strategy, action and trigger contexts are added with playerbots' own shared contexts
+ * (Bot/Engine/BuildShared*Contexts.cpp). Here:
+ *
+ *  - Install "rc <raid>" on the combat engine of every bot on that raid's map (and a raid's
+ *    "early" strategy, if it has one, on both engines), and strip it when the bot leaves. Login and
+ *    map-change hooks do it immediately; a sweep every few seconds puts it back after anything
+ *    that resets a bot's strategies inside the raid (group change, talent swap,
+ *    `.playerbots reset`). Playerbots' own "avoid aoe" goes on with it.
+ *
+ * Released under the MIT License.
+ */
+
+#include "RaidClearConfig.h"
+#include "RaidClearContexts.h"
+#include "RaidClearRegistry.h"
+#include "Common/AggroLeash.h"
+#include "Common/DeathLog.h"
+#include "Common/Knockback.h"
+#include "Common/RaidDiscipline.h"
+#include "Common/TankRoles.h"
+#include "Raids/AhnQiraj/AqRaidClear.h"
+#include "Raids/BlackwingLair/BwlRaidClear.h"
+#include "Raids/OnyxiasLair/OnyRaidClear.h"
+
+#include "Config.h"
+#include "Log.h"
+#include "Map.h"
+#include "ObjectAccessor.h"
+#include "Player.h"
+#include "PlayerScript.h"
+#include "ScriptMgr.h"
+
+#include "Playerbots.h"
+#include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
+
+#include <algorithm>
+
+namespace RaidClear
+{
+    namespace
+    {
+        Config sConfig;
+        bool sRegistered = false;
+    }
+
+    Config const& GetConfig() { return sConfig; }
+
+    void LoadConfig()
+    {
+        sConfig.enable = sConfigMgr->GetOption<bool>("RaidClear.Enable", true);
+        sConfig.killOrder = sConfigMgr->GetOption<bool>("RaidClear.KillOrder", true);
+        sConfig.assignMainTank = sConfigMgr->GetOption<bool>("RaidClear.Tanks.AssignMainTank", true);
+        sConfig.tankSplit = sConfigMgr->GetOption<bool>("RaidClear.Tanks.Split", true);
+        sConfig.tankSeparation = sConfigMgr->GetOption<float>("RaidClear.Tanks.Separation", 12.0f);
+        sConfig.separateOnBosses = sConfigMgr->GetOption<bool>("RaidClear.Tanks.SeparateOnBosses", false);
+        sConfig.deathLog = sConfigMgr->GetOption<bool>("RaidClear.DeathLog", true);
+        sConfig.aggroLeash = sConfigMgr->GetOption<bool>("RaidClear.AggroLeash", true);
+        sConfig.aggroLeashBuffer = std::max(0.0f, sConfigMgr->GetOption<float>("RaidClear.AggroLeash.Buffer", 6.0f));
+        sConfig.aggroLeashSplash = sConfigMgr->GetOption<bool>("RaidClear.AggroLeash.Splash", true);
+        sConfig.aggroLeashKnockback = sConfigMgr->GetOption<bool>("RaidClear.AggroLeash.Knockback", true);
+        sConfig.aggroLeashPatrolAhead =
+            std::clamp(sConfigMgr->GetOption<float>("RaidClear.AggroLeash.PatrolAhead", 15.0f), 0.0f, 40.0f);
+        sConfig.aggroLeashBossBuffer =
+            std::clamp(sConfigMgr->GetOption<float>("RaidClear.AggroLeash.BossBuffer", 8.0f), 0.0f, 30.0f);
+        sConfig.pullDiscipline = sConfigMgr->GetOption<bool>("RaidClear.PullDiscipline", true);
+        sConfig.healersStayBack = sConfigMgr->GetOption<bool>("RaidClear.HealersStayBack", true);
+        sConfig.teachTranquilizingShot = sConfigMgr->GetOption<bool>("RaidClear.Bots.TeachTranquilizingShot", true);
+        sConfig.raidEnabled.clear();
+        for (RaidEntry const& raid : Raids)
+            sConfig.raidEnabled[raid.mapId] =
+                sConfigMgr->GetOption<bool>(std::string("RaidClear.") + raid.confKey + ".Enable", true);
+        BlackwingLair::LoadSpots();
+        TempleOfAhnQiraj::LoadSpots();
+    }
+
+    // Install the strategies for the bot's current raid, strip every other raid's.
+    void Reconcile(Player* player)
+    {
+        if (!sRegistered || !player)
+            return;
+
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+        if (!botAI)
+            return;  // a real player
+
+        Map* map = player->GetMap();
+        uint32 const mapId = map ? map->GetId() : 0;
+
+        // The tank split applies in every raid, supported or not.
+        bool const wantTanks = sConfig.enable && sConfig.tankSplit && map && map->IsRaid();
+        bool const hasTanks = botAI->HasStrategy(TANKS_STRATEGY, BOT_STATE_COMBAT);
+        if (wantTanks && !hasTanks)
+            botAI->ChangeStrategy(std::string("+") + TANKS_STRATEGY, BOT_STATE_COMBAT);
+        else if (!wantTanks && hasTanks)
+            botAI->ChangeStrategy(std::string("-") + TANKS_STRATEGY, BOT_STATE_COMBAT);
+
+        // So does the aggro leash.
+        bool const wantLeash = sConfig.enable && sConfig.aggroLeash && map && map->IsRaid();
+        bool const hasLeash = botAI->HasStrategy(LEASH_STRATEGY, BOT_STATE_COMBAT);
+        if (wantLeash && !hasLeash)
+            botAI->ChangeStrategy(std::string("+") + LEASH_STRATEGY, BOT_STATE_COMBAT);
+        else if (!wantLeash && hasLeash)
+            botAI->ChangeStrategy(std::string("-") + LEASH_STRATEGY, BOT_STATE_COMBAT);
+
+        // Pull discipline and healers staying back: every raid too, and in both engines.
+        bool const wantDiscipline =
+            sConfig.enable && (sConfig.pullDiscipline || sConfig.healersStayBack) && map && map->IsRaid();
+        for (BotState const state : { BOT_STATE_COMBAT, BOT_STATE_NON_COMBAT })
+        {
+            bool const hasDiscipline = botAI->HasStrategy(DISCIPLINE_STRATEGY, state);
+            if (wantDiscipline && !hasDiscipline)
+                botAI->ChangeStrategy(std::string("+") + DISCIPLINE_STRATEGY, state);
+            else if (!wantDiscipline && hasDiscipline)
+                botAI->ChangeStrategy(std::string("-") + DISCIPLINE_STRATEGY, state);
+        }
+
+        if (sConfig.enable && map && map->IsRaid())
+            Discipline::TeachRaidSpells(player);
+
+        // Playerbots' "avoid aoe" (out of a Rain of Fire or a Flamestrike the bot stands in) only
+        // goes on bots with a real player as master; in Blackwing Lair, where the trash leaves
+        // fire on the camp, every bot gets it. It comes off again outside, unless playerbots
+        // would have given it to the bot anyway. Only there: the other raids' movement was
+        // never tuned against its step-back.
+        bool const wantAvoid = sConfig.enable && sPlayerbotAIConfig.AutoAvoidAoe && mapId == AVOID_AOE_MAP &&
+                               sConfig.IsRaidEnabled(AVOID_AOE_MAP);
+        bool const hasAvoid = botAI->HasStrategy(AVOID_AOE_STRATEGY, BOT_STATE_COMBAT);
+        if (wantAvoid && !hasAvoid)
+            botAI->ChangeStrategy(std::string("+") + AVOID_AOE_STRATEGY, BOT_STATE_COMBAT);
+        else if (!wantAvoid && hasAvoid && !botAI->HasGameClientMaster())
+            botAI->ChangeStrategy(std::string("-") + AVOID_AOE_STRATEGY, BOT_STATE_COMBAT);
+
+        for (RaidEntry const& raid : Raids)
+        {
+            bool const want = raid.mapId == mapId && sConfig.IsRaidEnabled(raid.mapId);
+            bool const has = botAI->HasStrategy(raid.strategy, BOT_STATE_COMBAT);
+            if (want && !has)
+                botAI->ChangeStrategy(std::string("+") + raid.strategy, BOT_STATE_COMBAT);
+            else if (!want && has)
+                botAI->ChangeStrategy(std::string("-") + raid.strategy, BOT_STATE_COMBAT);
+
+            if (!raid.earlyStrategy)
+                continue;
+            for (BotState const state : { BOT_STATE_COMBAT, BOT_STATE_NON_COMBAT })
+            {
+                bool const hasEarly = botAI->HasStrategy(raid.earlyStrategy, state);
+                if (want && !hasEarly)
+                    botAI->ChangeStrategy(std::string("+") + raid.earlyStrategy, state);
+                else if (!want && hasEarly)
+                    botAI->ChangeStrategy(std::string("-") + raid.earlyStrategy, state);
+            }
+        }
+    }
+}
+
+using namespace RaidClear;
+
+class RaidClearWorldScript : public WorldScript
+{
+public:
+    RaidClearWorldScript() : WorldScript("RaidClearWorldScript") {}
+
+    void OnAfterConfigLoad(bool /*reload*/) override
+    {
+        LoadConfig();
+    }
+
+    void OnUpdate(uint32 diff) override
+    {
+        if (!_started)
+        {
+            _started = true;
+
+            // Disabled at startup: no bot ever gets an "rc" strategy. Turning it back on needs a
+            // restart, which the conf says.
+            if (!GetConfig().enable)
+                return;
+
+            sRegistered = true;
+            LOG_INFO("module", "playerbots: raid clear strategies enabled.");
+        }
+
+        if (!sRegistered)
+            return;
+
+        _sweepMs += diff;
+        if (_sweepMs < SWEEP_INTERVAL_MS)
+            return;
+        _sweepMs = 0;
+
+        // World thread, outside map updates: the same place mod-dungeon-clear reconciles its
+        // strategies from.
+        TempleOfAhnQiraj::SweepParkedPets();
+        for (auto const& [guid, player] : ObjectAccessor::GetPlayers())
+        {
+            Reconcile(player);
+
+            // Group flags are only touched here, on the world thread.
+            if (GetConfig().assignMainTank && player->GetMap() && player->GetMap()->IsRaid())
+                Tanks::AssignMainTank(player->GetGroup());
+        }
+    }
+
+private:
+    static constexpr uint32 SWEEP_INTERVAL_MS = 3000;
+    uint32 _sweepMs = 0;
+    bool _started = false;
+};
+
+class RaidClearPlayerScript : public PlayerScript
+{
+public:
+    RaidClearPlayerScript()
+        : PlayerScript("RaidClearPlayerScript", { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_MAP_CHANGED }) {}
+
+    void OnPlayerLogin(Player* player) override { Reconcile(player); }
+    void OnPlayerMapChanged(Player* player) override { Reconcile(player); }
+};
+
+void AddRaidClearScripts()
+{
+    new RaidClearWorldScript();
+    new RaidClearPlayerScript();
+    DeathLog::AddScripts();
+    Leash::AddScripts();
+    Knockback::AddScripts();
+    BlackwingLair::AddScripts();
+    MoltenCore::AddScripts();
+    OnyxiasLair::AddScripts();
+    ZulGurub::AddScripts();
+    AhnQiraj::AddScripts();
+}

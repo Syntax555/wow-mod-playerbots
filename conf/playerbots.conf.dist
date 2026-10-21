@@ -2767,3 +2767,467 @@ Playerbots.TargetPosRecalcDistance = 0.1
 
 # Allow bots to be summoned near innkeepers
 Playerbots.SummonAtInnkeepersEnabled = 1
+
+####################################################################################################
+# RAID CLEAR (formerly mod-raid-clear)
+#
+# Boss and trash mechanics for bot raids, raid by raid (src/Ai/Raid/RaidClear). Works on top of
+# playerbots' own raid strategies (it only adds what they're missing) and alongside
+# mod-dungeon-clear, which walks the raid from boss to boss and hands each boss fight to the
+# bots' strategies. The option names kept their RaidClear. prefix, so AC_RAID_CLEAR_*
+# environment overrides still apply.
+####################################################################################################
+
+#
+#    RaidClear.Enable
+#        Description: Master switch. Read at startup; turning it on later needs a restart.
+#        Default:     1
+#
+
+RaidClear.Enable = 1
+
+#
+#    RaidClear.KillOrder
+#        Description: The group's main tank bot (or first tank bot) keeps the skull raid icon on
+#                     the add that should die first: Lava Spawn, then healers, then other boss
+#                     adds. DPS bots always attack skull first. It never moves a skull that is
+#                     already on an add of the same or higher priority; a skull on anything
+#                     else, a player's included, moves to a listed add. On Zul'Gurub's High
+#                     Priest Thekal skull follows its own rule (see RaidClear.ZulGurub.Enable).
+#        Default:     1
+#
+
+RaidClear.KillOrder = 1
+
+#
+#    RaidClear.Tanks.AssignMainTank
+#        Description: In every raid, if the group has two or more tanks and nobody has the Main
+#                     Tank flag, give it to the tank playerbots already treats as main (the first
+#                     tank in group order; `.botraid sort` puts tanks first). With the flag set
+#                     the main tank sticks to its own target, and mod-dungeon-clear picks the same
+#                     tank as its leader. A Main Tank you set yourself is never changed.
+#        Default:     1
+#
+
+RaidClear.Tanks.AssignMainTank = 1
+
+#
+#    RaidClear.Tanks.Split
+#        Description: In every raid, the other tanks act as off-tanks: they never take the main
+#                     tank's target, they pick up mobs hitting non-tanks first, then extra mobs on
+#                     the main tank, and leave mobs another off-tank holds. In packs where every
+#                     tank should hold one (BWL's Death Talon Wyrmguards) each off-tank is handed
+#                     one at the pull and taunts it off the main tank.
+#                     On bosses that cut their tank's threat, can't be taunted or need two tanks
+#                     taking turns (Broodlord Lashlayer, Firemaw, Ebonroc, Flamegor, Vaelastrasz,
+#                     Chromaggus, Nefarian, Hakkar, Fankriss) an off-tank with no add to hold
+#                     attacks the boss too, so it catches the boss after a Knock Away / Wing Buffet,
+#                     and keeps a boss that turns to it unless an add that needs its own tank is
+#                     loose and no other off-tank is free. Blackwing Lair's Suppression Room
+#                     whelps are never picked up, and neither is a loose mob that evades every
+#                     attack (one that can't find a way to its victim): a taunt does nothing to it.
+#                     On bosses that keep taking their tank away (Hakkar) the tanks share the
+#                     boss's threat with taunts and damage dealers hold their damage while they
+#                     are within 10% of the next tank's threat, so the boss always turns to a tank.
+#                     Where no taunt lands (Hakkar), a paladin's Hand of Protection on a player
+#                     the boss is on who isn't a tank sends it to the next tank, and a player in
+#                     the raid who comes within 10% of that tank's threat gets Hand of Salvation.
+#        Default:     1
+#
+
+RaidClear.Tanks.Split = 1
+
+#
+#    RaidClear.Tanks.Separation
+#        Description: Minimum distance (yards) between the off-tank's mob and the main tank's mob
+#                     on trash. Mobs with a big AoE get more: each raid lists their radius and the
+#                     pair is kept at least the sum apart (Molten Core: Molten Giants 30 yd apart,
+#                     Molten Destroyers 36). Each off-tank also keeps its mob that far from the
+#                     mobs of the off-tanks ahead of it in group order (BWL's three Wyrmguards end
+#                     up 30 yd from each other). Only spots on dry ground at about the same height and
+#                     in the main tank's line of sight are used. 0 = don't move.
+#        Default:     12
+#
+
+RaidClear.Tanks.Separation = 12
+
+#
+#    RaidClear.Tanks.SeparateOnBosses
+#        Description: Also separate while a boss is in the fight. Off by default: boss rooms have
+#                     their own positioning (and some boss strategies place the tanks themselves).
+#                     Off-tanks still take the boss's adds either way.
+#        Default:     0
+#
+
+RaidClear.Tanks.SeparateOnBosses = 0
+
+#
+#    RaidClear.DeathLog
+#        Description: In every raid, write a line to the server log (logger "module", so it lands
+#                     in Server.log) for every player or bot death: class and role, the boss being
+#                     fought with its health, buffs, distance and line of sight (or "trash"), the
+#                     killing blow, the last 6 seconds of damage grouped by spell and source, and
+#                     the victim's debuffs. When a boss dies or resets after deaths, one more
+#                     line tallies what killed people in that pull. grep "[RaidClear]" to read it.
+#        Default:     1
+#
+
+RaidClear.DeathLog = 1
+
+#
+#    RaidClear.AggroLeash
+#        Description: In every raid, a bot in combat doesn't back into a pack that isn't in the
+#                     fight. Playerbots moves a bot away from something (a mob in its face, a
+#                     boss's AoE, the group for a Living Bomb) to a point straight behind it and
+#                     doesn't look at what stands there. With this on, a walk that would pass
+#                     inside an idle mob's aggro radius plus the buffer is stopped as it starts
+#                     (within a server tick or two). A walk toward the bot's own target only has
+#                     to pass other packs by half the buffer, and the target's own pack doesn't
+#                     count for it. A bot standing at the edge of an idle mob's aggro radius
+#                     steps back out.
+#        Default:     1
+#
+
+RaidClear.AggroLeash = 1
+
+#
+#    RaidClear.AggroLeash.Buffer
+#        Description: Yards kept beyond a mob's aggro radius (its detection range, 20 yd by
+#                     default, plus a yard per level the mob is above the bot). A walk away
+#                     from something is stopped at the full buffer, a walk toward the bot's
+#                     target at half of it, and a bot standing a yard inside that steps back.
+#                     Raise it if packs still get pulled, lower it if bots stop short in tight
+#                     rooms.
+#        Default:     6
+#
+
+RaidClear.AggroLeash.Buffer = 6
+
+#
+#    RaidClear.AggroLeash.Splash
+#        Description: With the leash on, a bot also doesn't cast a spell that hits more than
+#                     its target where it would reach a mob that isn't in the fight: an area
+#                     spell (Blizzard, Volley, Death and Decay, Hurricane, Starfall) hits
+#                     everything hostile in its radius, and a chain (Chain Lightning,
+#                     Multi-Shot, Avenger's Shield) jumps to whatever stands near enough. The
+#                     bot uses its single-target spells instead until the fight has moved or
+#                     that pack is dead. Not judged on a target that isn't in combat itself
+#                     (the pull).
+#        Default:     1
+#
+
+RaidClear.AggroLeash.Splash = 1
+
+#
+#    RaidClear.AggroLeash.Knockback
+#        Description: With the leash on, a bot doesn't stand where a knockback would throw it
+#                     into a mob that isn't in the fight. How far a mob throws and whom (whoever
+#                     it is on, everyone around it, only those in front of it) is read from the
+#                     server's spell data: Blackwing Lair's drakes (Wing Buffet, 39 yd),
+#                     Broodlord, Molten Core's giants, Lava Surgers and Sulfuron are known from
+#                     the start, and any other mob once it has been seen to throw someone on
+#                     a raid map (one line in the server log). A tank or melee bot goes round
+#                     the mob to the nearest side from which the throw ends in clear ground or
+#                     against a wall; anyone else steps out of the throw's reach. Playerbots' "tank
+#                     face" is off for a tank while this has a say in where it stands. Does
+#                     nothing in a fight with no idle mob near it.
+#        Default:     1
+#
+
+RaidClear.AggroLeash.Knockback = 1
+
+#
+#    RaidClear.AggroLeash.PatrolAhead
+#        Description: Yards of a walking mob's way ahead (a patrol, or a mob wandering round its
+#                     spot) that the leash treats as if the mob stood there already, so a bot
+#                     doesn't walk to where a patrol is about to arrive. The server only knows
+#                     the leg a mob is on, up to its next waypoint. 0 = only where the mob is.
+#        Default:     15
+#
+
+RaidClear.AggroLeash.PatrolAhead = 15
+
+#
+#    RaidClear.AggroLeash.BossBuffer
+#        Description: Yards kept from a boss that isn't in the fight, on top of its aggro radius
+#                     and RaidClear.AggroLeash.Buffer, by every walk that isn't toward the bot's
+#                     own target and by every spot a bot picks to stand on. 0 = bosses are
+#                     treated like any other mob.
+#        Default:     8
+#
+
+RaidClear.AggroLeash.BossBuffer = 8
+
+#
+#    RaidClear.PullDiscipline
+#        Description: Only a tank starts a fight. Playerbots counts the raid's skull as a target
+#                     for every bot whether it is in combat or not, so a marked pack gets a
+#                     Flamestrike before a tank has moved. With this on, a bot that isn't a tank
+#                     doesn't attack, cast on or walk up to a mob that is standing where it
+#                     spawned and isn't in a fight yet; once a tank (or a patrol, or a player)
+#                     has started it, everyone joins. And no bot, tank or not, opens on a boss
+#                     that isn't in the fight while the raid is still fighting something else.
+#                     Summoned mobs never count, and the rule is off while the raid has no
+#                     living tank.
+#        Default:     1
+#
+
+RaidClear.PullDiscipline = 1
+
+#
+#    RaidClear.HealersStayBack
+#        Description: A healer paladin only casts a Judgement on something already in range
+#                     from where it stands. Playerbots uses Judgement of Light (10 yd) as the
+#                     healer's idle action and walks the bot into melee range for it.
+#        Default:     1
+#
+
+RaidClear.HealersStayBack = 1
+
+#
+#    RaidClear.Bots.TeachTranquilizingShot
+#        Description: Hunter bots of level 60+ that enter a raid are taught Tranquilizing Shot.
+#                     mod-individual-progression moves it to level 61 on the trainers, so a
+#                     level 60 bot never has it and no Frenzy (Magmadar, Flamegor, Chromaggus,
+#                     Death Talon Seethers) is ever removed. The spell stays on the character.
+#        Default:     1
+#
+
+RaidClear.Bots.TeachTranquilizingShot = 1
+
+#
+#    RaidClear.MoltenCore.Enable
+#        Description: Molten Core strategy (map 409): kill order, Tremor Totem on Magmadar
+#                     (and no other earth totem near him), no attacks into Majordomo's
+#                     reflection shields, ranged out of Ragnaros' knockback, the raid stays
+#                     within 30 yd of Garr and leaves a Firesworn with Separation Anxiety alone
+#                     (bots already on one stop attacking), every bot within 23 yd of Baron
+#                     Geddon walks out of his Inferno, a bot with his Living Bomb gets 24.5 yd
+#                     clear of everyone else, and bots in combat don't stand at the Hot Coal in
+#                     Majordomo's room (12 yd; a tank with a mob on it 22 yd). Ragnaros' range
+#                     is measured from his middle (27.5 yd).
+#        Default:     1
+#
+
+RaidClear.MoltenCore.Enable = 1
+
+#
+#    RaidClear.BlackwingLair.Enable
+#        Description: Blackwing Lair strategy (map 469): warlocks first in the kill order, bots
+#                     turn off Suppression Devices within 22 yd (needs the "raid" bot cheat, or a
+#                     rogue), ranged out of Broodlord's Blast Wave, tank swap on Shadow of Ebonroc,
+#                     ranged/healers 6 yd apart while Blackwing Technicians (Bomb) are fighting,
+#                     hide from Firemaw at 5-7 Flame Buffet stacks, go behind cover before each
+#                     of Chromaggus' breaths (he breathes every 30s; not for Time Lapse) and
+#                     remove his Brood Affliction: Black first, stay out of the front of Firemaw,
+#                     Ebonroc, Flamegor and Nefarian (Shadow Flame, Wing Buffet, Cleave) and out
+#                     of the War Stomp of Wyrmguards, Tranquilizing Shot on Flamegor's and
+#                     Chromaggus' Frenzy, a paladin tank on Nefarian with the other tanks and
+#                     the damage dealers under its threat, Tremor Totem and Fear Ward against
+#                     his Bellowing Roar, Nefarian's class
+#                     calls (priests stop healing under Corrupted Healing unless a tank is below
+#                     35%, corrupted totems and Infernals die first, everyone but the tanks walks
+#                     away from the Fire Nova totem), Onyxia Scale Cloak aura back on revived bots, stay out of Nefarian's Bellowing Roar, Razorgore/Nefarian add
+#                     kill order, Vaelastrasz co-tanked, the Blackwing Technicians that run from
+#                     Vaelastrasz's room stopped and killed.
+#        Default:     1
+#
+
+RaidClear.BlackwingLair.Enable = 1
+
+#
+#    RaidClear.BlackwingLair.Firemaw.<Role>Spot
+#    RaidClear.BlackwingLair.Chromaggus.<Role>Spot
+#        Description: Fixed spots for the Firemaw and Chromaggus fights, as "x y z" (or the
+#                     line .gps prints: the first three numbers are used). Empty: that role
+#                     has no spot, and bots search for cover round themselves as before.
+#                     Changes apply on .reload config.
+#                     TankSpot       - where the tank the boss is on holds him (back to a wall,
+#                                      so Wing Buffet throws nobody).
+#                     OffTankSpot    - Firemaw: where his second tank stands, beside TankSpot,
+#                                      in melee reach of him and also with its back to the wall
+#                                      (his two tanks trade him, and he stays where he is: the
+#                                      one he is on can be on either spot).
+#                     TankHideSpot   - Firemaw: where a tank drops its Flame Buffet stacks
+#                                      (empty: MeleeHideSpot).
+#                     MeleeHideSpot  - where melee hide (out of the boss's sight).
+#                     RangedSpot     - where ranged damage dealers fight from (in range and in
+#                                      sight of the boss at TankSpot).
+#                     RangedHideSpot - where ranged hide.
+#                     HealerSpot     - where healers heal from (in reach and sight of TankSpot
+#                                      and OffTankSpot; empty: RangedSpot).
+#                     HealerHideSpot - where healers hide (empty: RangedHideSpot).
+#                     Bots spread up to 3 yd round a spot. A hide spot the boss can see from
+#                     where he stands is skipped for a cover search.
+#        Default:     "" (no spot)
+#
+
+RaidClear.BlackwingLair.Firemaw.TankSpot = ""
+RaidClear.BlackwingLair.Firemaw.OffTankSpot = ""
+RaidClear.BlackwingLair.Firemaw.TankHideSpot = ""
+RaidClear.BlackwingLair.Firemaw.MeleeHideSpot = ""
+RaidClear.BlackwingLair.Firemaw.RangedSpot = ""
+RaidClear.BlackwingLair.Firemaw.RangedHideSpot = ""
+RaidClear.BlackwingLair.Firemaw.HealerSpot = ""
+RaidClear.BlackwingLair.Firemaw.HealerHideSpot = ""
+
+RaidClear.BlackwingLair.Chromaggus.TankSpot = ""
+RaidClear.BlackwingLair.Chromaggus.MeleeHideSpot = ""
+RaidClear.BlackwingLair.Chromaggus.RangedSpot = ""
+RaidClear.BlackwingLair.Chromaggus.RangedHideSpot = ""
+RaidClear.BlackwingLair.Chromaggus.HealerSpot = ""
+RaidClear.BlackwingLair.Chromaggus.HealerHideSpot = ""
+
+#
+#    RaidClear.ZulGurub.Enable
+#        Description: Zul'Gurub strategy (map 309): High Priest Venoxis' Razzashi Cobras die first,
+#                     and while he is a troll (above 50%) everyone but the tanks stays about 16 yd
+#                     from his target, from whoever tops his threat and from any tank or pet
+#                     within a jump of those, so Holy Wrath has nobody to chain to. Melee go in
+#                     once he turns into a snake. On Hakkar the tanks share his threat with
+#                     taunts and damage dealers stay below them, so he goes to another tank when
+#                     he mind-controls his tank or wipes its threat (Aspects of Arlokk and
+#                     Mar'li). That part also needs RaidClear.Tanks.Split. High Priest Thekal and
+#                     his two zealots are brought down together (one that drops alone gets up
+#                     again 10 s later): skull moves to whichever of the three has the most
+#                     health left, nobody but the tanks uses area damage until the first one
+#                     drops, and Zealot Lor'Khan's Great Heal is interrupted. The skull and
+#                     area damage parts also need RaidClear.KillOrder. On trash, bots walk out
+#                     of a Gurubashi Bat Rider's Unstable Concoction, kill the healers first
+#                     (Hakkari Blood Priest, Hakkari Priest, Gurubashi Blood Drinker; needs
+#                     RaidClear.KillOrder), keep skull and casters off a Hakkari Priest while
+#                     it has Anti-Magic Shield, and don't attack evading mobs or mind-controlled
+#                     raid members. A mind-controlled member is stopped with Polymorph or Hammer
+#                     of Justice until it wears off. On High Priestess Jeklik bots walk
+#                     out of the Liquid Fire her Bat Riders drop.
+#        Default:     1
+#
+
+RaidClear.ZulGurub.Enable = 1
+
+#
+#    RaidClear.OnyxiasLair.Enable
+#        Description: Onyxia's Lair strategy (map 249), for Onyxia herself and for
+#                     mod-individual-progression's level 60 Onyxia: when she takes a Deep Breath,
+#                     bots standing in the strip of fire walk to the nearest spot outside it and
+#                     nobody walks into or across it until it has passed. The strip is read from
+#                     the server's spell data (spell_target_position), so it follows the core.
+#                     Replaces playerbots' fixed safe zones for the breath.
+#                     Also: tanks other than the main tank and the one she is on stand at her
+#                     side (one she turns to joins the main tank), bots leave a mob that evades
+#                     every attack and don't pick one, and Hunter's Mark stays off the whelps.
+#                     While she is in the air, ranged bots and healers standing in a crowd
+#                     spread out for her Fireball (8 yd splash). On the level 60 Onyxia, who
+#                     can't be taunted, damage dealers stay under 90% of the tanks' threat
+#                     while she is on the ground or coming down to land. Ranged bots, healers
+#                     and off-tanks stay out of her Cleave (within 13 yd of her target, in
+#                     front of her).
+#        Default:     1
+#
+
+RaidClear.OnyxiasLair.Enable = 1
+
+#
+#    RaidClear.RuinsOfAhnQiraj.Enable
+#        Description: Ruins of Ahn'Qiraj strategy (map 509). Ossirian: the tank he is on takes
+#                     him to the next crystal before his weakness wears off, and one bot (the
+#                     nearest damage dealer, else a healer) waits at the crystal and uses it
+#                     once he is in reach and has Strength or less than 15 s of weakness left.
+#                     Replaces playerbots' crystal walk, which sent every bot.
+#                     Kurinnaxx: bots walk out of a Sand Trap (8 yd) before it goes off. Moam:
+#                     hunters (Viper Sting), priests that aren't healing (Mana Burn) and warlocks
+#                     (Drain Mana) keep his mana down; skull goes on the Mana Fiends first.
+#                     Ayamiss: damage dealers kill the Hive'Zara Larva nearest the altar before it
+#                     eats the paralyzed player. Also: bots walk out of an Anubisath Guardian's
+#                     Explode (20 yd) before it goes off. Kill orders need RaidClear.KillOrder.
+#        Default:     1
+#
+
+RaidClear.RuinsOfAhnQiraj.Enable = 1
+
+#
+#    RaidClear.TempleOfAhnQiraj.Enable
+#        Description: Temple of Ahn'Qiraj strategy (map 531). Skeram: a bot he mind-controls does
+#                     nothing of its own (its area spells killed the raid around it), a mage
+#                     Polymorphs it or a paladin stuns it, and nobody hurts it; any bot with an
+#                     interrupt in reach stops his Arcane Explosion and True Fulfillment; skull goes
+#                     on his images before him. Viscidus: until he is frozen, bot damage dealers
+#                     with a frost spell cast it at him (mage rank 1 Frostbolt, shaman Frost Shock,
+#                     death knight Howling Blast or Icy Touch); bots walk out of the Toxic Slime
+#                     clouds and toward nothing standing in one, and the tank he is on walks him out
+#                     of a cloud; skull goes on the Globs of Viscidus first (needs
+#                     RaidClear.KillOrder). Sartura: bots she or a guard isn't on stay out of a
+#                     Whirlwind (10 yd); bots with a stun in reach keep her stunned between
+#                     whirlwinds and the guards in theirs; guards die first. Fankriss: each Spawn of
+#                     Fankriss gets an off-tank and skull first; two tanks take him in turns,
+#                     swapping at 4 stacks of Mortal Wound. Bug Trio: skull on the broods, then
+#                     Kri, Yauj, Vem; Yauj's Great Heal is interrupted, shamans keep Tremor Totem
+#                     down, bots leave Kri's Poison Cloud; Vekniss Guardians one at a time.
+#                     Viscidus globs: each damage dealer takes a glob of its own, area spells on
+#                     clusters. Nature fights (Viscidus, Huhuran, Bug Trio): one shaman keeps
+#                     Nature Resistance Totem down, one hunter Aspect of the Wild. Huhuran: no
+#                     poison cures on Wyvern Sting (no Abolish Poison or Cleansing Totem at all);
+#                     from Berserk, ranged not in plate stand 32 yd off (melee too with 15 plate
+#                     round her). Twin
+#                     Emperors: two tanks (paladins first) hold the twins apart, Vek'lor's from
+#                     6.5-9.5 yd; melee hit only Vek'nilash, casters only Vek'lor (under his
+#                     victim's threat); nobody else within 12 yd of Vek'lor, ranged 8 yd from Vek'nilash,
+#                     out of Blizzard; melee step back and pets come back before each teleport.
+#                     Skeram: the last interrupt in reach waits for True Fulfillment; his tank
+#                     holds him on his own platform, the first two off-tanks wait on the other
+#                     two and take him when he blinks onto theirs. Anubisath Defenders and
+#                     Sentinels: ranged and healers outside Thunderclap or inside Shadow Storm's
+#                     25 yd, a plagued bot walks clear of everyone; skull on the Sentinels in the
+#                     raid guide's order of their abilities (reflects first, Thunderclap and
+#                     Shadow Storm last). Also: bots walk out of an Anubisath Defender's Explode
+#                     (20 yd) and Vek'lor's exploding bugs (15 yd).
+#        Default:     1
+#
+
+RaidClear.TempleOfAhnQiraj.Enable = 1
+
+#
+#    RaidClear.TempleOfAhnQiraj.Skeram.<Role>Spot
+#    RaidClear.TempleOfAhnQiraj.BugTrio.<Role>Spot
+#    RaidClear.TempleOfAhnQiraj.TwinEmperors.TankSpotA / TankSpotB
+#        Description: Fixed spots from the raid guide, as "x y z" (or the line .gps prints: the
+#                     first three numbers are used). Empty: that role has no spot. Changes
+#                     apply on .reload config.
+#                     Skeram.TankSpot    - where the tank he is on holds him (empty: his own
+#                                          platform, where he stands before the pull). His other
+#                                          two platforms come from the core (his Blink spells)
+#                                          and always have an off-tank each.
+#                     Skeram.RangedSpot  - where ranged damage dealers fight from (in range and
+#                                          sight of him).
+#                     Skeram.HealerSpot  - where healers heal from (empty: RangedSpot).
+#                     BugTrio.VemTankSpot  - where the tank Vem is on holds him: an alcove where
+#                                            only that tank is in his sight, so his Charge has
+#                                            nobody else to go to.
+#                     BugTrio.YaujTankSpot - where the tank Yauj is on holds her.
+#                     BugTrio.KriTankSpot  - where the tank Kri is on holds him.
+#                                            Keep the three well apart. A spot within 15 yd of
+#                                            the corridor out of their room (where the bugs
+#                                            evade) is ignored.
+#                     BugTrio.RangedSpot / BugTrio.HealerSpot - as for Skeram.
+#                     TwinEmperors.TankSpotA / TankSpotB - by the two torches, more than 60 yd
+#                                          apart. With both set, the tank Vek'nilash is on takes
+#                                          him to the one farther from Vek'lor and holds him
+#                                          there; after the first teleport the twins sit on the
+#                                          two spots.
+#                     Bots spread up to 3 yd round a ranged or healer spot, and drop it while
+#                     they couldn't reach their target from it.
+#        Default:     "" (no spot)
+#
+
+RaidClear.TempleOfAhnQiraj.Skeram.TankSpot = ""
+RaidClear.TempleOfAhnQiraj.Skeram.RangedSpot = ""
+RaidClear.TempleOfAhnQiraj.Skeram.HealerSpot = ""
+
+RaidClear.TempleOfAhnQiraj.BugTrio.VemTankSpot = ""
+RaidClear.TempleOfAhnQiraj.BugTrio.YaujTankSpot = ""
+RaidClear.TempleOfAhnQiraj.BugTrio.KriTankSpot = ""
+RaidClear.TempleOfAhnQiraj.BugTrio.RangedSpot = ""
+RaidClear.TempleOfAhnQiraj.BugTrio.HealerSpot = ""
+
+RaidClear.TempleOfAhnQiraj.TwinEmperors.TankSpotA = ""
+RaidClear.TempleOfAhnQiraj.TwinEmperors.TankSpotB = ""
