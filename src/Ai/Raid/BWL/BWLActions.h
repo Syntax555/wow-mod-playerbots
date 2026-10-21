@@ -89,6 +89,15 @@ public:
     bool isUseful() override;
 };
 
+// Nefarian
+
+class BwlNefarianRearFlankAction : public BossRearFlankAction
+{
+public:
+    BwlNefarianRearFlankAction(PlayerbotAI* botAI) : BossRearFlankAction(botAI, "nefarian") {}
+    bool isUseful() override;
+};
+
 // Chromaggus
 
 class BwlUseHourglassSandAction : public Action

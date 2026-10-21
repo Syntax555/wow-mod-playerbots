@@ -8,8 +8,10 @@
 #include "GenericSpellActions.h"
 #include "LastMovementValue.h"
 #include "MovementActions.h"
+#include "OnyRaidClear.h"
 #include "Playerbots.h"
 #include "PositionAction.h"
+#include "RaidClearRegistry.h"
 
 bool RaidOnyxiaMoveToSideAction::Execute(Event /*event*/)
 {
@@ -68,6 +70,14 @@ bool RaidOnyxiaSpreadOutAction::Execute(Event /*event*/)
     return MoveFromGroup(9.0f);  // move 9 yards
 }
 
+bool RaidOnyxiaMoveToSafeZoneAction::isUseful()
+{
+    // Two fixed spots per breath spell, and since the strips moved (core 2a2211c) two of the eight
+    // are in the fire. Where raid clear reads the strip from the server's spell data, its way out
+    // ("rc ony leave deep breath") takes over.
+    return !RaidClear::Runs(botAI, bot->GetMapId()) || !RaidClear::OnyxiasLair::BreathTrailKnown(bot);
+}
+
 bool RaidOnyxiaMoveToSafeZoneAction::Execute(Event /*event*/)
 {
     Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
@@ -115,26 +125,36 @@ bool RaidOnyxiaMoveToSafeZoneAction::Execute(Event /*event*/)
 
 bool RaidOnyxiaKillWhelpsAction::Execute(Event /*event*/)
 {
-    Unit* currentTarget = AI_VALUE(Unit*, "current target");
+    static constexpr uint32 NPC_ONYXIAN_WHELP = 11262;
+
+    // A whelp that can't find a way to its victim evades every attack but goes on biting: leave it
+    // for one that can be hurt.
+    auto const hittable = [](Unit const* unit)
+    {
+        Creature const* whelp = unit ? unit->ToCreature() : nullptr;
+        return whelp && whelp->IsAlive() && whelp->GetEntry() == NPC_ONYXIAN_WHELP && !whelp->IsEvadingAttacks();
+    };
+
     // If already attacking a whelp, don't swap targets
-    if (currentTarget && currentTarget->GetEntry() == 11262)
-    {
+    if (hittable(AI_VALUE(Unit*, "current target")))
         return false;
-    }
-    GuidVector targets = AI_VALUE(GuidVector, "possible targets");
-    for (ObjectGuid guid : targets)
+
+    // The nearest one the bot can attack from here (Attack refuses a target out of sight).
+    Unit* nearest = nullptr;
+    float nearestDist = 0.0f;
+    for (ObjectGuid const guid : AI_VALUE(GuidVector, "possible targets"))
     {
-        Creature* unit = botAI->GetCreature(guid);
-        if (!unit || !unit->IsAlive() || !unit->IsInWorld())
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || !unit->IsInWorld() || !hittable(unit) || !bot->IsValidAttackTarget(unit))
             continue;
 
-        if (unit->GetEntry() == 11262)  // Onyxia Whelp
-        {
-            // bot->Yell("Attacking Whelps!", LANG_UNIVERSAL);
-            return Attack(unit);
-        }
+        float const dist = bot->GetDistance(unit);
+        if ((nearest && dist >= nearestDist) || !bot->IsWithinLOSInMap(unit))
+            continue;
+        nearest = unit;
+        nearestDist = dist;
     }
-    return false;
+    return nearest && Attack(nearest);
 }
 
 bool OnyxiaAvoidEggsAction::Execute(Event /*event*/)

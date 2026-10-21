@@ -9,6 +9,7 @@
 #include "MCCoreHoundRecoveryValue.h"
 #include "MCHelpers.h"
 #include "PlayerbotAIConfig.h"
+#include "RaidClearRegistry.h"
 #include "SharedDefines.h"
 #include "SpellAuras.h"
 
@@ -92,6 +93,10 @@ bool McGolemaggIsHealerTrigger::IsActive()
 
 bool McCoreHoundMarkTrigger::IsActive()
 {
+    // Raid clear's hound skull ("rc mc mark hound") sees every hound in the fight, not only the ones
+    // on the main tank's threat list, and replaces this one while it runs.
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
+        return false;
     return PlayerbotAI::IsMainTank(bot) && AI_VALUE2(Unit*, "find target", "core hound");
 }
 

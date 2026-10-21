@@ -6,9 +6,14 @@
 
 #include "Aq20Triggers.h"
 #include "Aq20Utils.h"
+#include "RaidClearRegistry.h"
 
 bool Aq20MoveToCrystalTrigger::IsActive()
 {
+    // Raid clear sends two bots to the crystal instead of the whole raid: the tank he is on leads
+    // him there, one damage dealer uses it ("rc aq20 lead to crystal", "rc aq20 use crystal").
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
+        return false;
     if (Unit* boss = AI_VALUE2(Unit*, "find target", "ossirian the unscarred"))
     {
         if (boss->IsInCombat())

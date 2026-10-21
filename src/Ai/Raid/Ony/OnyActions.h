@@ -47,6 +47,7 @@ public:
         : MovementAction(botAI, name)
     {
     }
+    bool isUseful() override;
     bool Execute(Event event) override;
 
 private:
