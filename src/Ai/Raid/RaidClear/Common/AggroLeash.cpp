@@ -83,6 +83,11 @@ namespace
     // Whether a mob can see a spot is only asked when the spot is closer than this to the edge of
     // its aggro radius: further out the answer changes nothing.
     constexpr float GAP_SIGHT = 10.0f;
+    // No walk ends up closer than this to the edge of an idle boss's aggro radius, whatever it
+    // is for, and a bot inside it steps back out. A boss's radius is not "next to the fight":
+    // trash that stands a few yards outside it (Broodlord's whelps at 28 yd, against his 23)
+    // made him tied to every whelp, and the walks to them went straight in.
+    constexpr float BOSS_FLOOR = 3.0f;
 
     // Per instance. Only ever touched from that instance's map update (the hook below and the
     // bots' own AI, which runs inside Player::Update), so it needs no lock of its own.
@@ -148,6 +153,8 @@ namespace
         // A boss: yards of room on top of its aggro radius and the buffer. Not for a walk to the
         // bot's target, not for a boss the target stands next to, not for the step back out.
         float room = 0.0f;
+        // A boss: BOSS_FLOOR holds for it even when it is tied.
+        bool boss = false;
     };
 
     // What the bot is attacking and what it is about to attack. They differ during a pull:
@@ -192,7 +199,7 @@ namespace
         auto const add = [&](G3D::Vector3 const& at)
         {
             mobs.push_back({ mob.creature, at.x, at.y, at.z, mob.aggro, Tied(targets, at.x, at.y, tieReach), true,
-                             mob.room });
+                             mob.room, mob.boss });
         };
 
         Movement::MoveSpline::MySpline const& spline = walk->_Spline();
@@ -242,10 +249,11 @@ namespace
 
             // A second pack is a harder fight; a second boss is a wipe, so a boss is given more room.
             float const aggro = creature->GetAggroRange(bot);
+            bool const boss = creature->IsDungeonBoss() || creature->isWorldBoss();
             IdleMob const mob = { creature, creature->GetPositionX(), creature->GetPositionY(),
                                   creature->GetPositionZ(), aggro,
                                   Tied(targets, creature->GetPositionX(), creature->GetPositionY(), aggro + buffer),
-                                  false, creature->IsDungeonBoss() || creature->isWorldBoss() ? bossBuffer : 0.0f };
+                                  false, boss ? bossBuffer : 0.0f, boss };
             mobs.push_back(mob);
             AddWayAhead(mobs, mob, targets, aggro + buffer, ahead);
         }
@@ -265,7 +273,7 @@ namespace
     // Yards between a spot and the edge of the nearest mob's aggro radius; negative inside it.
     // Mobs on another level don't count. A mob tied to the bot's target gets `tiedSlack` yards
     // for free: the fight is next to it, so a spot only has to be outside its radius, not
-    // outside the buffer as well.
+    // outside the buffer as well. A tied boss gets BOSS_FLOOR less.
     float Clearance(std::vector<IdleMob> const& mobs, float x, float y, float z, float tiedSlack)
     {
         float clearance = 1000.0f;
@@ -273,7 +281,7 @@ namespace
             if (std::fabs(mob.z - z) <= AGGRO_HEIGHT)
                 clearance = std::min(clearance,
                                      std::hypot(x - mob.x, y - mob.y) - mob.aggro +
-                                         (mob.tied ? tiedSlack : -mob.room));
+                                         (mob.tied ? tiedSlack - (mob.boss ? BOSS_FLOOR : 0.0f) : -mob.room));
         return clearance;
     }
 
@@ -294,6 +302,7 @@ namespace
     //     next to an idle pack doesn't make that pack safe to back into. The full buffer for
     //     most; half of it for a mob tied to the target, so a melee bot shifting a few yards
     //     around its target isn't stopped for nothing.
+    //   - An idle boss counts for every walk, tied or not, by at least BOSS_FLOOR.
     bool StretchPulls(Player* bot, std::vector<IdleMob> const& mobs, bool approach, float buffer,
                       G3D::Vector3 const& from, G3D::Vector3 const& to)
     {
@@ -309,11 +318,13 @@ namespace
             float const z = from.z + (to.z - from.z) * t;
             for (IdleMob const& mob : mobs)
             {
-                if ((approach && mob.tied) || std::fabs(mob.z - z) > AGGRO_HEIGHT)
+                if ((approach && mob.tied && !mob.boss) || std::fabs(mob.z - z) > AGGRO_HEIGHT)
                     continue;
                 // A boss's extra room is not for a walk to the target, nor for a boss the target
-                // stands next to: the fight is where it is.
-                float const margin = approach || mob.tied ? buffer * 0.5f : buffer + mob.room;
+                // stands next to: the fight is where it is. Its own radius still is.
+                float margin = approach || mob.tied ? buffer * 0.5f : buffer + mob.room;
+                if (mob.boss)
+                    margin = std::max(margin, BOSS_FLOOR);
                 float const there = std::hypot(x - mob.x, y - mob.y);
                 // Only a walk that takes the bot closer to the mob than it already is.
                 if (there < mob.aggro + margin && there < std::hypot(botX - mob.x, botY - mob.y) - 0.5f &&
@@ -349,14 +360,12 @@ namespace
 
     // Whether the bot is standing at the edge of a mob's aggro radius. The line is a yard inside
     // what a walk toward a target may pass at, so a bot that just got there isn't sent back out.
-    // Mobs tied to a target don't count: that is where the fight is.
+    // Mobs tied to a target don't count: that is where the fight is. An idle boss counts anyway,
+    // a yard inside BOSS_FLOOR, even for a bot in melee with its target.
     bool StandsTooClose(Player* bot, std::vector<IdleMob> const& mobs, BotTargets const& targets, float buffer)
     {
         if (mobs.empty())
             return false;
-        for (Unit* target : { targets.victim, targets.current })
-            if (target && bot->IsWithinMeleeRange(target))
-                return false;
 
         // Already on its way out.
         Movement::MoveSpline const* walk = bot->movespline;
@@ -369,6 +378,19 @@ namespace
 
         // Where the mobs are, not where they are headed: a bot doesn't leave its spot for a patrol
         // that may yet turn off.
+        for (IdleMob const& mob : mobs)
+        {
+            if (!mob.boss || mob.ahead || std::fabs(mob.z - bot->GetPositionZ()) > AGGRO_HEIGHT)
+                continue;
+            if (bot->GetExactDist2d(mob.x, mob.y) - mob.aggro < BOSS_FLOOR - 1.0f &&
+                mob.creature->IsWithinLOSInMap(bot))
+                return true;
+        }
+
+        for (Unit* target : { targets.victim, targets.current })
+            if (target && bot->IsWithinMeleeRange(target))
+                return false;
+
         float const line = std::max(0.0f, buffer * 0.5f - 1.0f);
         for (IdleMob const& mob : mobs)
         {
