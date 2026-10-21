@@ -61,7 +61,7 @@ private:
     static Action* bwl_flamegor_fire_resistance_action(PlayerbotAI* botAI) { return new BossFireResistanceAction(botAI, "flamegor"); }
     static Action* bwl_flamegor_avoid_breath(PlayerbotAI* botAI) { return new BwlBlackDrakeAvoidBreathAction(botAI, "flamegor"); }
     static Action* bwl_use_hourglass_sand(PlayerbotAI* botAI) { return new BwlUseHourglassSandAction(botAI); }
-    static Action* bwl_nefarian_rear_flank(PlayerbotAI* botAI) { return new BossRearFlankAction(botAI, "nefarian"); }
+    static Action* bwl_nefarian_rear_flank(PlayerbotAI* botAI) { return new BwlNefarianRearFlankAction(botAI); }
     static Action* bwl_death_talon_wyrmguard_tank_move_away(PlayerbotAI* botAI) { return new BwlDeathTalonWyrmguardTankMoveAwayAction(botAI); }
     static Action* bwl_death_talon_wyrmguard_ranged_move_away(PlayerbotAI* botAI) { return new BwlDeathTalonWyrmguardRangedMoveAwayAction(botAI); }
 };

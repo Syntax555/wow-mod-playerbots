@@ -980,23 +980,21 @@ bool RcBwlDragonMoveAction::Execute(Event /*event*/)
     return _walk.Go(gapAt, DRAGON_SPOT_MIN, DRAGON_SPOT, DRAGON_WORTH_IT, DRAGON_SEARCH);
 }
 
+bool RaidClear::BlackwingLair::KeepsOffDragonFlank(Player* bot)
+{
+    // Playerbots sends every bot that isn't the dragon's victim to its flank at melee range,
+    // above almost everything else the bot does. Right for melee.
+    if (KeepsBack(bot))
+        return true;
+    Creature* drake = PlayerbotAI::IsTank(bot) ? FightingDrake(bot) : nullptr;
+    return drake && HoldsDrake(bot, drake);
+}
+
 float RcBwlDragonHoldMultiplier::GetValue(Action* action)
 {
     if (!action)
         return 1.0f;
 
-    // Playerbots sends every bot that isn't the dragon's victim to its flank at melee range,
-    // above almost everything else the bot does. Right for melee; for a caster or a healer it is
-    // a walk into Cleave, Tail Lash and the roar, and a drake's second tank belongs in front.
-    // (By class: the actions are named after the boss, "nefarian rear flank", not after the
-    // names the strategy asks for them by.)
-    if (dynamic_cast<BossRearFlankAction*>(action))
-    {
-        if (KeepsBack(bot))
-            return 0.0f;
-        Creature* drake = PlayerbotAI::IsTank(bot) ? FightingDrake(bot) : nullptr;
-        return drake && HoldsDrake(bot, drake) ? 0.0f : 1.0f;
-    }
     // The knockback footing sends a tank in front of a thrower to the side with clear ground
     // behind it. The drake's second tank stands by the one he is on and is thrown with it.
     if (action->getName() == "rc knockback footing" && PlayerbotAI::IsTank(bot))

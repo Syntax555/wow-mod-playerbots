@@ -501,8 +501,9 @@ public:
     bool Execute(Event event) override;
 };
 
-// Nothing is aimed at a hound playing dead, no single-target attack but a tank's at a hound held
-// back, and playerbots' own hound marking is off (rc mc mark hound does it).
+// Nothing is aimed at a hound playing dead, and no single-target attack but a tank's at a hound
+// held back. (Playerbots' own hound marking stands down by itself: its trigger checks
+// RaidClear::Runs.)
 class RcMcCoreHoundMultiplier : public Multiplier
 {
 public:

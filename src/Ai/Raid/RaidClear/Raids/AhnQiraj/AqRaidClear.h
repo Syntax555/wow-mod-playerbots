@@ -33,7 +33,7 @@
  *         replaced for a while. After a use the plan stays on that crystal until the weakness has
  *         landed (the crystal's trigger casts it), so the tank doesn't take him out of its reach
  *         first.
- *     Everyone else fights on; playerbots' own crystal walk is switched off.
+ *     Everyone else fights on; playerbots' own crystal walk stands down.
  *
  * Ruins of Ahn'Qiraj, Kurinnaxx:
  *   - Sand Trap. Every 5-15 s he puts a Sand Trap (GO 180647) under a random raid member; 5 s
@@ -848,8 +848,9 @@ private:
     RaidClear::RuinsOfAhnQiraj::CrystalWalk _walk;
 };
 
-// Switches off playerbots' crystal walk for everyone, and while the leading tank and the bot at
-// the crystal are on their way, every other walk of theirs.
+// While the leading tank and the bot at the crystal are on their way, switches off every other
+// walk of theirs. (Playerbots' own crystal walk stands down by itself: its trigger checks
+// RaidClear::Runs.)
 class RcAq20CrystalMultiplier : public Multiplier
 {
 public:

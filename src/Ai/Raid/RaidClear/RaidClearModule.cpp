@@ -49,6 +49,13 @@ namespace RaidClear
 
     Config const& GetConfig() { return sConfig; }
 
+    bool Runs(PlayerbotAI* botAI, uint32 mapId)
+    {
+        RaidEntry const* raid = FindRaid(mapId);
+        return raid && botAI && botAI->GetState() == BOT_STATE_COMBAT &&
+               botAI->HasStrategy(raid->strategy, BOT_STATE_COMBAT);
+    }
+
     void LoadConfig()
     {
         sConfig.enable = sConfigMgr->GetOption<bool>("RaidClear.Enable", true);

@@ -6,8 +6,10 @@
 
 #include "BWLActions.h"
 #include "BWLHelpers.h"
+#include "BwlRaidClear.h"
 #include "EncounterHelpers.h"
 #include "Playerbots.h"
+#include "RaidClearRegistry.h"
 #include "RtiTargetValue.h"
 
 using namespace BlackwingLairHelpers;
@@ -377,15 +379,29 @@ bool BwlBroodlordRangedMoveAwayAction::Execute(Event /*event*/)
 
 // Firemaw / Ebonroc / Flamegor
 
+// Raid clear keeps casters, healers and a drake's two holders off the flank (see
+// RaidClear::BlackwingLair::KeepsOffDragonFlank) and places them itself.
+static bool RaidClearKeepsOffFlank(PlayerbotAI* botAI, Player* bot)
+{
+    return RaidClear::Runs(botAI, bot->GetMapId()) && RaidClear::BlackwingLair::KeepsOffDragonFlank(bot);
+}
+
 bool BwlBlackDrakeAvoidBreathAction::isUseful()
 {
     Unit const* boss = GetTarget();
-    if (!boss)
+    if (!boss || RaidClearKeepsOffFlank(botAI, bot))
         return false;
 
     // Only reposition while standing in the frontal breath cone.
     // No tail-swipe check: unlike RearFlankAction there is no rear danger zone here.
     return boss->HasInArc(2.0f * minAngle, bot);
+}
+
+// Nefarian
+
+bool BwlNefarianRearFlankAction::isUseful()
+{
+    return !RaidClearKeepsOffFlank(botAI, bot) && BossRearFlankAction::isUseful();
 }
 
 // Chromaggus

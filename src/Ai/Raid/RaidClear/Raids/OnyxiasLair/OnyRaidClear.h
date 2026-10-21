@@ -16,9 +16,9 @@
  *     the other diagonal, so for those two breaths the safe zones are in the middle of the fire.
  *     Here nothing is fixed: the strip is read from the server's own spell data, a bot inside it
  *     walks to the nearest spot outside, a bot outside stays where it is, and nobody walks into
- *     or across the strip until the fire has passed. Playerbots' own safe zone walk is switched
- *     off. The way out never ends in the whelp caves or the egg trench between them, which the
- *     core's Onyxia sets on fire (Heated Ground) with every breath.
+ *     or across the strip until the fire has passed. Playerbots' own safe zone walk stands down
+ *     (BreathTrailKnown). The way out never ends in the whelp caves or the egg trench between
+ *     them, which the core's Onyxia sets on fire (Heated Ground) with every breath.
  *     A bot can't act in the middle of a cast, so the moment she starts the breath every bot in
  *     the strip is told to drop its spell.
  *
@@ -34,9 +34,8 @@
  *     attacking it: nothing in playerbots looks at whether a target evades. Here playerbots'
  *     target picking is told to skip an evading mob (its own hook, target exclusions), and a bot
  *     already on one takes what playerbots picks next, else the nearest enemy it can hurt, else
- *     Onyxia. Playerbots' whelp action for the core's fight (first whelp it finds, and it never
- *     leaves a whelp) is replaced by one that picks the nearest whelp that isn't evading; the
- *     level 60 fight's whelps are another creature, which that action never knew.
+ *     Onyxia. Playerbots' whelp action ("ony kill whelps") picks the nearest whelp that isn't
+ *     evading; the level 60 fight's whelps are another creature, which that action never knew.
  *   - Hunter's Mark stays off the whelps: they die within seconds.
  *   - Out of her Cleave. It hits whoever she is on and up to nine more within 10 yd of that one,
  *     anywhere in the half of the room she faces. Playerbots only clears a 45 degree cone at her
@@ -149,6 +148,10 @@ namespace RaidClear::OnyxiasLair
     constexpr float LANDING_HEALTH_PCT = 40.0f;
     constexpr float LANDING_TANK_RANGE = 200.0f;
 
+    // A Deep Breath is going on and the server has the positions of its blasts: the way out of it
+    // is "rc ony leave deep breath", and playerbots' fixed safe zones stand down.
+    bool BreathTrailKnown(Player* bot);
+
     void AddScripts();
 }
 
@@ -186,8 +189,8 @@ private:
     uint64 _spotFoundMs = 0;
 };
 
-// Switches off playerbots' fixed safe zones, and for as long as a breath lasts keeps every other
-// movement from taking a bot into or across the fire.
+// For as long as a breath lasts, keeps every other movement from taking a bot into or across the
+// fire. (Playerbots' fixed safe zones stand down by themselves: see BreathTrailKnown.)
 class RcOnyDeepBreathMultiplier : public Multiplier
 {
 public:
@@ -289,18 +292,9 @@ public:
     bool Execute(Event event) override;
 };
 
-// Playerbots' "ony kill whelps", minus the whelps that evade.
-class RcOnyKillWhelpsAction : public AttackAction
-{
-public:
-    RcOnyKillWhelpsAction(PlayerbotAI* botAI) : AttackAction(botAI, "rc ony kill whelps") {}
-    bool Execute(Event event) override;
-};
-
-// Switches off playerbots' whelp action (replaced above), keeps Hunter's Mark off the whelps and
-// the wand off a target out of its range,
-// stops the target picking that doesn't go through the exclusions from taking an evading mob, and
-// keeps an off-tank who joined the main tank from turning her by itself.
+// Keeps Hunter's Mark off the whelps and the wand off a target out of its range, stops the target
+// picking that doesn't go through the exclusions from taking an evading mob, and keeps an
+// off-tank who joined the main tank from turning her by itself.
 class RcOnyTargetMultiplier : public Multiplier
 {
 public:

@@ -131,7 +131,7 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     triggers.push_back(
         new TriggerNode("rc mc splash trash", { NextAction("rc mc leave splash trash", ACTION_RAID + 1) }));
 
-    // Above playerbots' hound marking (ACTION_RAID), which the hound multiplier turns off.
+    // Playerbots' own hound marking (ACTION_RAID) stands down while this strategy runs.
     triggers.push_back(new TriggerNode("rc mc hound skull", { NextAction("rc mc mark hound", ACTION_RAID + 3) }));
     triggers.push_back(new TriggerNode("rc mc hound target", { NextAction("rc mc leave hound", ACTION_RAID + 2) }));
     triggers.push_back(
@@ -963,11 +963,6 @@ float RcMcCoreHoundMultiplier::GetValue(Action* action)
 {
     if (!action || !bot->IsInCombat() || bot->GetMapId() != MAP_ID)
         return 1.0f;
-
-    // Playerbots' own marking (the healthiest of the hounds on the main tank's threat list only)
-    // is replaced by "rc mc mark hound", which sees every hound in the fight.
-    if (action->getName() == "mc core hound mark")
-        return 0.0f;
 
     if (!dynamic_cast<CastSpellAction*>(action) && !dynamic_cast<AttackAction*>(action))
         return 1.0f;

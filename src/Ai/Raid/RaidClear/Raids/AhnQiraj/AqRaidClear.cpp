@@ -53,8 +53,8 @@ void RaidClearAq20Strategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     // Over the damage dealers' own rotation.
     triggers.push_back(new TriggerNode("rc aq20 moam drain", { NextAction("rc aq20 moam drain", ACTION_RAID + 1) }));
 
-    // Above playerbots' own crystal walk (ACTION_RAID), which the multiplier switches off, and
-    // above the tanks' rules (ACTION_RAID - 4 and up).
+    // Above the tanks' rules (ACTION_RAID - 4 and up). Playerbots' own crystal walk (ACTION_RAID)
+    // stands down while this strategy runs.
     triggers.push_back(new TriggerNode("rc aq20 lead to crystal",
                                        { NextAction("rc aq20 lead to crystal", ACTION_RAID + 3) }));
     triggers.push_back(new TriggerNode("rc aq20 crystal", { NextAction("rc aq20 use crystal", ACTION_RAID + 3) }));

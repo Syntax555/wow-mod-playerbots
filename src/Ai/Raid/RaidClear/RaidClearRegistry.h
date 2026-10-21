@@ -16,6 +16,8 @@
 
 #include <array>
 
+class PlayerbotAI;
+
 namespace RaidClear
 {
     struct RaidEntry
@@ -57,6 +59,11 @@ namespace RaidClear
                 return &raid;
         return nullptr;
     }
+
+    // Whether raid clear's strategy for this map is on the bot and its combat engine is the one
+    // running. Playerbots' own raid actions that raid clear replaces stand down while it is (each
+    // says so where it checks), and come back when it is switched off for the raid.
+    bool Runs(PlayerbotAI* botAI, uint32 mapId);
 }
 
 #endif

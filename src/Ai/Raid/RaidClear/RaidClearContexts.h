@@ -122,7 +122,6 @@ public:
         creators["rc ony leave deep breath"] = &RaidClearActionContext::ony_leave_deep_breath;
         creators["rc ony offtank position"] = &RaidClearActionContext::ony_offtank_position;
         creators["rc ony leave evading target"] = &RaidClearActionContext::ony_leave_evading_target;
-        creators["rc ony kill whelps"] = &RaidClearActionContext::ony_kill_whelps;
         creators["rc ony spread out"] = &RaidClearActionContext::ony_spread_out;
         creators["rc ony leave cleave"] = &RaidClearActionContext::ony_leave_cleave;
 
@@ -223,7 +222,6 @@ private:
     static Action* ony_leave_deep_breath(PlayerbotAI* botAI) { return new RcOnyLeaveDeepBreathAction(botAI); }
     static Action* ony_offtank_position(PlayerbotAI* botAI) { return new RcOnyOffTankPositionAction(botAI); }
     static Action* ony_leave_evading_target(PlayerbotAI* botAI) { return new RcOnyLeaveEvadingTargetAction(botAI); }
-    static Action* ony_kill_whelps(PlayerbotAI* botAI) { return new RcOnyKillWhelpsAction(botAI); }
     static Action* ony_spread_out(PlayerbotAI* botAI) { return new RcOnySpreadOutAction(botAI); }
     static Action* ony_leave_cleave(PlayerbotAI* botAI) { return new RcOnyLeaveCleaveAction(botAI); }
 

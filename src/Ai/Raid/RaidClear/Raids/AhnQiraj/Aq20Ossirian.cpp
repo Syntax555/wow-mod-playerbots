@@ -528,11 +528,6 @@ bool RcAq20UseCrystalAction::Execute(Event /*event*/)
 
 float RcAq20CrystalMultiplier::GetValue(Action* action)
 {
-    // Playerbots' own crystal walk: every bot of the raid to the crystal, replaced by the two
-    // roles above.
-    if (action->getName() == "aq20 use crystal")
-        return 0.0f;
-
     if (dynamic_cast<RcAq20LeadToCrystalAction*>(action) || dynamic_cast<RcAq20UseCrystalAction*>(action) ||
         dynamic_cast<RcAqExplodeMoveAwayAction*>(action))
         return 1.0f;

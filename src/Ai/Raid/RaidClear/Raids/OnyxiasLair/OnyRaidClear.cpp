@@ -10,6 +10,7 @@
 #include "Common/BossLookup.h"
 #include "Common/SpellReflect.h"
 #include "Common/TankRoles.h"
+#include "OnyActions.h"
 
 #include "AllSpellScript.h"
 #include "AttackAction.h"
@@ -41,7 +42,8 @@ void RaidClearOnyxiasLairStrategy::InitTriggers(std::vector<TriggerNode*>& trigg
     triggers.push_back(new TriggerNode("rc mage target reflects", { NextAction("fireball", 5.15f) }));
     triggers.push_back(new TriggerNode("rc warlock target reflects", { NextAction("immolate", 5.15f) }));
 
-    // Above playerbots' own "ony move to safe zone" (ACTION_EMERGENCY + 5).
+    // Above playerbots' own "ony move to safe zone" (ACTION_EMERGENCY + 5), which stands down while
+    // this one knows where the fire is.
     triggers.push_back(new TriggerNode("rc ony deep breath",
                                        { NextAction("rc ony leave deep breath", ACTION_EMERGENCY + 6) }));
 
@@ -53,10 +55,6 @@ void RaidClearOnyxiasLairStrategy::InitTriggers(std::vector<TriggerNode*>& trigg
     // Above both, so a bot is off an evading mob before it does anything else to it.
     triggers.push_back(new TriggerNode("rc ony evading target",
                                        { NextAction("rc ony leave evading target", ACTION_RAID + 3) }));
-
-    // Playerbots' own trigger and priority; its action is switched off by the multiplier.
-    triggers.push_back(new TriggerNode("ony whelps spawn",
-                                       { NextAction("rc ony kill whelps", ACTION_RAID + 1) }));
 
     // Under the urgent heals, over everything a bot does when nobody is about to die.
     triggers.push_back(new TriggerNode("rc ony spread", { NextAction("rc ony spread out", ACTION_MOVE - 3.0f) }));
@@ -302,6 +300,11 @@ bool RcOnyLeaveDeepBreathAction::Execute(Event /*event*/)
                   false, false, MovementPriority::MOVEMENT_FORCED);
 }
 
+bool RaidClear::OnyxiasLair::BreathTrailKnown(Player* bot)
+{
+    return ActiveTrail(bot) != nullptr;
+}
+
 float RcOnyDeepBreathMultiplier::GetValue(Action* action)
 {
     if (dynamic_cast<RcOnyLeaveDeepBreathAction*>(action))
@@ -312,11 +315,6 @@ float RcOnyDeepBreathMultiplier::GetValue(Action* action)
     Trail const* trail = ActiveTrail(bot);
     if (!trail)
         return 1.0f;
-
-    // Playerbots' two fixed spots per breath spell: in the fire for two of the eight since the
-    // strips moved.
-    if (action->getName() == "ony move to safe zone")
-        return 0.0f;
 
     // Picking a target isn't movement; only walking somewhere is held.
     if (!dynamic_cast<MovementAction*>(action) || dynamic_cast<AttackAction*>(action))
@@ -724,9 +722,8 @@ namespace
     }
 
     // The nearest enemy in the list the bot can hurt and see (playerbots' Attack refuses a target
-    // out of sight); with `whelpsOnly`, the nearest of the whelps playerbots' action knows (the
-    // core's). Never Onyxia.
-    Unit* NearestHittable(PlayerbotAI* botAI, Player* bot, GuidVector const& units, bool whelpsOnly)
+    // out of sight). Never Onyxia.
+    Unit* NearestHittable(PlayerbotAI* botAI, Player* bot, GuidVector const& units)
     {
         Unit* best = nullptr;
         float bestDist = 0.0f;
@@ -735,8 +732,7 @@ namespace
             Unit* unit = botAI->GetUnit(guid);
             if (!unit || !unit->IsAlive() || !unit->IsInWorld())
                 continue;
-            if (whelpsOnly ? unit->GetEntry() != NPC_ONYXIAN_WHELP
-                           : (unit->GetEntry() == NPC_ONYXIA || unit->GetEntry() == NPC_ONYXIA_40))
+            if (unit->GetEntry() == NPC_ONYXIA || unit->GetEntry() == NPC_ONYXIA_40)
                 continue;
             if (IsEvadingMob(unit) || !bot->IsValidAttackTarget(unit))
                 continue;
@@ -777,23 +773,12 @@ bool RcOnyLeaveEvadingTargetAction::Execute(Event /*event*/)
     if (next && next->IsAlive() && !IsEvadingMob(next) && Attack(next))
         return true;
 
-    next = NearestHittable(botAI, bot, AI_VALUE(GuidVector, "attackers"), false);
+    next = NearestHittable(botAI, bot, AI_VALUE(GuidVector, "attackers"));
     if (next && Attack(next))
         return true;
 
     Creature* boss = FightingOnyxia(bot);
     return boss && bot->IsValidAttackTarget(boss) && Attack(boss);
-}
-
-bool RcOnyKillWhelpsAction::Execute(Event /*event*/)
-{
-    // On a whelp that can be hurt: stay on it, as playerbots does.
-    Unit* current = AI_VALUE(Unit*, "current target");
-    if (current && current->IsAlive() && current->GetEntry() == NPC_ONYXIAN_WHELP && !IsEvadingMob(current))
-        return false;
-
-    Unit* whelp = NearestHittable(botAI, bot, AI_VALUE(GuidVector, "possible targets"), true);
-    return whelp && Attack(whelp);
 }
 
 float RcOnyTargetMultiplier::GetValue(Action* action)
@@ -802,10 +787,6 @@ float RcOnyTargetMultiplier::GetValue(Action* action)
         return 1.0f;
 
     std::string const name = action->getName();
-    // Replaced by "rc ony kill whelps".
-    if (name == "ony kill whelps")
-        return 0.0f;
-
     // The wand never asks how far its target is: with Onyxia out of reach (off to her Deep
     // Breath, which nobody walks after) casters kept starting it over, a few times a second.
     if (name == "shoot")
@@ -829,8 +810,10 @@ float RcOnyTargetMultiplier::GetValue(Action* action)
     }
 
     // Target picking that doesn't go through the exclusions (the area damage target, for one).
+    // Playerbots' whelp action skips evading whelps itself; its target is the one it may be
+    // leaving.
     if (!dynamic_cast<AttackAction*>(action) || dynamic_cast<RcOnyLeaveEvadingTargetAction*>(action) ||
-        dynamic_cast<RcOnyKillWhelpsAction*>(action))
+        dynamic_cast<RaidOnyxiaKillWhelpsAction*>(action))
         return 1.0f;
     return IsEvadingMob(action->GetTarget()) ? 0.0f : 1.0f;
 }

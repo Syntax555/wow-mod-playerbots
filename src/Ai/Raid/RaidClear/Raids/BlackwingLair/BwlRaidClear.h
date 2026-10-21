@@ -64,9 +64,9 @@
  *     Everyone but the dragon's victim and the tank that takes it next stays out of the front,
  *     and a bot standing in it when a cast starts drops everything and runs. Playerbots' own
  *     rule takes every non-victim to the flank at melee range, casters and healers included;
- *     for those it is switched off. Follow and formation don't walk a bot back into the front,
- *     and Charge, Intercept and Feral Charge onto the dragon aren't used from in front of it
- *     (they land on the near side).
+ *     for those it stands down (KeepsOffDragonFlank). Follow and formation don't walk a bot
+ *     back into the front, and Charge, Intercept and Feral Charge onto the dragon aren't used
+ *     from in front of it (they land on the near side).
  *   - Chromaggus: he breathes every 30s from the pull, his two breaths taking turns, and a 2s
  *     cast is too short to reach cover in. Everyone but the bot he is on goes behind cover a few
  *     seconds before a breath is due (the clock is kept from his casts), Time Lapse included: it
@@ -570,6 +570,11 @@ namespace RaidClear::BlackwingLair
     bool InDragonsWay(Player* bot, Creature* boss, float x, float y);
     bool DragonBreathing(Creature* boss);
 
+    // Playerbots' walk to the dragon's flank at melee range (Nefarian's "rear flank", the drakes'
+    // "avoid breath") isn't for this bot: a caster or a healer there is in Cleave, Tail Lash and
+    // the roar, and a drake's two holders stand in front ("rc bwl drake front").
+    bool KeepsOffDragonFlank(Player* bot);
+
     // Whether this action walks the bot back to its place rather than to a target: playerbots'
     // follow (to its place in the formation) and "stay", mod-dungeon-clear's camp hold, follow,
     // assist, regroup and transit walks. `to` is where it ends when that is known.
@@ -1072,10 +1077,10 @@ private:
     RaidClear::WayOutWalk _walk;
 };
 
-// Casters and healers aren't taken to the dragon's flank at melee range by playerbots' own
-// positioning, and nothing walks them in under Nefarian's roar. Follow and formation don't
-// walk anyone who keeps out of the front back into it, and nobody charges onto the dragon from
-// in front of it.
+// Nothing walks casters and healers in under Nefarian's roar. Follow and formation don't walk
+// anyone who keeps out of the front back into it, and nobody charges onto the dragon from in
+// front of it. (Playerbots' own walk to the dragon's flank stands down by itself for those it
+// isn't for: see KeepsOffDragonFlank.)
 class RcBwlDragonHoldMultiplier : public Multiplier
 {
 public:
