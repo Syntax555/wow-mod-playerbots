@@ -8,6 +8,7 @@
 
 #include "RaidClearConfig.h"
 #include "Common/BossLookup.h"
+#include "Common/Charmed.h"
 #include "Common/SpellReflect.h"
 #include "Common/SplashSpells.h"
 #include "Common/TankRoles.h"
@@ -48,7 +49,8 @@ std::vector<RaidClear::KillOrderEntry> const& RaidClear::MoltenCore::KillOrder()
         // Splits in two every 15s while it lives (up to 16), so it dies before anything else.
         { NPC_LAVA_SPAWN, 0 },
 
-        // Healers: Sulfuron's priests cast Dark Mending, Majordomo's healers keep his elites up.
+        // Sulfuron's priests cast Dark Mending. Majordomo's Flamewaker Healers heal nothing, despite
+        // the name: they cast Shadow Shock (20 yd around them) and Shadow Bolt, so they go early too.
         { NPC_FLAMEWALKER_PRIEST, 1 },
         { NPC_FLAMEWAKER_HEALER, 1 },
 
@@ -113,6 +115,15 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     triggers.push_back(
         new TriggerNode("rc mc damage reflection", { NextAction("rc mc stop melee", ACTION_RAID + 1) }));
 
+    // Like the way out of Wrath of Ragnaros and the Giants' Smash: over the heals and the rotation.
+    triggers.push_back(
+        new TriggerNode("rc mc shadow shock", { NextAction("rc mc leave shadow shock", ACTION_RAID + 1) }));
+
+    // Lucifron's Flamewaker Protectors' Dominate Mind, as in Zul'Gurub and Ahn'Qiraj: over the
+    // skull (ACTION_RAID + 2).
+    triggers.push_back(new TriggerNode("rc charmed member", { NextAction("rc control charmed", ACTION_RAID + 4) }));
+    triggers.push_back(new TriggerNode("rc charmed target", { NextAction("rc leave charmed target", ACTION_RAID + 3) }));
+
     triggers.push_back(
         new TriggerNode("rc mc ragnaros ranged", { NextAction("rc mc ragnaros move out", ACTION_RAID + 1) }));
     // Above the way out of his Wrath: the spot is out of it too, and further from the eruptions.
@@ -144,10 +155,13 @@ void RaidClearMoltenCoreStrategy::InitMultipliers(std::vector<Multiplier*>& mult
     multipliers.push_back(new RcMcInfernoHoldMultiplier(botAI));
     multipliers.push_back(new RcMcHotCoalHoldMultiplier(botAI));
     multipliers.push_back(new RcMcRagnarosHoldMultiplier(botAI));
+    multipliers.push_back(new RcMcShadowShockHoldMultiplier(botAI));
     multipliers.push_back(new RcMcReflectionMultiplier(botAI));
     multipliers.push_back(new RcMcAnxiousFireswornMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
     multipliers.push_back(new RcMcCoreHoundMultiplier(botAI));
+    multipliers.push_back(new RcCharmedSplashMultiplier(botAI));
+    multipliers.push_back(new RcCharmedSelfMultiplier(botAI));
 }
 
 // --- Magmadar -------------------------------------------------------------
@@ -348,9 +362,9 @@ float RcMcReflectionMultiplier::GetValue(Action* action)
     if (!target || !bot->IsValidAttackTarget(target))
         return 1.0f;  // heals, buffs, self casts
 
-    // Magic Reflection sends single-target spells back at the caster.
-    if (isSpell && target->HasAura(SPELL_MAGIC_REFLECTION))
-        return 0.0f;
+    // Magic Reflection (a REFLECT_SPELLS aura) is "rc spell reflect"'s: it zeroes only what the
+    // core would send back. Abilities, taunts and Auto Shot still go at a shielded add (Majordomo
+    // teleports with a threat wipe, and his tanks have to taunt his adds back).
 
     // Damage Reflection hurts whoever hits it in melee, abilities included.
     if (IsReflectableMelee(bot) && target->HasAura(SPELL_DAMAGE_REFLECTION))
@@ -1307,4 +1321,99 @@ bool RcMcCarryLivingBombAction::Execute(Event /*event*/)
         return GapToRaid(carrier, x, y, z);
     };
     return _walk.Go(gapAt, LIVING_BOMB_KEEP_AWAY, LIVING_BOMB_SPOT, LIVING_BOMB_WORTH_IT, LIVING_BOMB_SEARCH);
+}
+
+// --- Lucifron, Majordomo: Shadow Shock --------------------------------------
+
+namespace
+{
+    // Where Shadow Shock goes off: Lucifron and every Flamewaker Healer in the fight. Empty for
+    // a bot that belongs at their feet (tanks, melee): the same bots as Wrath of Ragnaros sends out.
+    std::vector<Position> ShadowShockCasters(PlayerbotAI* botAI, Player* bot)
+    {
+        std::vector<Position> casters;
+        if (bot->GetMapId() != MAP_ID || !KeepsOutOfWrath(bot))
+            return casters;
+        // Not through "find target" or the attackers: a bot that has only been on the Protectors
+        // or was revived mid-fight would not see him.
+        if (Creature* lucifron = RaidClear::FightingCreature(bot, { NPC_LUCIFRON }))
+            casters.push_back(lucifron->GetPosition());
+        if (!bot->IsInCombat())
+            return casters;
+        for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (unit && unit->GetEntry() == NPC_FLAMEWAKER_HEALER && unit->IsAlive() && unit->IsInCombat() &&
+                unit->IsInMap(bot))
+                casters.push_back(unit->GetPosition());
+        }
+        return casters;
+    }
+
+    // Yards from (x, y, z) to the middle of the nearest of them (the spell measures from there).
+    float ShadowShockGap(std::vector<Position> const& casters, float x, float y, float z)
+    {
+        float gap = 1000.0f;
+        for (Position const& at : casters)
+            gap = std::min(gap, at.GetExactDist(x, y, z));
+        return gap;
+    }
+
+    float ShadowShockGap(std::vector<Position> const& casters, Unit const* unit)
+    {
+        return ShadowShockGap(casters, unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ());
+    }
+}
+
+bool RcMcShadowShockTrigger::IsActive()
+{
+    if (!bot->IsAlive() || !botAI->CanMove())
+        return false;
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    return !casters.empty() && ShadowShockGap(casters, bot) < SHADOW_SHOCK_KEEP_AWAY;
+}
+
+bool RcMcLeaveShadowShockAction::Execute(Event /*event*/)
+{
+    std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
+    if (casters.empty() || ShadowShockGap(casters, bot) >= SHADOW_SHOCK_KEEP_AWAY)
+        return false;
+
+    // Molten Core has lava in most rooms, and Majordomo's has the Hot Coal in the middle: a spot
+    // in either counts as no further out than where the bot stands, one by the coal as only as
+    // far out as it is from the coal's reach (HOT_COAL_SPOT there is as good as SPOT here), so
+    // the way out of one doesn't lead into the other.
+    Map* map = bot->GetMap();
+    uint32 const phaseMask = bot->GetPhaseMask();
+    float const height = bot->GetCollisionHeight();
+    auto const gapAt = [&casters, map, phaseMask, height](float x, float y, float z)
+    {
+        LiquidData const liquid = map->GetLiquidData(phaseMask, x, y, z, height, {});
+        if (liquid.Status & MAP_LIQUID_STATUS_IN_CONTACT)
+            return 0.0f;
+        return std::min(ShadowShockGap(casters, x, y, z), HotCoalGap(x, y, z) + (SHADOW_SHOCK_SPOT - HOT_COAL_SPOT));
+    };
+    return _walk.Go(gapAt, SHADOW_SHOCK_KEEP_AWAY, SHADOW_SHOCK_SPOT, SHADOW_SHOCK_WORTH_IT, SHADOW_SHOCK_SEARCH);
+}
+
+float RcMcShadowShockHoldMultiplier::GetValue(Action* action)
+{
+    // As at Ragnaros: from this close everything at the caster's feet (his tank) is in spell and
+    // heal range already, and a walk toward it would only be sent out again.
+    bool const walks = dynamic_cast<MovementAction*>(action) && !dynamic_cast<AttackAction*>(action);
+    if (!walks && !dynamic_cast<CastReachTargetSpellAction*>(action))
+        return 1.0f;
+    if (bot->GetMapId() != MAP_ID || !KeepsOutOfWrath(bot))
+        return 1.0f;
+
+    Unit* target = action->GetTarget();
+    if (!target || target == bot)
+        return 1.0f;
+
+    // Per caster: with several Flamewaker Healers up, one beside the bot doesn't stop it walking
+    // toward its target at another across the room (the Healers are the skull).
+    for (Position const& at : ShadowShockCasters(botAI, bot))
+        if (target->GetExactDist(&at) < SHADOW_SHOCK_KEEP_AWAY && bot->GetExactDist(&at) <= SHADOW_SHOCK_HOLD)
+            return 0.0f;
+    return 1.0f;
 }
