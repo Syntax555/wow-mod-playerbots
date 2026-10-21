@@ -740,13 +740,38 @@ namespace
         return shazzrah && shazzrah->HasAura(SPELL_MAGIC_GROUNDING) ? shazzrah : nullptr;
     }
 
-    // The spell this raid member takes a magic buff off an enemy with, or nullptr.
+    // Knows one of these ranks, and none it knows is on cooldown. Purge, Dispel Magic and
+    // Remove Curse have no cooldown of their own: one there is a school lockout (Shazzrah's
+    // Counterspell locks the school of whatever was being cast: Nature for a shaman's Lightning
+    // Bolt, Arcane for a mage's Arcane Missiles).
+    bool KnowsAndReady(Player* member, std::initializer_list<uint32> ranks)
+    {
+        bool known = false;
+        for (uint32 const id : ranks)
+            if (member->HasSpell(id))
+            {
+                if (member->HasSpellCooldown(id))
+                    return false;
+                known = true;
+            }
+        return known;
+    }
+
+    // Has the mana for a dispel and isn't silenced.
+    bool CanCastNow(Player* member)
+    {
+        constexpr float MIN_MANA_PCT = 5.0f;
+        return member->GetPowerPct(POWER_MANA) >= MIN_MANA_PCT && !member->HasUnitFlag(UNIT_FLAG_SILENCED);
+    }
+
+    // The spell this raid member takes a magic buff off an enemy with right now, or nullptr.
     char const* PurgeSpellOf(Player* member)
     {
-        if (member->getClass() == CLASS_SHAMAN && (member->HasSpell(SPELL_PURGE_1) || member->HasSpell(SPELL_PURGE_2)))
+        if (!CanCastNow(member))
+            return nullptr;
+        if (member->getClass() == CLASS_SHAMAN && KnowsAndReady(member, { SPELL_PURGE_1, SPELL_PURGE_2 }))
             return "purge";
-        if (member->getClass() == CLASS_PRIEST &&
-            (member->HasSpell(SPELL_DISPEL_MAGIC_1) || member->HasSpell(SPELL_DISPEL_MAGIC_2)))
+        if (member->getClass() == CLASS_PRIEST && KnowsAndReady(member, { SPELL_DISPEL_MAGIC_1, SPELL_DISPEL_MAGIC_2 }))
             return "dispel magic";
         return nullptr;
     }
@@ -805,20 +830,19 @@ namespace
                unit->HasAura(SPELL_LUCIFRON_CURSE);
     }
 
-    // A mage, or a druid in a form it can cast Remove Curse in (not a tank), that knows it and
-    // isn't out of mana or silenced.
+    // A mage, or a druid in a form it can cast Remove Curse in (not a tank), that can cast it
+    // now (mana, not silenced, its school not locked out).
     bool CanDecurse(Player* member)
     {
-        constexpr float MIN_MANA_PCT = 5.0f;
-        if (member->GetPowerPct(POWER_MANA) < MIN_MANA_PCT || member->HasUnitFlag(UNIT_FLAG_SILENCED))
+        if (!CanCastNow(member))
             return false;
         if (member->getClass() == CLASS_MAGE)
-            return member->HasSpell(SPELL_REMOVE_CURSE_MAGE);
+            return KnowsAndReady(member, { SPELL_REMOVE_CURSE_MAGE });
         if (member->getClass() != CLASS_DRUID || PlayerbotAI::IsTank(member))
             return false;
         ShapeshiftForm const form = member->GetShapeshiftForm();
         return (form == FORM_NONE || form == FORM_MOONKIN || form == FORM_TREE) &&
-               member->HasSpell(SPELL_REMOVE_CURSE_DRUID);
+               KnowsAndReady(member, { SPELL_REMOVE_CURSE_DRUID });
     }
 
     // The cursed tank this bot is to decurse, or nullptr. Each cursed tank in group order gets
@@ -895,9 +919,16 @@ float RcMcShadowProtectionMultiplier::GetValue(Action* action)
         return 1.0f;
     // What the cast would come out as (GroupBuffSpellAction::Execute asks the same): the Prayer
     // once three raid members lack it and the priest has a Sacred Candle, else the single one.
-    return ai::buff::UpgradeToGroupIfAppropriate(bot, botAI, "shadow protection") == "shadow protection"
-               ? 0.0f
-               : 1.0f;
+    // That looks at the whole raid, and with one or two members missing the buff the triggers
+    // stay up every tick, so the answer is kept for a moment.
+    constexpr uint32 RECHECK_MS = 2000;
+    uint32 const now = getMSTime();
+    if (!_checkedMs || getMSTimeDiff(_checkedMs, now) >= RECHECK_MS)
+    {
+        _checkedMs = now ? now : 1;
+        _single = ai::buff::UpgradeToGroupIfAppropriate(bot, botAI, "shadow protection") == "shadow protection";
+    }
+    return _single ? 0.0f : 1.0f;
 }
 
 // --- Molten Giants and Destroyers ---------------------------------------------

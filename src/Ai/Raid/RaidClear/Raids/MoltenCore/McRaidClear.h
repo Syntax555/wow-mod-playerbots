@@ -116,8 +116,9 @@
  *     master's first, then every healer's (their own group's first), and only then the tanks':
  *     the tank, who matters most under Gehennas' Curse, waits behind every healer in the raid.
  *     Here, while one of the three is fighting, each cursed tank gets one mage or druid of its
- *     own (the first in group order within reach, with mana and not silenced, not already given
- *     one) who lifts it before anything else.
+ *     own (the first in group order within reach that can cast Remove Curse right now: mana,
+ *     not silenced, its school not locked out by Shazzrah's Counterspell; not already given one)
+ *     who lifts it before anything else. The purger above is chosen the same way.
  *   - Shadow Protection: every priest has "rshadow", and playerbots casts the single-target
  *     buff unless at least three raid members lack it. Raid members that died lose it and come
  *     back one or two at a time, so once the raid's buffs are out of step a whole MC run went
@@ -676,6 +677,10 @@ class RcMcShadowProtectionMultiplier : public Multiplier
 public:
     RcMcShadowProtectionMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc mc shadow protection") {}
     float GetValue(Action* action) override;
+
+private:
+    uint32 _checkedMs = 0;
+    bool _single = false;
 };
 
 #endif
