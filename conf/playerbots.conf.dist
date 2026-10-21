@@ -3005,7 +3005,14 @@ RaidClear.Bots.TeachTranquilizingShot = 1
 #                     Geddon walks out of his Inferno, a bot with his Living Bomb gets 24.5 yd
 #                     clear of everyone else, and bots in combat don't stand at the Hot Coal in
 #                     Majordomo's room (12 yd; a tank with a mob on it 22 yd). Ragnaros' range
-#                     is measured from his middle (27.5 yd).
+#                     is measured from his middle (27.5 yd); his ranged and healer spots are 7 yd
+#                     apart where there is room, and his main tank walks straight back into his
+#                     reach and taunts him back. Bots walk out of Gehennas' Rain of Fire and
+#                     Magmadar's Lava Bombs and out of the front of Ancient Core Hounds,
+#                     Magmadar and Flameguards; a hunter Tranquilizing Shots Magmadar's Frenzy;
+#                     bots interrupt Dark Mending; ranged and healers stay 32.5 yd from
+#                     Shazzrah's middle (Arcane Explosion); Golemagg's melee take turns dropping
+#                     Magma Splash from 8 stacks.
 #        Default:     1
 #
 

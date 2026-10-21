@@ -6,9 +6,13 @@
 
 #include "MCTriggers.h"
 
+#include <algorithm>
+
 #include "MCCoreHoundRecoveryValue.h"
 #include "MCHelpers.h"
+#include "Group.h"
 #include "PlayerbotAIConfig.h"
+#include "Playerbots.h"
 #include "RaidClearRegistry.h"
 #include "SharedDefines.h"
 #include "SpellAuras.h"
@@ -36,6 +40,11 @@ bool McShazzrahRangedTrigger::IsActive()
     if (!PlayerbotAI::IsRanged(bot))
         return false;
 
+    // Raid clear's "rc mc shazzrah ranged" replaces this one while it runs: it finds him after his
+    // Gate wipes his threat list, takes the healers out too, and looks all round for a way out.
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
+        return false;
+
     Unit* boss = AI_VALUE2(Unit*, "find target", "shazzrah");
     return boss && bot->GetDistance2d(boss) < ARCANE_EXPLOSION_DISTANCE;
 }
@@ -45,6 +54,42 @@ bool McInLavaTrigger::IsActive()
     LiquidData const& liquid = bot->GetLiquidData();
     return (liquid.Flags & MAP_LIQUID_TYPE_MAGMA) &&
            (liquid.Status & (LIQUID_MAP_WATER_WALK | LIQUID_MAP_IN_WATER | LIQUID_MAP_UNDER_WATER));
+}
+
+bool MoltenCoreHelpers::GolemaggBacksOff(PlayerbotAI* botAI, Player* bot)
+{
+    Aura* splash = bot->GetAura(SPELL_MAGMA_SPLASH);
+    uint32 const stacks = splash ? splash->GetStackAmount() : 0;
+    if (stacks >= MAGMA_SPLASH_BACK_OFF_STACKS)
+        return true;
+    if (stacks < MAGMA_SPLASH_ROTATE_STACKS || !RaidClear::Runs(botAI, bot->GetMapId()))
+        return false;
+
+    // Twenty stacks are more than the healers keep up with on every melee at once (the logs showed
+    // 20 to 26 on all of them). So the half of the group's melee bots with the most stacks stays
+    // out while the rest hit him: one that comes back with its stacks still up is next in line
+    // once the others have more.
+    Group* group = bot->GetGroup();
+    if (!group)
+        return true;
+    uint32 melee = 0;
+    uint32 ahead = 0;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !member->IsAlive() || !member->IsInMap(bot) || !GET_PLAYERBOT_AI(member) ||
+            PlayerbotAI::IsTank(member) || !PlayerbotAI::IsMelee(member) || member->GetDistance(bot) > 60.0f)
+            continue;
+        ++melee;
+        if (member == bot)
+            continue;
+        Aura* theirs = member->GetAura(SPELL_MAGMA_SPLASH);
+        uint32 const their = theirs ? theirs->GetStackAmount() : 0;
+        if (their >= MAGMA_SPLASH_ROTATE_STACKS &&
+            (their > stacks || (their == stacks && member->GetGUID() < bot->GetGUID())))
+            ++ahead;
+    }
+    return ahead < std::max(1u, melee / 2);
 }
 
 bool McGolemaggMagmaSplashTrigger::IsActive()
@@ -61,8 +106,7 @@ bool McGolemaggMagmaSplashTrigger::IsActive()
     if (boss->GetHealthPct() <= 10.0f)
         return false;
 
-    Aura* splash = bot->GetAura(SPELL_MAGMA_SPLASH);
-    if (!splash || splash->GetStackAmount() < MAGMA_SPLASH_BACK_OFF_STACKS)
+    if (!GolemaggBacksOff(botAI, bot))
         return false;
 
     // Only fire while still inside swing range; once the bot has backed off,

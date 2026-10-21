@@ -15,14 +15,10 @@
 #include "Playerbots.h"
 #include "Spell.h"
 #include "SpellInfo.h"
-#include "Timer.h"
 
 #include <algorithm>
 #include <array>
 #include <iterator>
-#include <map>
-#include <mutex>
-#include <utility>
 
 using namespace RaidClear::BlackwingLair;
 
@@ -76,29 +72,6 @@ namespace
         return IsStoppableCast(info) ? info : nullptr;
     }
 
-    // When a bot last sent an interrupt at each caster (getMSTime()), by instance and caster.
-    // Map updates move between threads from one tick to the next, so it is shared and locked.
-    using InterruptKey = std::pair<uint32, ObjectGuid>;
-    std::map<InterruptKey, uint32> sInterruptsSent;
-    std::mutex sInterruptsLock;
-
-    bool InterruptJustSent(Unit const* caster)
-    {
-        std::lock_guard<std::mutex> lock(sInterruptsLock);
-        auto it = sInterruptsSent.find({ caster->GetInstanceId(), caster->GetGUID() });
-        return it != sInterruptsSent.end() && getMSTimeDiff(it->second, getMSTime()) < INTERRUPT_SPREAD_MS;
-    }
-
-    void InterruptSent(Unit const* caster)
-    {
-        std::lock_guard<std::mutex> lock(sInterruptsLock);
-        uint32 const now = getMSTime();
-        // Stamps that have run out (dead casters, other raids) go.
-        for (auto it = sInterruptsSent.begin(); it != sInterruptsSent.end();)
-            it = getMSTimeDiff(it->second, now) >= INTERRUPT_SPREAD_MS ? sInterruptsSent.erase(it) : std::next(it);
-        sInterruptsSent[{ caster->GetInstanceId(), caster->GetGUID() }] = now ? now : 1;
-    }
-
     // The caster fighting the raid that this bot should interrupt now, and with what: the worst
     // cast first, then the nearest. Its own target or not.
     Unit* CasterToInterrupt(PlayerbotAI* botAI, Player* bot, char const*& with)
@@ -112,7 +85,7 @@ namespace
             if (!unit || !unit->IsCreature() || !unit->IsAlive())
                 continue;
             SpellInfo const* cast = CastToStop(unit);
-            if (!cast || InterruptJustSent(unit))
+            if (!cast || RaidClear::InterruptJustSent(unit))
                 continue;
             char const* interrupt = ReadyStop(botAI, bot, unit, cast);
             if (!interrupt)
@@ -151,7 +124,7 @@ bool RcBwlInterruptAction::Execute(Event /*event*/)
     // Claimed once it has gone out: a cast that fails leaves the next bot free to try.
     if (!botAI->CastSpell(with, caster))
         return false;
-    InterruptSent(caster);
+    RaidClear::InterruptSent(caster);
     return true;
 }
 
