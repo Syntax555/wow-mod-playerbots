@@ -7,7 +7,9 @@
 #include "MCTriggers.h"
 
 #include <algorithm>
+#include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "MCCoreHoundRecoveryValue.h"
 #include "MCHelpers.h"
@@ -62,52 +64,60 @@ bool MoltenCoreHelpers::GolemaggBacksOff(PlayerbotAI* botAI, Player* bot)
 {
     Aura* splash = bot->GetAura(SPELL_MAGMA_SPLASH);
     uint32 const stacks = splash ? splash->GetStackAmount() : 0;
-    if (stacks >= MAGMA_SPLASH_BACK_OFF_STACKS)
-        return true;
-    if (stacks < MAGMA_SPLASH_ROTATE_STACKS || !RaidClear::Runs(botAI, bot->GetMapId()))
-        return false;
+    if (!RaidClear::Runs(botAI, bot->GetMapId()))
+        return stacks >= MAGMA_SPLASH_BACK_OFF_STACKS;
 
     // Twenty stacks are more than the healers keep up with on every melee at once (the logs showed
-    // 20 to 26 on all of them). So the half of the group's melee bots with the most stacks stays
-    // out while the rest hit him: one that comes back with its stacks still up is next in line
-    // once the others have more. A group walk, so the answer is kept for a moment: the trigger and
-    // the multiplier ask it every tick. One map thread updates a bot at a time.
-    Group* group = bot->GetGroup();
-    if (!group)
-        return true;
-    constexpr uint32 ROTATION_FRESH_MS = 500;
-    struct Rotation
+    // 20 to 26 on all of them). So the melee take turns: from ROTATE stacks a bot steps out while
+    // fewer than half of the group's melee bots are out, and stays out until its stacks have run
+    // out (30 s after the last one). Who is out is shared by the whole raid: map updates move
+    // between threads, hence the lock.
+    static std::mutex lock;
+    static std::unordered_set<ObjectGuid> resting;
+    std::lock_guard<std::mutex> guard(lock);
+    if (!splash)
     {
-        uint32 ms = 0;
-        uint32 stacks = 0;
-        bool out = false;
-    };
-    thread_local std::unordered_map<ObjectGuid, Rotation> tRotation;
+        resting.erase(bot->GetGUID());
+        return false;
+    }
+    if (resting.count(bot->GetGUID()))
+        return true;
+    if (stacks >= MAGMA_SPLASH_BACK_OFF_STACKS)
+    {
+        resting.insert(bot->GetGUID());
+        return true;
+    }
+    if (stacks < MAGMA_SPLASH_ROTATE_STACKS)
+        return false;
+
+    // A bot waiting for its turn asks every tick, and the count is a group walk: its "no" is kept
+    // for a moment. One map thread updates a bot at a time.
+    constexpr uint32 TURN_FRESH_MS = 500;
+    thread_local std::unordered_map<ObjectGuid, uint32> tWaitingSince;
     uint32 const now = getMSTime();
-    Rotation& rotation = tRotation[bot->GetGUID()];
-    if (rotation.ms && rotation.stacks == stacks && getMSTimeDiff(rotation.ms, now) < ROTATION_FRESH_MS)
-        return rotation.out;
+    uint32& askedMs = tWaitingSince[bot->GetGUID()];
+    if (askedMs && getMSTimeDiff(askedMs, now) < TURN_FRESH_MS)
+        return false;
+    askedMs = now ? now : 1;
+
+    Group* group = bot->GetGroup();
     uint32 melee = 0;
-    uint32 ahead = 0;
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    uint32 out = 0;
+    for (GroupReference* ref = group ? group->GetFirstMember() : nullptr; ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
         if (!member || !member->IsAlive() || !member->IsInMap(bot) || !GET_PLAYERBOT_AI(member) ||
             PlayerbotAI::IsTank(member) || !PlayerbotAI::IsMelee(member) || member->GetDistance(bot) > 60.0f)
             continue;
         ++melee;
-        if (member == bot)
-            continue;
-        Aura* theirs = member->GetAura(SPELL_MAGMA_SPLASH);
-        uint32 const their = theirs ? theirs->GetStackAmount() : 0;
-        if (their >= MAGMA_SPLASH_ROTATE_STACKS &&
-            (their > stacks || (their == stacks && member->GetGUID() < bot->GetGUID())))
-            ++ahead;
+        if (member != bot && resting.count(member->GetGUID()) && member->HasAura(SPELL_MAGMA_SPLASH))
+            ++out;
     }
-    rotation.ms = now ? now : 1;
-    rotation.stacks = stacks;
-    rotation.out = ahead < std::max(1u, melee / 2);
-    return rotation.out;
+    if (out >= std::max(1u, melee / 2))
+        return false;
+    resting.insert(bot->GetGUID());
+    askedMs = 0;
+    return true;
 }
 
 bool McGolemaggMagmaSplashTrigger::IsActive()

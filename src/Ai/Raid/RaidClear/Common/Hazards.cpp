@@ -154,7 +154,7 @@ namespace
                                              unit->GetCombatReach() + cleaver.reach, cleaver.halfAngle });
             for (Breather const& breather : table->breathers)
             {
-                if (breather.entry != entry)
+                if (breather.entry != entry || (breather.aura && !unit->HasAura(breather.aura)))
                     continue;
                 SpellInfo const* info = sSpellMgr->GetSpellInfo(breather.spell);
                 float radius = 0.0f;
@@ -180,8 +180,8 @@ namespace
                 float radius = float(goInfo->trap.diameter) / 2.0f;
                 if (SpellInfo const* info = sSpellMgr->GetSpellInfo(goInfo->trap.spellId))
                     radius = std::max(radius, RadiusOf(info, nullptr));
-                if (radius > 0.0f)
-                    found.fires.push_back({ trap->GetPosition(), radius });
+                // A trap with neither goes off within 3 yd (GameObject::Update).
+                found.fires.push_back({ trap->GetPosition(), radius > 0.0f ? radius : 3.0f });
             }
         }
         return found;

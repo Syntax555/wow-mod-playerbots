@@ -64,11 +64,12 @@ namespace RaidClear::Hazards
         uint32 owner;
     };
 
-    // A mob that breathes this cone at whoever it is on.
+    // A mob that breathes this cone at whoever it is on; only while it has `aura`, if one is set.
     struct Breather
     {
         uint32 entry;
         uint32 spell;
+        uint32 aura;
     };
 
     struct Table

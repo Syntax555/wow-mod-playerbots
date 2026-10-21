@@ -12,8 +12,9 @@
  *     Majordomo's healers), then the other boss adds and Ragnaros' Sons of Flame.
  *   - Fire on the ground and breaths (Common/Hazards.h): bots walk out of Gehennas' Rain of Fire
  *     while it burns and out of Magmadar's Lava Bombs (fire traps, 5 yd), and everyone but the
- *     tanks out of the front of an Ancient Core Hound or Magmadar (Lava Breath, a 54 degree cone
- *     35 yd long: one hit 19 players in a log) or a Flameguard (Cone of Fire) it isn't on.
+ *     tanks out of the front of an Ancient Core Hound (Lava Breath, a 54 degree cone 35 yd long:
+ *     one hit 19 players in a log), of Magmadar while his Frenzy breathes the same, or of a
+ *     Flameguard (Cone of Fire) it isn't on.
  *     Playerbots' "avoid aoe" only goes on bots with a real player as master, and only steps a
  *     bot back out of fire that is already burning it.
  *   - Magmadar's Frenzy (an enrage, and a Lava Breath every 4 s while it lasts; a log showed no
@@ -26,9 +27,10 @@
  *     Gate puts him on top of a random player out of his reach (wiping his threat) and he casts
  *     one at once. Playerbots kept its ranged 26 yd from his edge, by a step straight back, found
  *     him only through threat and left the healers out. Here every ranged bot and healer within
- *     32.5 yd of his middle walks to the nearest spot 34.5 yd out (28.5 from his edge, where its
- *     spells still reach him), wherever he has gone, a bot in the middle of a cast is told to drop
- *     it when he starts one, and nobody walks back toward anything that close to him.
+ *     32.5 yd of his middle (but the one he is on: he follows it) walks to the nearest spot 34.5
+ *     yd out (28.5 from his edge, where its spells still reach him), wherever he has gone, a bot
+ *     in the middle of a cast is told to drop it when he starts one, and nobody walks back toward
+ *     anything that close to him but to cast at him.
  *   - Magmadar: every shaman keeps Tremor Totem down. Panic is a 45 yd raid-wide fear.
  *     Playerbots keeps each shaman's own earth totem (Stoneskin, Strength of Earth) down the
  *     same way, and the two share a slot: left alone they replace each other every second and
@@ -251,7 +253,7 @@ namespace RaidClear::MoltenCore
     constexpr float SHAZZRAH_SPOT = 34.5f;
     constexpr float SHAZZRAH_WORTH_IT = 2.0f;
     constexpr float SHAZZRAH_SEARCH = 24.0f;
-    constexpr float SHAZZRAH_HOLD = 40.0f;
+    constexpr float SHAZZRAH_HOLD = 36.0f;
     // Bots this close to a Flamewaker Priest when it starts Dark Mending are woken to look for an
     // interrupt (Silencing Shot, the farthest, reaches 35 yd).
     constexpr float DARK_MENDING_WAKE_RANGE = 40.0f;
@@ -274,9 +276,11 @@ namespace RaidClear::MoltenCore
     constexpr float RAGNAROS_HEAL_REACH = 36.0f;
     // Might of Ragnaros (21154) puts a Flame of Ragnaros on a random mana user, and its Intense
     // Heat (21155) hits and throws everyone within 20 yd of it. Spots go out this far apart while
-    // there are enough of them no closer to the eruptions than the tight packing above would hand
-    // out; only the bots left over get one the tight spacing apart.
+    // there are enough of them at most SLACK closer to the eruptions than the tight packing above
+    // would hand out, with every healer it had in the tank's reach still in it; otherwise the
+    // tight packing stands.
     constexpr float RAGNAROS_WIDE_SPOT_SPACING = 7.0f;
+    constexpr float RAGNAROS_WIDE_LAVA_SLACK = 4.0f;
     // A bot further than this from its spot walks back to it; one this close holds it.
     constexpr float RAGNAROS_SPOT_LEAVE = 4.0f;
     constexpr float RAGNAROS_SPOT_HOLD = 6.0f;

@@ -118,10 +118,10 @@ RaidClear::Hazards::Table const& RaidClear::MoltenCore::HazardTable()
         {},
         {
             // An Ancient Core Hound's Lava Breath hit 19 at once in one log; Magmadar breathes the
-            // same one throughout his Frenzy.
-            { NPC_ANCIENT_CORE_HOUND, SPELL_LAVA_BREATH },
-            { NPC_MAGMADAR, SPELL_LAVA_BREATH },
-            { NPC_FLAMEGUARD, SPELL_CONE_OF_FIRE },
+            // same one every 4 s while his Frenzy lasts (its periodic trigger), and not otherwise.
+            { NPC_ANCIENT_CORE_HOUND, SPELL_LAVA_BREATH, 0 },
+            { NPC_MAGMADAR, SPELL_LAVA_BREATH, SPELL_MAGMADAR_FRENZY },
+            { NPC_FLAMEGUARD, SPELL_CONE_OF_FIRE, 0 },
         },
     };
     return table;
@@ -267,19 +267,23 @@ bool RcMcShazzrahRangedTrigger::IsActive()
 {
     if (!bot->IsAlive() || !KeepsBack(bot) || !botAI->CanMove())
         return false;
-    // From his middle: the spell measures from there. Every few seconds his Gate puts him on top
-    // of a random player who isn't in his reach, so this fires again wherever he lands.
+    // From his middle: the spell measures from there. Every 45 s his Gate puts him on top of a
+    // random player who isn't in his reach, so this fires again wherever he lands. Not for the one
+    // he is on: he follows it, and his tanks take him back.
     Creature* boss = FightingShazzrah(bot);
-    return boss && bot->GetExactDist(boss) < SHAZZRAH_KEEP_AWAY;
+    return boss && boss->GetVictim() != bot && bot->GetExactDist(boss) < SHAZZRAH_KEEP_AWAY;
 }
 
 bool RcMcLeaveArcaneExplosionAction::Execute(Event /*event*/)
 {
     Creature* boss = FightingShazzrah(bot);
-    if (!boss || bot->GetExactDist(boss) >= SHAZZRAH_KEEP_AWAY)
+    if (!boss || boss->GetVictim() == bot || bot->GetExactDist(boss) >= SHAZZRAH_KEEP_AWAY)
         return false;
+    // Any spot SPOT out is as good as another: the nearest wins, not the furthest, so the bot
+    // stays in reach of its spells.
     Position const centre = boss->GetPosition();
-    auto const gapAt = [&centre](float x, float y, float z) { return centre.GetExactDist(x, y, z); };
+    auto const gapAt = [&centre](float x, float y, float z)
+    { return std::min(centre.GetExactDist(x, y, z), SHAZZRAH_SPOT); };
     return _walk.Go(gapAt, SHAZZRAH_KEEP_AWAY, SHAZZRAH_SPOT, SHAZZRAH_WORTH_IT, SHAZZRAH_SEARCH, true);
 }
 
@@ -299,6 +303,9 @@ float RcMcShazzrahHoldMultiplier::GetValue(Action* action)
         return 1.0f;
     Creature* boss = FightingShazzrah(bot);
     if (!boss || bot->GetExactDist(boss) > SHAZZRAH_HOLD)
+        return 1.0f;
+    // Reaching him to cast stops at spell range, out here: only a melee walk at him is held.
+    if (target == boss && !dynamic_cast<MeleeAction*>(action))
         return 1.0f;
     return target->GetExactDist(boss) < SHAZZRAH_KEEP_AWAY ? 0.0f : 1.0f;
 }
@@ -322,7 +329,7 @@ public:
         for (Map::PlayerList::const_iterator it = players.begin(); it != players.end(); ++it)
         {
             Player* player = it->GetSource();
-            if (!player || !player->IsAlive() || !KeepsBack(player) ||
+            if (!player || !player->IsAlive() || !KeepsBack(player) || caster->GetVictim() == player ||
                 player->GetExactDist(caster) >= SHAZZRAH_KEEP_AWAY)
                 continue;
             PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
@@ -1421,22 +1428,39 @@ namespace
             }
 
         // Then the same bots again, the wide spacing first and the tight one where that has no
-        // room, never closer to an eruption than that. Only if all of them fit that way does the
-        // wide layout replace the tight one.
+        // room, never more than RAGNAROS_WIDE_LAVA_SLACK closer to an eruption than that (the
+        // tight packing alone takes exactly the spots furthest from them, so spreading out needs
+        // some room). Only if all of them fit, and no healer is out of the tank's reach that the
+        // tight layout had in it, does the wide layout replace the tight one.
+        float const wideFloor = floorGap - RAGNAROS_WIDE_LAVA_SLACK;
         Holders wide = layout.holder;
         for (bool const healer : { true, false })
             for (Player* member : healer ? healers : ranged)
             {
-                std::size_t index = pick(wide, healer, RAGNAROS_WIDE_SPOT_SPACING, floorGap, false);
+                std::size_t index = pick(wide, healer, RAGNAROS_WIDE_SPOT_SPACING, wideFloor, false);
                 if (index == none)
-                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, floorGap, false);
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, wideFloor, false);
                 if (index == none && healer)
-                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, floorGap, true);
+                    index = pick(wide, healer, RAGNAROS_SPOT_SPACING, wideFloor, true);
                 if (index == none)
                     break;
                 wide[member->GetGUID()] = index;
             }
-        layout.holder = wide.size() == tight.size() ? wide : tight;
+        auto const healersInReach = [&](Holders const& holders)
+        {
+            std::size_t count = 0;
+            for (Player* member : healers)
+            {
+                auto const it = holders.find(member->GetGUID());
+                if (it != holders.end() &&
+                    std::hypot(layout.spots[it->second].x - tank.GetPositionX(),
+                               layout.spots[it->second].y - tank.GetPositionY()) <= RAGNAROS_HEAL_REACH)
+                    ++count;
+            }
+            return count;
+        };
+        layout.holder =
+            wide.size() == tight.size() && healersInReach(wide) >= healersInReach(tight) ? wide : tight;
 
         auto const mine = layout.holder.find(bot->GetGUID());
         if (mine == layout.holder.end())
