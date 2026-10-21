@@ -1658,7 +1658,7 @@ namespace
     float ReachRange(PlayerbotAI* botAI, Action* action)
     {
         std::string const name = action->getName();
-        if (name == "reach spell" || name == "reach party member to resurrect")
+        if (name == "reach spell")
             return botAI->GetRange("spell");
         if (name == "reach party member to heal")
             return botAI->GetRange("heal");
@@ -1807,6 +1807,10 @@ float RcMcShadowShockHoldMultiplier::GetValue(Action* action)
 
     Unit* target = action->GetTarget();
     if (!target || target == bot)
+        return 1.0f;
+    // A battle rez is worth a Shadow Shock, and "rc mc shadow shock approach" has no way round
+    // for a corpse.
+    if (action->getName() == "reach party member to resurrect")
         return 1.0f;
 
     std::vector<Position> const casters = ShadowShockCasters(botAI, bot);
