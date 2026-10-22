@@ -217,6 +217,7 @@ namespace RaidClear::BlackwingLair
         NPC_CHROMATIC_DRAKONID    = 14302,
         NPC_BONE_CONSTRUCT        = 14605,
         NPC_ENRAGED_FELGUARD      = 14101,  // from the warlocks' Demon Portals
+        NPC_DEMON_PORTAL          = 14081,
 
         // Nefarian's class calls.
         NPC_CORRUPTED_FIRE_NOVA_TOTEM = 14662,
@@ -659,6 +660,8 @@ public:
 // nobody holds, or its own banish about to end. Banished, it is out of the fight and out of the
 // bots' target lists (playerbots' AttackersValue). Playerbots' own Banish waits for a raid icon
 // nobody sets here: one evening's run had 9 Felguards up in one pull and no Banish at all.
+// Only while the rest of the pack is still up: once the Felguards are all that is left, the
+// banishes lapse and the raid kills them.
 class RcBwlBanishFelguardTrigger : public Trigger
 {
 public:

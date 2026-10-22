@@ -53,6 +53,22 @@ namespace
         return group && group->GetTargetIcon(RtiTargetValue::skullIndex) == unit->GetGUID();
     }
 
+    // Something besides the Felguards is still up to fight. A banish buys the raid time to kill
+    // the rest of the pack; with only Felguards left there is nothing to buy it for, and renewing
+    // it holds the raid on a mob it cannot hurt. One evening's run (10/21) banished the last
+    // Felguard of a pull four times running, two minutes of pets and wands swinging at it.
+    bool RestOfThePackUp(PlayerbotAI* botAI)
+    {
+        // "attackers" already leaves out whatever is banished or polymorphed.
+        for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (unit && unit->GetEntry() != NPC_ENRAGED_FELGUARD && unit->GetEntry() != NPC_DEMON_PORTAL)
+                return true;
+        }
+        return false;
+    }
+
     // Another warlock is casting Banish at it right now.
     bool BanishOnTheWay(Player* bot, Unit* unit)
     {
@@ -75,10 +91,13 @@ namespace
     // The Enraged Felguard this warlock should banish now: its own banish that is about to end,
     // else the nearest Felguard in the fight nobody holds, isn't skull and no warlock is already
     // banishing. A warlock holds one banish at a time, so one that is holding a Felguard well
-    // enough leaves the rest to the others.
+    // enough leaves the rest to the others. Nothing, new or renewed, once the Felguards are all
+    // that is left of the pull.
     Unit* FelguardToBanish(PlayerbotAI* botAI, Player* bot)
     {
         if (bot->getClass() != CLASS_WARLOCK || bot->GetMapId() != MAP_ID || !bot->IsInCombat())
+            return nullptr;
+        if (!RestOfThePackUp(botAI))
             return nullptr;
 
         std::list<Creature*> felguards;
