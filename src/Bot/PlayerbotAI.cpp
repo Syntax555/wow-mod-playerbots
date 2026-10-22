@@ -14,6 +14,7 @@
 #include "CheckMountStateAction.h"
 #include "Common.h"
 #include "CreatureData.h"
+#include "CreatureGroups.h"
 #include "DBCStores.h"
 #include "EmoteAction.h"
 #include "Engine.h"
@@ -58,6 +59,7 @@
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
+#include "World.h"
 #include <cmath>
 #include <mutex>
 #include <sstream>
@@ -125,8 +127,55 @@ private:
     float _radius;
 };
 
-// A creature this close to a pull's target belongs to its pack and comes along whatever it is hit with.
-constexpr float CHAIN_PULL_PACK_RADIUS = 12.0f;
+// A creature's spawn as linked_respawn keys it (ObjectMgr::LoadLinkedRespawn: the spawn's own
+// entry, not the one it may have changed to).
+ObjectGuid SpawnGuidOf(Creature const* creature)
+{
+    if (!creature->GetSpawnId())
+        return ObjectGuid::Empty;
+    CreatureData const* data = creature->GetCreatureData();
+    return ObjectGuid::Create<HighGuid::Unit>(data ? data->id : creature->GetEntry(), creature->GetSpawnId());
+}
+
+// Whether a pull of `pulled` brings the rest of its formation (CreatureGroup::MemberEngagingTarget:
+// only where the pulled one's group AI says the others assist it).
+bool FormationComes(Creature* pulled, Creature* hit)
+{
+    CreatureGroup const* group = pulled->GetFormation();
+    if (!group || group != hit->GetFormation())
+        return false;
+    auto const info = sFormationMgr->CreatureGroupMap.find(pulled->GetSpawnId());
+    if (info == sFormationMgr->CreatureGroupMap.end())
+        return false;
+    return info->second.HasGroupFlag(group->GetLeader() == pulled
+                                         ? uint16(GroupAIFlags::GROUP_AI_FLAG_MEMBER_ASSIST_LEADER)
+                                         : uint16(GroupAIFlags::GROUP_AI_FLAG_LEADER_ASSIST_MEMBER));
+}
+
+// Whether an idle creature comes along with a pull of `target` whatever the pull is hit with: its
+// formation where that assists, or near enough to answer its call for help as the core makes it
+// (Creature::CallAssistance: CreatureFamilyAssistanceRadius, a creature that can assist it, in
+// its sight). Not another boss, nor one tied to a boss (linked_respawn) other than the target or
+// the target's own: a tank's Avenger's Shield on an Ancient Core Hound walking past Garr bounced
+// to one of his Firesworn and brought Garr (Molten Core, 2026-10-21).
+bool ComesWithPull(Player* bot, Unit* target, Creature* hit)
+{
+    Creature* pulled = target->ToCreature();
+    if (!pulled || hit->IsDungeonBoss() || hit->isWorldBoss())
+        return false;
+    ObjectGuid const hitBoss = hit->GetSpawnId() ? sObjectMgr->GetLinkedRespawnGuid(SpawnGuidOf(hit)) : ObjectGuid::Empty;
+    if (hitBoss)
+    {
+        ObjectGuid const pulledSpawn = SpawnGuidOf(pulled);
+        if (hitBoss != pulledSpawn && (!pulledSpawn || hitBoss != sObjectMgr->GetLinkedRespawnGuid(pulledSpawn)))
+            return false;
+    }
+    if (FormationComes(pulled, hit))
+        return true;
+    float const radius = sWorld->getFloatConfig(CONFIG_CREATURE_FAMILY_ASSISTANCE_RADIUS);
+    return radius > 0.0f && !pulled->HasFlagsExtra(CREATURE_FLAG_EXTRA_DONT_CALL_ASSISTANCE) &&
+           pulled->IsWithinDistInMap(hit, radius) && hit->CanAssistTo(pulled, bot) && pulled->IsWithinLOSInMap(hit);
+}
 }
 
 bool PlayerbotAI::AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, float y, float z, Unit const* skip)
@@ -211,7 +260,7 @@ bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* t
         });
     }
 
-    // The target isn't fighting: this is the pull, and its own pack comes along anyway.
+    // The target isn't fighting: this is the pull, and what comes with it comes anyway.
     bool const pull = !target->IsInCombat();
     WorldObject const* source = origin;
     while (jumps-- && !candidates.empty())
@@ -230,7 +279,7 @@ bool PlayerbotAI::ChainWouldPullIdleCreature(SpellInfo const* spellInfo, Unit* t
             break;
 
         Unit* hit = *next;
-        if (!hit->IsInCombat() && (!pull || !target->IsWithinDist(hit, CHAIN_PULL_PACK_RADIUS)))
+        if (!hit->IsInCombat() && (!pull || !ComesWithPull(bot, target, hit->ToCreature())))
             return true;
         if (!fromCaster)
             source = hit;
