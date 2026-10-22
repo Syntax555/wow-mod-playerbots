@@ -51,7 +51,9 @@
  *     walk into a mob's aggro radius itself, plus 2 yd (and no boss room). A walk that would
  *     pull stops where the pet is; after 1.5 s standing it is sent after its target again the
  *     way its own AI chases (or after its owner), and that walk is judged afresh. Not a pet
- *     told to stay, and not companions: nothing attacks them.
+ *     told to stay, and not companions: nothing attacks them. A pet following its owner that
+ *     is stopped three times running has its walks let through for 3 s: its owner walked that
+ *     way without pulling, and a pet left standing for good is lost to the raid.
  *
  * The aggro radius is the core's own (Creature::GetAggroRange: the mob's detection range, 20 yd
  * by default, plus a yard per level the mob is above the bot).

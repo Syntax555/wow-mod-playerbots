@@ -96,9 +96,6 @@ public:
     bool IsActive() override;
 };
 
-// With "stay" in the name for playerbots' "passive" (the camp hold mod-dungeon-clear puts on the
-// bots waiting for a pull), which lets through only names with "stay", "follow" or "move from
-// group" in them.
 // Playerbots' "follow" doesn't walk a bot into fire or across it: its formation spot or the one
 // it follows is beyond a burning trap, the bot walks out, follows back in, and so on until the
 // trap is gone. Not for a bot already inside one (the way out is RcHazardAction's).
@@ -109,6 +106,9 @@ public:
     float GetValue(Action* action) override;
 };
 
+// With "stay" in the name for playerbots' "passive" (the camp hold mod-dungeon-clear puts on the
+// bots waiting for a pull), which lets through only names with "stay", "follow" or "move from
+// group" in them.
 class RcHazardAction : public Action
 {
 public:
