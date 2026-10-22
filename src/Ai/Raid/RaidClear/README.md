@@ -592,7 +592,8 @@ Category: Raids
   Spellbinder's **Flamestrike** and a Taskmaster's **Healing Circle** get the same, **Hammer of
   Justice** included where it lands.
 - Blackwing Lair: warlocks **Banish** the **Enraged Felguards** from the Demon Portals and keep
-  them banished; bots leave a banished mob alone.
+  them banished while the rest of the pack is up; bots leave a banished mob alone. Once only
+  Felguards are left, the banishes lapse and the raid kills them.
 - Blackwing Lair: mages only **Polymorph** the Blackwing Mages, Legionnaires and Taskmasters,
   never a Technician the raid kills in seconds.
 - Ebonroc and Flamegor: a tank spot can be set for each (`RaidClear.BlackwingLair.Ebonroc.TankSpot`,
