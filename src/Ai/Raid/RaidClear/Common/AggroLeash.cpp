@@ -18,6 +18,7 @@
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "MoveSpline.h"
+#include "PetDefines.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
 #include "Timer.h"
@@ -88,6 +89,15 @@ namespace
     // trash that stands a few yards outside it (Broodlord's whelps at 28 yd, against his 23)
     // made him tied to every whelp, and the walks to them went straight in.
     constexpr float BOSS_FLOOR = 3.0f;
+    // A bot's pet or guardian out of combat (following its owner) is only stopped short of an
+    // idle mob's aggro radius by this much: the raid's own way past a pack is the owner's.
+    constexpr float PET_IDLE_BUFFER = 1.0f;
+    // A pet's walks are looked at no more often than this (a pet following a running owner gets
+    // a new one every update or two). One that was stopped and has stood this long is sent after
+    // its target or its owner again, so the new walk is judged afresh: the core's chase only
+    // starts another when the target moves, and playerbots doesn't send a pet that already has it.
+    constexpr uint32 PET_JUDGE_MS = 200;
+    constexpr uint32 PET_RESEND_MS = 1500;
 
     // Per instance. Only ever touched from that instance's map update (the hook below and the
     // bots' own AI, which runs inside Player::Update), so it needs no lock of its own.
@@ -97,6 +107,13 @@ namespace
         uint32 scanMs = 0;
         GuidVector idle;  // creatures that would aggro, whoever walks up
         std::unordered_map<ObjectGuid, uint32> lastWalk;  // per bot: the last spline that was looked at
+        // Per pet: when its walks were last looked at, and when one was last stopped.
+        struct PetWatch
+        {
+            uint32 judgedMs = 0;
+            uint32 stoppedMs = 0;
+        };
+        std::unordered_map<ObjectGuid, PetWatch> pets;
     };
 
     std::mutex sStatesMutex;
@@ -231,7 +248,8 @@ namespace
 
     // The idle mobs around this bot, and where the walking ones among them are headed. Its own
     // targets are left out: attacking a mob that isn't in combat yet is a pull.
-    std::vector<IdleMob> IdleMobsNear(Player* bot, InstanceState& state, BotTargets const& targets, float buffer)
+    std::vector<IdleMob> IdleMobsNear(Unit* bot, InstanceState& state, BotTargets const& targets, float buffer,
+                                      bool bossRoom = true)
     {
         Map* map = bot->GetMap();
         RefreshIdle(map, state);
@@ -253,7 +271,7 @@ namespace
             IdleMob const mob = { creature, creature->GetPositionX(), creature->GetPositionY(),
                                   creature->GetPositionZ(), aggro,
                                   Tied(targets, creature->GetPositionX(), creature->GetPositionY(), aggro + buffer),
-                                  false, boss ? bossBuffer : 0.0f, boss };
+                                  false, boss && bossRoom ? bossBuffer : 0.0f, boss };
             mobs.push_back(mob);
             AddWayAhead(mobs, mob, targets, aggro + buffer, ahead);
         }
@@ -286,7 +304,7 @@ namespace
     }
 
     // Whether a walk from the bot to a spot takes it closer to one of its targets.
-    bool Approaches(Player* bot, BotTargets const& targets, float x, float y)
+    bool Approaches(Unit* bot, BotTargets const& targets, float x, float y)
     {
         for (Unit* target : { targets.victim, targets.current })
             if (target && target->GetExactDist2d(x, y) < target->GetExactDist2d(bot) - 1.0f)
@@ -303,7 +321,7 @@ namespace
     //     most; half of it for a mob tied to the target, so a melee bot shifting a few yards
     //     around its target isn't stopped for nothing.
     //   - An idle boss counts for every walk, tied or not, by at least BOSS_FLOOR.
-    bool StretchPulls(Player* bot, std::vector<IdleMob> const& mobs, bool approach, float buffer,
+    bool StretchPulls(Unit* bot, std::vector<IdleMob> const& mobs, bool approach, float buffer,
                       G3D::Vector3 const& from, G3D::Vector3 const& to)
     {
         float const botX = bot->GetPositionX();
@@ -336,7 +354,7 @@ namespace
     }
 
     // Whether the walk the bot is on passes too close to one of the mobs.
-    bool WalkPulls(Player* bot, std::vector<IdleMob> const& mobs, BotTargets const& targets, float buffer)
+    bool WalkPulls(Unit* bot, std::vector<IdleMob> const& mobs, BotTargets const& targets, float buffer)
     {
         Movement::MoveSpline const* walk = bot->movespline;
         if (mobs.empty() || walk->Finalized())
@@ -692,12 +710,20 @@ public:
         for (Map::PlayerList::const_iterator it = players.begin(); it != players.end(); ++it)
         {
             Player* player = it->GetSource();
-            if (!player || !player->IsInWorld() || player->movespline->Finalized() || !player->IsAlive() ||
-                !player->IsInCombat())
+            if (!player || !player->IsInWorld() || !player->IsAlive())
                 continue;
             PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
             if (!botAI)
-                continue;  // a real player goes where it likes
+                continue;  // a real player goes where it likes, and so does its pet
+
+            if (!player->m_Controlled.empty() && botAI->HasStrategy(LEASH_STRATEGY, BOT_STATE_COMBAT))
+            {
+                if (!state)
+                    state = StateOf(map);
+                JudgePetWalks(player, *state, config);
+            }
+            if (player->movespline->Finalized() || !player->IsInCombat())
+                continue;
 
             if (!state)
                 state = StateOf(map);
@@ -725,6 +751,60 @@ public:
             botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().Set(
                 player->GetMapId(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(),
                 player->GetOrientation(), HOLD_MS, MovementPriority::MOVEMENT_FORCED);
+        }
+    }
+
+    // A bot's pet or guardian (a hunter's beast, an imp, a Water Elemental) goes where its own AI
+    // sends it: after its target, or after its owner. Its walks are judged as the bots' are: in
+    // combat with the same buffer (a walk to its target the gentle way), out of combat only short
+    // of the aggro radius itself. 2026-10-21 Molten Core: seven packs came in on pets, one
+    // a Firelord and two Lava Annihilators on a Scorpid between pulls.
+    void JudgePetWalks(Player* owner, InstanceState& state, Config const& config)
+    {
+        uint32 const now = getMSTime();
+        for (Unit* pet : owner->m_Controlled)
+        {
+            if (!pet || !pet->IsInWorld() || !pet->IsAlive() || pet->GetOwnerGUID() != owner->GetGUID() ||
+                pet->IsTotem() || pet->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET ||
+                pet->HasUnitState(UNIT_STATE_JUMPING | UNIT_STATE_CHARGING | UNIT_STATE_FLEEING | UNIT_STATE_CONFUSED))
+                continue;
+            InstanceState::PetWatch& watch = state.pets[pet->GetGUID()];
+            Unit* victim = pet->GetVictim();
+            if (victim && !victim->IsAlive())
+                victim = nullptr;
+
+            if (pet->movespline->Finalized())
+            {
+                // Stopped here and still standing: off again, to be judged again.
+                if (watch.stoppedMs && getMSTimeDiff(watch.stoppedMs, now) >= PET_RESEND_MS)
+                {
+                    watch.stoppedMs = 0;
+                    if (victim)
+                        pet->GetMotionMaster()->MoveChase(victim);
+                    else if (!pet->IsInCombat())
+                        pet->GetMotionMaster()->MoveFollow(owner, PET_FOLLOW_DIST, pet->GetFollowAngle());
+                }
+                continue;
+            }
+            if (pet->movespline->isFalling() ||
+                (watch.judgedMs && getMSTimeDiff(watch.judgedMs, now) < PET_JUDGE_MS))
+                continue;
+            uint32& lastWalk = state.lastWalk[pet->GetGUID()];
+            uint32 const splineId = pet->movespline->GetId();
+            if (lastWalk == splineId)
+                continue;
+            lastWalk = splineId;
+            watch.judgedMs = now ? now : 1;
+
+            BotTargets targets;
+            targets.victim = victim;
+            bool const fighting = pet->IsInCombat();
+            float const buffer = fighting ? config.aggroLeashBuffer : PET_IDLE_BUFFER;
+            if (WalkPulls(pet, IdleMobsNear(pet, state, targets, buffer, fighting), targets, buffer))
+            {
+                pet->StopMoving();
+                watch.stoppedMs = now ? now : 1;
+            }
         }
     }
 
