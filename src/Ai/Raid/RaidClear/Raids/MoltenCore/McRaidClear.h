@@ -384,6 +384,18 @@ namespace RaidClear::MoltenCore
     // is under the lava, which lasts up to 90 s (or until his Sons are dead): longer than that,
     // so every bot gets its own spot back when he comes up again.
     constexpr uint32 RAGNAROS_LAYOUT_FORGET_MS = 120000;
+    // Lava Burst lands on his melee too: one of the eight (819.8, -807.2) is 30.6 yd out on the
+    // line he faces as he comes up, where the melee stand (2026-10-21: 33 hits on all eight melee,
+    // 7 on the ranged). Melee other than his main tank, in his reach and closer to an eruption
+    // than its radius (read from LAVA_BURST_DAMAGE, else LAVA_BURST_RADIUS) and MARGIN, walk to
+    // the nearest dry spot still in their reach that is CLEAR further out than that. The spots sit
+    // on rings this far inside a player's melee range of him, this far apart.
+    constexpr uint32 SPELL_LAVA_BURST_DAMAGE = 21158;
+    constexpr float LAVA_BURST_RADIUS = 8.0f;
+    constexpr float LAVA_BURST_MARGIN = 2.0f;
+    constexpr float LAVA_BURST_CLEAR = 1.0f;
+    constexpr std::array<float, 3> RAGNAROS_MELEE_RINGS_IN = { 1.5f, 3.0f, 4.5f };
+    constexpr float RAGNAROS_MELEE_SPACING = 2.0f;
 
     // Melee stop swinging into Damage Reflection only below this much health.
     constexpr float DAMAGE_REFLECTION_STOP_BELOW_PCT = 50.0f;
@@ -858,6 +870,22 @@ class RcMcRagnarosTauntAction : public Action
 {
 public:
     RcMcRagnarosTauntAction(PlayerbotAI* botAI) : Action(botAI, "rc mc ragnaros taunt") {}
+    bool Execute(Event event) override;
+};
+
+// A melee bot other than his main tank, in his reach and in the way of a Lava Burst eruption, with
+// a dry spot in its reach out of the way of all of them (see LAVA_BURST_MARGIN).
+class RcMcRagnarosMeleeTrigger : public Trigger
+{
+public:
+    RcMcRagnarosMeleeTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc mc ragnaros melee") {}
+    bool IsActive() override;
+};
+
+class RcMcRagnarosMeleeAction : public MovementAction
+{
+public:
+    RcMcRagnarosMeleeAction(PlayerbotAI* botAI) : MovementAction(botAI, "rc mc ragnaros melee spot") {}
     bool Execute(Event event) override;
 };
 

@@ -106,6 +106,8 @@ void RaidClearAq40Strategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode("rc aq40 skeram cast", { NextAction("rc aq40 skeram interrupt", ACTION_RAID + 4) }));
     // Skeram's mind control, as in Zul'Gurub: over the skull (ACTION_RAID + 2).
     triggers.push_back(new TriggerNode("rc charmed member", { NextAction("rc control charmed", ACTION_RAID + 4) }));
+    triggers.push_back(
+        new TriggerNode("rc charmed in channel", { NextAction("rc stop channel on charmed", ACTION_RAID + 5) }));
     triggers.push_back(new TriggerNode("rc charmed target", { NextAction("rc leave charmed target", ACTION_RAID + 3) }));
     // Like Ebonroc's swap.
     triggers.push_back(new TriggerNode("rc aq40 mortal wound", { NextAction("rc aq40 mortal wound taunt", ACTION_RAID + 3) }));
@@ -153,6 +155,7 @@ void RaidClearAq40Strategy::InitMultipliers(std::vector<Multiplier*>& multiplier
     multipliers.push_back(new RcAq40VeklorThreatMultiplier(botAI));
     multipliers.push_back(new RcAq40SpotHoldMultiplier(botAI));
     multipliers.push_back(new RcCharmedSplashMultiplier(botAI));
+    multipliers.push_back(new RcCharmedDispelMultiplier(botAI));
     multipliers.push_back(new RcCharmedSelfMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
 }

@@ -32,14 +32,17 @@ namespace RaidClear::Hazards
     // A bot keeps this far past the edge of fire on the ground (the bot's own size: the core
     // counts a unit as in it from there), and this far past the reach of a cone beyond its own
     // size, and this far either side of the cone's angle. A walk out ends this far clear. The
-    // hazards are looked up per bot every HAZARD_FRESH_MS; fire traps within TRAP_SEARCH of it,
-    // while the mob that throws them is in the bot's fight.
+    // hazards are looked up per bot every HAZARD_FRESH_MS; fire traps within TRAP_SEARCH of it
+    // (see Trap).
     constexpr float GROUND_FIRE_MARGIN = 1.5f;
     constexpr float CONE_MARGIN = 1.0f;
     constexpr float CONE_ANGLE_MARGIN = 0.1745f;  // 10 degrees
     constexpr float HAZARD_SPOT = 2.0f;
     constexpr uint32 HAZARD_FRESH_MS = 100;
     constexpr float TRAP_SEARCH = 30.0f;
+    // A thrown trap is looked for this long after its thrower was last in a fight in the
+    // instance (Magmadar's last a minute at most).
+    constexpr uint32 THROWN_TRAP_MS = 90000;
 
     // A caster whose spell leaves fire on the ground.
     struct Burner
@@ -57,7 +60,9 @@ namespace RaidClear::Hazards
         float halfAngle;
     };
 
-    // A fire trap game object, looked for only while the mob that throws it is in the fight.
+    // A fire trap game object: a spawned one only while the mob that throws it is in the fight, a
+    // thrown one (no spawn of its own) for as long as it burns, its thrower dead or not (up to
+    // THROWN_TRAP_MS after it was last fighting).
     struct Trap
     {
         uint32 entry;
