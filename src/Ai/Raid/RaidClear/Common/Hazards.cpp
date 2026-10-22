@@ -11,6 +11,7 @@
 
 #include "Creature.h"
 #include "DynamicObject.h"
+#include "Formations.h"
 #include "GameObject.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -186,7 +187,7 @@ namespace
         // spawn of its own) burns on after its thrower is dead: the raid took 115,000 from
         // Magmadar's Lava Bombs walking off after the kill, 10,000 in the fight.
         std::vector<uint32> searchEntries = trapEntries;
-        if (ThrowerFoughtLately(bot, !trapEntries.empty(), now))
+        if (!table->traps.empty() && ThrowerFoughtLately(bot, !trapEntries.empty(), now))
             for (Trap const& trap : table->traps)
                 if (std::find(searchEntries.begin(), searchEntries.end(), trap.entry) == searchEntries.end())
                     searchEntries.push_back(trap.entry);
@@ -253,6 +254,54 @@ bool RcHazardTrigger::IsActive()
         return false;
     Found const& found = HazardsFor(botAI, bot);
     return !Empty(found) && HazardGap(found, bot->GetPositionX(), bot->GetPositionY()) < 0.0f;
+}
+
+float RcHazardFollowMultiplier::GetValue(Action* action)
+{
+    if (!action || action->getName() != "follow" || !bot->IsAlive())
+        return 1.0f;
+    Found const& found = HazardsFor(botAI, bot);
+    if (Empty(found))
+        return 1.0f;
+    float const fromX = bot->GetPositionX();
+    float const fromY = bot->GetPositionY();
+    if (HazardGap(found, fromX, fromY) < 0.0f)
+        return 1.0f;
+
+    // Where the follow goes: the unit the formation follows, or its spot.
+    Formation* formation = AI_VALUE(Formation*, "formation");
+    if (!formation)
+        return 1.0f;
+    float toX = 0.0f;
+    float toY = 0.0f;
+    std::string const target = formation->GetTargetName();
+    if (!target.empty())
+    {
+        Unit* unit = AI_VALUE(Unit*, target);
+        if (!unit)
+            return 1.0f;
+        toX = unit->GetPositionX();
+        toY = unit->GetPositionY();
+    }
+    else
+    {
+        WorldLocation const loc = formation->GetLocation();
+        if (Formation::IsNullLocation(loc) || loc.GetMapId() != bot->GetMapId())
+            return 1.0f;
+        toX = loc.GetPositionX();
+        toY = loc.GetPositionY();
+    }
+
+    // The straight way there, a yard at a time.
+    float const length = std::hypot(toX - fromX, toY - fromY);
+    int const steps = std::max(1, int(std::ceil(length)));
+    for (int i = 1; i <= steps; ++i)
+    {
+        float const t = float(i) / float(steps);
+        if (HazardGap(found, fromX + (toX - fromX) * t, fromY + (toY - fromY) * t) < 0.0f)
+            return 0.0f;
+    }
+    return 1.0f;
 }
 
 bool RcHazardAction::Execute(Event /*event*/)

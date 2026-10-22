@@ -13,6 +13,7 @@
 #include "Common/TankRoles.h"
 
 #include "AllMapScript.h"
+#include "CharmInfo.h"
 #include "Creature.h"
 #include "GenericSpellActions.h"
 #include "LastMovementValue.h"
@@ -22,6 +23,7 @@
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
 #include "Timer.h"
+#include "UnitAI.h"
 
 #include <algorithm>
 #include <cmath>
@@ -91,13 +93,20 @@ namespace
     constexpr float BOSS_FLOOR = 3.0f;
     // A bot's pet or guardian out of combat (following its owner) is only stopped short of an
     // idle mob's aggro radius by this much: the raid's own way past a pack is the owner's.
-    constexpr float PET_IDLE_BUFFER = 1.0f;
+    constexpr float PET_IDLE_BUFFER = 2.0f;
     // A pet's walks are looked at no more often than this (a pet following a running owner gets
-    // a new one every update or two). One that was stopped and has stood this long is sent after
-    // its target or its owner again, so the new walk is judged afresh: the core's chase only
-    // starts another when the target moves, and playerbots doesn't send a pet that already has it.
+    // a new one every update or two), except right after one was stopped. One that was stopped
+    // and has stood this long is sent after its target or its owner again, so the new walk is
+    // judged afresh: the core's chase only starts another when the target moves, and playerbots
+    // doesn't send a pet that already has it.
     constexpr uint32 PET_JUDGE_MS = 200;
     constexpr uint32 PET_RESEND_MS = 1500;
+    // A pet following its owner that is stopped and sent on this many times in a row with no
+    // clean walk in between has its walks let through for PET_PASS_MS: its owner walked that
+    // way without pulling, and a pet left standing for good is lost to the raid (and dismissed
+    // once out of sight).
+    constexpr uint32 PET_IDLE_RESENDS = 3;
+    constexpr uint32 PET_PASS_MS = 3000;
 
     // Per instance. Only ever touched from that instance's map update (the hook below and the
     // bots' own AI, which runs inside Player::Update), so it needs no lock of its own.
@@ -112,6 +121,8 @@ namespace
         {
             uint32 judgedMs = 0;
             uint32 stoppedMs = 0;
+            uint32 idleResends = 0;  // sent on again out of combat, without a clean walk since
+            uint32 passMs = 0;       // walks out of combat let through since then
         };
         std::unordered_map<ObjectGuid, PetWatch> pets;
     };
@@ -766,30 +777,64 @@ public:
         {
             if (!pet || !pet->IsInWorld() || !pet->IsAlive() || pet->GetOwnerGUID() != owner->GetGUID() ||
                 pet->IsTotem() || pet->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET ||
-                pet->HasUnitState(UNIT_STATE_JUMPING | UNIT_STATE_CHARGING | UNIT_STATE_FLEEING | UNIT_STATE_CONFUSED))
+                pet->HasUnitState(UNIT_STATE_LOST_CONTROL))
                 continue;
-            InstanceState::PetWatch& watch = state.pets[pet->GetGUID()];
+            ObjectGuid const guid = pet->GetGUID();
             Unit* victim = pet->GetVictim();
             if (victim && !victim->IsAlive())
                 victim = nullptr;
 
             if (pet->movespline->Finalized())
             {
-                // Stopped here and still standing: off again, to be judged again.
-                if (watch.stoppedMs && getMSTimeDiff(watch.stoppedMs, now) >= PET_RESEND_MS)
+                auto const watched = state.pets.find(guid);
+                if (watched == state.pets.end())
+                    continue;
+                // Standing of its own accord: nothing to watch until it walks again.
+                if (!watched->second.stoppedMs)
                 {
-                    watch.stoppedMs = 0;
-                    if (victim)
-                        pet->GetMotionMaster()->MoveChase(victim);
-                    else if (!pet->IsInCombat())
-                        pet->GetMotionMaster()->MoveFollow(owner, PET_FOLLOW_DIST, pet->GetFollowAngle());
+                    state.pets.erase(watched);
+                    state.lastWalk.erase(guid);
+                    continue;
+                }
+                if (getMSTimeDiff(watched->second.stoppedMs, now) < PET_RESEND_MS)
+                    continue;
+                // Stopped here and still standing: off again, to be judged again. Not
+                // a pet told to stay, and after its target the way its own AI goes
+                // (PetAI keeps a caster at its spell's range, a beast behind the mob).
+                watched->second.stoppedMs = 0;
+                CharmInfo* const charm = pet->GetCharmInfo();
+                if (charm && charm->HasCommandState(COMMAND_STAY))
+                    continue;
+                if (victim)
+                {
+                    if (pet->IsAIEnabled && pet->GetAI())
+                    {
+                        pet->AttackStop();
+                        pet->GetAI()->AttackStart(victim);
+                    }
+                }
+                else if (!pet->IsInCombat())
+                {
+                    if (++watched->second.idleResends >= PET_IDLE_RESENDS)
+                    {
+                        watched->second.idleResends = 0;
+                        watched->second.passMs = now ? now : 1;
+                    }
+                    pet->GetMotionMaster()->MoveFollow(owner, PET_FOLLOW_DIST, pet->GetFollowAngle());
                 }
                 continue;
             }
+            InstanceState::PetWatch& watch = state.pets[guid];
+            // Throttled, but not right after a stop: a pet following a running owner
+            // sets off again on the next update, and each step unjudged eats the buffer.
             if (pet->movespline->isFalling() ||
-                (watch.judgedMs && getMSTimeDiff(watch.judgedMs, now) < PET_JUDGE_MS))
+                (!watch.stoppedMs && watch.judgedMs && getMSTimeDiff(watch.judgedMs, now) < PET_JUDGE_MS))
                 continue;
-            uint32& lastWalk = state.lastWalk[pet->GetGUID()];
+            bool const fighting = pet->IsInCombat();
+            if (!fighting && watch.passMs && getMSTimeDiff(watch.passMs, now) < PET_PASS_MS)
+                continue;
+            watch.passMs = 0;
+            uint32& lastWalk = state.lastWalk[guid];
             uint32 const splineId = pet->movespline->GetId();
             if (lastWalk == splineId)
                 continue;
@@ -798,12 +843,17 @@ public:
 
             BotTargets targets;
             targets.victim = victim;
-            bool const fighting = pet->IsInCombat();
             float const buffer = fighting ? config.aggroLeashBuffer : PET_IDLE_BUFFER;
             if (WalkPulls(pet, IdleMobsNear(pet, state, targets, buffer, fighting), targets, buffer))
             {
                 pet->StopMoving();
-                watch.stoppedMs = now ? now : 1;
+                if (!watch.stoppedMs)
+                    watch.stoppedMs = now ? now : 1;
+            }
+            else
+            {
+                watch.stoppedMs = 0;
+                watch.idleResends = 0;
             }
         }
     }

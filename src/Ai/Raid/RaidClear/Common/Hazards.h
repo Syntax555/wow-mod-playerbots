@@ -23,6 +23,7 @@
 #include "Common/WayOut.h"
 
 #include "Action.h"
+#include "Multiplier.h"
 #include "Trigger.h"
 
 #include <vector>
@@ -93,6 +94,16 @@ class RcHazardTrigger : public Trigger
 public:
     RcHazardTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc hazard") {}
     bool IsActive() override;
+};
+
+// Playerbots' "follow" doesn't walk a bot into fire or across it: its formation spot or the one
+// it follows is beyond a burning trap, the bot walks out, follows back in, and so on until the
+// trap is gone. Not for a bot already inside one (the way out is RcHazardAction's).
+class RcHazardFollowMultiplier : public Multiplier
+{
+public:
+    RcHazardFollowMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc hazard follow") {}
+    float GetValue(Action* action) override;
 };
 
 // With "stay" in the name for playerbots' "passive" (the camp hold mod-dungeon-clear puts on the

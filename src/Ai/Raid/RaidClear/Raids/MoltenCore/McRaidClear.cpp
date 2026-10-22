@@ -139,9 +139,8 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
 
     triggers.push_back(new TriggerNode("rc kill order", { NextAction("rc mark kill order", ACTION_RAID + 2) }));
 
-    // Rain of Fire, Lava Bombs and the breaths (Common/Hazards.h), with the other ways out of a
-    // blast; under Inferno's and the Living Bomb's.
-    triggers.push_back(new TriggerNode("rc hazard", { NextAction("rc hazard stay clear", ACTION_EMERGENCY + 3) }));
+    // Rain of Fire, Lava Bombs and the breaths (Common/Hazards.h): in "rc mc buffs", on both
+    // engines.
     triggers.push_back(new TriggerNode("rc tranq", { NextAction("rc tranq", ACTION_RAID + 1) }));
     // Like the other raids' interrupts, above the heals: a Dark Mending puts 27,750 back on
     // Sulfuron or a priest.
@@ -1171,9 +1170,19 @@ bool RcMcDecurseTankAction::Execute(Event /*event*/)
 
 // --- Shadow Protection ------------------------------------------------------
 
+void RaidClearMoltenCoreBuffsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
+{
+    // Rain of Fire, Lava Bombs and the breaths (Common/Hazards.h), with the other ways out of a
+    // blast; under Inferno's and the Living Bomb's. Here and not in "rc moltencore" because the
+    // Lava Bombs burn on after Magmadar dies, when the raid is on the non-combat engine.
+    triggers.push_back(new TriggerNode("rc hazard", { NextAction("rc hazard stay clear", ACTION_EMERGENCY + 3) }));
+}
+
 void RaidClearMoltenCoreBuffsStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
     multipliers.push_back(new RcMcShadowProtectionMultiplier(botAI));
+    // Off a Lava Bomb's edge after the kill: the follow doesn't walk back in.
+    multipliers.push_back(new RcHazardFollowMultiplier(botAI));
 }
 
 float RcMcShadowProtectionMultiplier::GetValue(Action* action)
