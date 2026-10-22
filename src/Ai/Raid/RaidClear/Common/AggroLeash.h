@@ -45,6 +45,12 @@
  *     bot walk into it.
  *   - A mob that throws players about (Common/Knockback.h) is not fought from a spot where the
  *     throw ends in one of those idle packs.
+ *   - A bot's pet or guardian (a hunter's beast, an imp, a Water Elemental) has its walks judged
+ *     the same way, from the same map update: in combat with the same buffer, a walk to its own
+ *     target the gentle way; out of combat (following its owner, in or out of a camp) only a
+ *     walk into a mob's aggro radius itself, plus a yard (and no boss room). A walk that would
+ *     pull stops where the pet is; after 1.5 s standing it is sent after its target (or its
+ *     owner) again, and that walk is judged afresh. Not companions: nothing attacks them.
  *
  * The aggro radius is the core's own (Creature::GetAggroRange: the mob's detection range, 20 yd
  * by default, plus a yard per level the mob is above the bot).

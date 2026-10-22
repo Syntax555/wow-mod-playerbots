@@ -105,6 +105,12 @@ fight but would join it: hostile, aggressive, alive, in line of sight and on the
 - A boss that isn't in the fight gets 8 more yards (`RaidClear.AggroLeash.BossBuffer`) for
   every walk that isn't toward the bot's target and every spot a bot picks to stand on. A second
   pack is a harder fight; a second boss is a wipe.
+- Bots' pets and guardians (a hunter's beast, an imp, a Water Elemental) get the same check on
+  every walk: in combat with the same buffer, out of combat (following their owner) only short of
+  a mob's aggro radius itself. A walk that would pull stops where the pet is, and 1.5 seconds
+  later it is sent on again by another way. In one Molten Core
+  run seven packs came in on pets, one of them a Firelord and two Lava Annihilators that a
+  Scorpid walked into between pulls.
 - An off-tank dragging its mob away from the main tank's doesn't pick a spot inside any of
   that. (Before, it could: the walk was stopped a step in, sent again two seconds later, and
   stopped a step further on.)
@@ -373,6 +379,8 @@ Category: Raids
   so his fire breaths stop one-shotting the cursed.
 - Raids: every death is written to the server log with what killed it, so wipes can be traced to
   the mechanic behind them.
+- Raids: bots' pets no longer walk into packs that aren't in the fight: in combat, nor into a
+  pack's aggro range while following their owner between pulls.
 - Nefarian: priests stop healing while **Corrupted Healing** is on them, so the tanks no longer
   die to their own healers (a tank below 35% still gets healed). Bots kill the **corrupted
   totems** from the shaman call, walk away from the **Fire Nova** totem before it goes off, and
