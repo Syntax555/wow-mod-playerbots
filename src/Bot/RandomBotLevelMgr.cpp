@@ -10,7 +10,9 @@
 
 #include "RandomBotLevelMgr.h"
 #include "ArenaTeamMgr.h"
+#include "CharacterCache.h"
 #include "DatabaseEnv.h"
+#include "Group.h"
 #include "LFGMgr.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
@@ -66,8 +68,25 @@ static bool BotInArenaTeam(Player* bot)
     return false;
 }
 
+// Checks if the bot's group has a member whose account is not a random-bot account. Walks the
+// member slots, which include offline members, so a real player who logged out or is on a
+// far-teleport loading screen (not IsInWorld) still protects the bots in their group.
+static bool GroupHasRealPlayer(Player* bot)
+{
+    Group* group = bot ? bot->GetGroup() : nullptr;
+    if (!group)
+        return false;
+
+    for (Group::MemberSlot const& slot : group->GetMemberSlots())
+    {
+        if (!sPlayerbotAIConfig.IsInRandomAccountList(sCharacterCache->GetCharacterAccountIdByGuid(slot.guid)))
+            return true;
+    }
+    return false;
+}
+
 // Checks if a bot is currently in a safe state to perform a level reset (alive, not in combat, not
-// in a battleground/arena/dungeon queue or flight, and grouped only with other bots).
+// in a battleground/arena/dungeon queue or flight, and grouped only with random-bot accounts).
 static bool IsBotSafeForLevelReset(Player* bot)
 {
     if (!bot || !bot->GetSession() || bot->GetSession()->IsLoggingOut() || bot->IsDuringRemoveFromWorld())
@@ -97,15 +116,9 @@ static bool IsBotSafeForLevelReset(Player* bot)
     if (bot->IsInFlight())
         return false;
 
-    if (Group* group = bot->GetGroup())
-    {
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            if (member && member->IsInWorld() && !GET_PLAYERBOT_AI(member))
-                return false;
-        }
-    }
+    if (GroupHasRealPlayer(bot))
+        return false;
+
     return true;
 }
 
@@ -401,18 +414,8 @@ int RandomBotLevelMgr::GetOrFlagPlayerBracket(Player* player)
         return -1;
 
     // Exclude bots grouped with a real player from bracket processing.
-    if (isRandomBot)
-    {
-        if (Group* group = player->GetGroup())
-        {
-            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (member && member->IsInWorld() && !GET_PLAYERBOT_AI(member))
-                    return -1;
-            }
-        }
-    }
+    if (isRandomBot && GroupHasRealPlayer(player))
+        return -1;
 
     TeamId team = player->GetTeamId();
     int rangeIndex = GetLevelRangeIndex(player->GetLevel(), team);
@@ -476,21 +479,42 @@ int RandomBotLevelMgr::GetOrFlagPlayerBracket(Player* player)
 }
 
 // Moves bots from an over-populated range into ranges that still need bots. Called once for
-// safeBots and once for flaggedBots by ProcessFactionDistribution.
+// safeBots and once for flaggedBots by ProcessFactionDistribution. Death Knights only go to ranges
+// that reach CONFIG_START_HEROIC_PLAYER_LEVEL (AdjustBotToRange refuses the rest); with no such
+// range still short, they stay where they are.
 void RandomBotLevelMgr::RedistributeSurplusBots(std::vector<Player*>& sourceBots, int fromRange, TeamId team,
     std::vector<int>& actualCounts, std::vector<int> const& desiredCounts, std::vector<int> const& targetRanges)
 {
+    std::vector<LevelBracketConfig> const& ranges = GetFactionRanges(team);
+    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+
     size_t targetIdx = 0;
     while (actualCounts[fromRange] > desiredCounts[fromRange] && !sourceBots.empty() && targetIdx < targetRanges.size())
     {
-        Player* bot = sourceBots.back();
-        sourceBots.pop_back();
-
         int targetRange = targetRanges[targetIdx];
         if (actualCounts[targetRange] >= desiredCounts[targetRange])
         {
             ++targetIdx;
             continue;
+        }
+
+        Player* bot = sourceBots.back();
+        sourceBots.pop_back();
+
+        if (bot->getClass() == CLASS_DEATH_KNIGHT && ranges[targetRange].Upper < dkMinLevel)
+        {
+            targetRange = -1;
+            for (size_t i = targetIdx + 1; i < targetRanges.size(); ++i)
+            {
+                int candidate = targetRanges[i];
+                if (actualCounts[candidate] < desiredCounts[candidate] && ranges[candidate].Upper >= dkMinLevel)
+                {
+                    targetRange = candidate;
+                    break;
+                }
+            }
+            if (targetRange < 0)
+                continue;
         }
 
         ObjectGuid botGuid = bot->GetGUID();
@@ -508,8 +532,6 @@ void RandomBotLevelMgr::RedistributeSurplusBots(std::vector<Player*>& sourceBots
 
         actualCounts[fromRange]--;
         actualCounts[targetRange]++;
-        if (actualCounts[targetRange] >= desiredCounts[targetRange])
-            ++targetIdx;
     }
 }
 
@@ -716,6 +738,7 @@ void RandomBotLevelMgr::ProcessPendingLevelResets()
     if (_pendingLevelResets.empty())
         return;
 
+    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
     uint32 processed = 0;
     for (auto it = _pendingLevelResets.begin(); it != _pendingLevelResets.end();)
     {
@@ -769,23 +792,21 @@ void RandomBotLevelMgr::ProcessPendingLevelResets()
         }
 
         // Check if the bot is now grouped with a real player.
-        if (Group* group = bot->GetGroup())
+        if (GroupHasRealPlayer(bot))
         {
-            bool hasRealPlayer = false;
-            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (member && member->IsInWorld() && !GET_PLAYERBOT_AI(member))
-                {
-                    hasRealPlayer = true;
-                    break;
-                }
-            }
-            if (hasRealPlayer)
-            {
-                it = _pendingLevelResets.erase(it);
-                continue;
-            }
+            it = _pendingLevelResets.erase(it);
+            continue;
+        }
+
+        // Drop targets AdjustBotToRange would refuse (gone or emptied after a config reload, or below the
+        // Death Knight start level) without counting them toward FlaggedProcessLimit.
+        std::vector<LevelBracketConfig> const& factionRanges = GetFactionRanges(it->team);
+        if (targetRange < 0 || static_cast<size_t>(targetRange) >= factionRanges.size() ||
+            targetRange >= _numRanges || factionRanges[targetRange].Lower > factionRanges[targetRange].Upper ||
+            (bot->getClass() == CLASS_DEATH_KNIGHT && factionRanges[targetRange].Upper < dkMinLevel))
+        {
+            it = _pendingLevelResets.erase(it);
+            continue;
         }
 
         if (IsBotSafeForLevelReset(bot))
