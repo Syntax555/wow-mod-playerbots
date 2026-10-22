@@ -405,7 +405,10 @@ Playerbots.ReturnDelay = 2000
 Playerbots.LootDelay = 250
 
 # Pause damage when a Molten Core hound pack misses its simultaneous kill window.
-# Wait for every smoldering hound to revive before resuming damage.
+# Hounds with Play Dead (19822) stay alive but take no damage. When an engaged hound is still awake
+# and another nearby smoldering hound has at most 3 seconds left, bots pause new damage (pets go
+# passive) until every smoldering hound has revived, then resume. Healing and escape movement stay
+# available. Runs once a second per bot, in Molten Core combat only. Off by default.
 Playerbots.McCoreHoundRecovery = 0
 
 #
