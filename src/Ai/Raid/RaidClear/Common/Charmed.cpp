@@ -9,13 +9,17 @@
 #include "Common/Interrupts.h"
 #include "Common/SplashSpells.h"
 
+#include "DynamicObject.h"
 #include "GenericSpellActions.h"
 #include "Group.h"
 #include "Pet.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
 #include "SpellAuraEffects.h"
+#include "Spell.h"
 #include "SpellAuras.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "Timer.h"
 
 #include <algorithm>
@@ -70,6 +74,61 @@ float RcCharmedSplashMultiplier::GetValue(Action* action)
             return 0.0f;
     }
     return 1.0f;
+}
+
+namespace
+{
+    // The fire this bot is channelling on the ground, with a mind-controlled raid member in it (or
+    // within CHANNEL_MARGIN of its edge).
+    constexpr float CHANNEL_MARGIN = 2.0f;
+
+    bool CharmedInMyChannel(Player* bot)
+    {
+        Spell const* channel = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        if (!channel)
+            return false;
+        DynamicObject const* fire = bot->GetDynObject(channel->GetSpellInfo()->Id);
+        Group* group = bot->GetGroup();
+        if (!fire || !group)
+            return false;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member->IsAlive() && IsCharmedRaidMember(bot, member) && member->IsInMap(bot) &&
+                member->GetExactDist2d(fire) <= fire->GetRadius() + CHANNEL_MARGIN)
+                return true;
+        }
+        return false;
+    }
+}
+
+bool RcCharmedInChannelTrigger::IsActive()
+{
+    return bot->IsAlive() && CharmedInMyChannel(bot);
+}
+
+bool RcStopChannelOnCharmedAction::Execute(Event /*event*/)
+{
+    if (!CharmedInMyChannel(bot))
+        return false;
+    bot->InterruptSpell(CURRENT_CHANNELED_SPELL);
+    return true;
+}
+
+// --- Dispels -------------------------------------------------------------------
+
+float RcCharmedDispelMultiplier::GetValue(Action* action)
+{
+    // Only while the raid holds it: the core reads a charmed player's dispels as its own side's
+    // (Unit::GetDispellableAuraList), so a dispel on one nobody has stopped is what frees it.
+    CastSpellAction* cast = dynamic_cast<CastSpellAction*>(action);
+    if (!cast)
+        return 1.0f;
+    Unit* target = action->GetTarget();
+    if (!IsCharmedRaidMember(bot, target) || !target->HasUnitState(UNIT_STATE_CONTROLLED))
+        return 1.0f;
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(AI_VALUE2(uint32, "spell id", cast->getSpell()));
+    return info && info->HasEffect(SPELL_EFFECT_DISPEL) ? 0.0f : 1.0f;
 }
 
 // --- Stopping the member ------------------------------------------------------

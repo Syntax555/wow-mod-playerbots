@@ -100,6 +100,8 @@ void RaidClearZulGurubStrategy::InitTriggers(std::vector<TriggerNode*>& triggers
     triggers.push_back(new TriggerNode("rc zg liquid fire",
                                        { NextAction("rc zg leave liquid fire", ACTION_RAID + 3) }));
     triggers.push_back(new TriggerNode("rc charmed member", { NextAction("rc control charmed", ACTION_RAID + 4) }));
+    triggers.push_back(
+        new TriggerNode("rc charmed in channel", { NextAction("rc stop channel on charmed", ACTION_RAID + 5) }));
 
     triggers.push_back(new TriggerNode("rc zg thekal even kill",
                                        { NextAction("rc zg thekal even kill", ACTION_RAID + 2) }));
@@ -115,6 +117,7 @@ void RaidClearZulGurubStrategy::InitMultipliers(std::vector<Multiplier*>& multip
     multipliers.push_back(new RcZgConcoctionHoldMultiplier(botAI));
     multipliers.push_back(new RcZgLiquidFireHoldMultiplier(botAI));
     multipliers.push_back(new RcCharmedSplashMultiplier(botAI));
+    multipliers.push_back(new RcCharmedDispelMultiplier(botAI));
     multipliers.push_back(new RcCharmedSelfMultiplier(botAI));
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
 }

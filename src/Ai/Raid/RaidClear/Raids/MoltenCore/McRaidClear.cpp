@@ -167,6 +167,8 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
     // Lucifron's Flamewaker Protectors' Dominate Mind, as in Zul'Gurub and Ahn'Qiraj: over the
     // skull (ACTION_RAID + 2).
     triggers.push_back(new TriggerNode("rc charmed member", { NextAction("rc control charmed", ACTION_RAID + 4) }));
+    triggers.push_back(
+        new TriggerNode("rc charmed in channel", { NextAction("rc stop channel on charmed", ACTION_RAID + 5) }));
     triggers.push_back(new TriggerNode("rc charmed target", { NextAction("rc leave charmed target", ACTION_RAID + 3) }));
 
     triggers.push_back(
@@ -179,6 +181,9 @@ void RaidClearMoltenCoreStrategy::InitTriggers(std::vector<TriggerNode*>& trigge
         new TriggerNode("rc mc ragnaros tank", { NextAction("rc mc ragnaros tank", ACTION_EMERGENCY + 2) }));
     triggers.push_back(
         new TriggerNode("rc mc ragnaros taunt", { NextAction("rc mc ragnaros taunt", ACTION_RAID + 3) }));
+    // Melee out of the way of his Lava Bursts, still in his reach.
+    triggers.push_back(
+        new TriggerNode("rc mc ragnaros melee", { NextAction("rc mc ragnaros melee spot", ACTION_RAID + 2) }));
 
     // Above the heals: eight pulses of Inferno are more than anyone is healed through.
     triggers.push_back(new TriggerNode("rc mc inferno", { NextAction("rc mc leave inferno", ACTION_EMERGENCY + 7) }));
@@ -218,6 +223,7 @@ void RaidClearMoltenCoreStrategy::InitMultipliers(std::vector<Multiplier*>& mult
     multipliers.push_back(new RcSpellReflectMultiplier(botAI));
     multipliers.push_back(new RcMcCoreHoundMultiplier(botAI));
     multipliers.push_back(new RcCharmedSplashMultiplier(botAI));
+    multipliers.push_back(new RcCharmedDispelMultiplier(botAI));
     multipliers.push_back(new RcCharmedSelfMultiplier(botAI));
 }
 
@@ -1847,6 +1853,125 @@ bool RcMcRagnarosTauntAction::Execute(Event /*event*/)
 {
     Creature* boss = EmergedRagnaros(bot);
     return boss && boss->GetVictim() != bot && RaidClear::Tanks::Taunt(botAI, boss);
+}
+
+namespace
+{
+    // How far round an eruption Lava Burst hits.
+    float LavaBurstRadius()
+    {
+        static float const radius = []
+        {
+            float r = 0.0f;
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(SPELL_LAVA_BURST_DAMAGE))
+                for (SpellEffectInfo const& effect : info->Effects)
+                    if (effect.HasRadius())
+                        r = std::max(r, effect.CalcRadius());
+            return r > 0.0f ? r : LAVA_BURST_RADIUS;
+        }();
+        return radius;
+    }
+
+    bool InLavaBurst(float x, float y)
+    {
+        return GapToLavaBurst(x, y) < LavaBurstRadius() + LAVA_BURST_MARGIN;
+    }
+
+    // The dry spots in a player's reach of him, per Ragnaros, worked out once (he is rooted).
+    // Map updates run on several threads, hence the lock.
+    std::vector<RagnarosSpot> MeleeSpotsRound(Creature* boss)
+    {
+        static std::mutex lock;
+        static std::map<ObjectGuid, std::vector<RagnarosSpot>> spotsOf;
+
+        std::lock_guard<std::mutex> guard(lock);
+        auto const known = spotsOf.find(boss->GetGUID());
+        if (known != spotsOf.end())
+            return known->second;
+        if (spotsOf.size() > 16)
+            spotsOf.clear();
+
+        std::vector<RagnarosSpot>& spots = spotsOf[boss->GetGUID()];
+        Map* map = boss->GetMap();
+        uint32 const phaseMask = boss->GetPhaseMask();
+        float const reach = boss->GetCombatReach() + DEFAULT_COMBAT_REACH + 4.0f / 3.0f;
+        for (float const in : RAGNAROS_MELEE_RINGS_IN)
+        {
+            float const ring = reach - in;
+            int const steps = int(2.0f * float(M_PI) * ring / RAGNAROS_MELEE_SPACING);
+            for (int i = 0; i < steps; ++i)
+            {
+                float const angle = 2.0f * float(M_PI) * float(i) / float(steps);
+                float const x = boss->GetPositionX() + std::cos(angle) * ring;
+                float const y = boss->GetPositionY() + std::sin(angle) * ring;
+                float const z = map->GetHeight(phaseMask, x, y, boss->GetPositionZ() + 10.0f);
+                if (z <= INVALID_HEIGHT || z < boss->GetPositionZ() - 4.0f || z > boss->GetPositionZ() + 8.0f)
+                    continue;
+                // Dry a couple of yards round it too: he stands in the lava, and so do his sides.
+                bool dry = DryAt(map, phaseMask, x, y, z);
+                for (float const side : { 0.0f, 0.5f, 1.0f, 1.5f })
+                {
+                    float const a = side * float(M_PI);
+                    dry = dry && DryAt(map, phaseMask, x + std::cos(a) * RAGNAROS_SPOT_DRY,
+                                       y + std::sin(a) * RAGNAROS_SPOT_DRY, z);
+                }
+                if (!dry || !boss->IsWithinLOS(x, y, z + 2.0f))
+                    continue;
+                spots.push_back({ x, y, z, GapToLavaBurst(x, y) });
+            }
+        }
+        return spots;
+    }
+
+    // Melee at Ragnaros who walk out of the way of the eruptions: not his main tank (it holds him
+    // from its own spot), and only in his reach (on its way in, a bot goes where it goes).
+    bool DodgesLavaBurstInReach(PlayerbotAI* botAI, Player* bot, Creature*& boss)
+    {
+        if (!bot->IsAlive() || KeepsBack(bot) || HoldsRagnaros(bot) || !botAI->CanMove())
+            return false;
+        boss = EmergedRagnaros(bot);
+        return boss && bot->IsWithinMeleeRange(boss);
+    }
+
+    // The nearest of them this bot reaches, clear of every eruption; false if there is none.
+    bool MeleeSpotFor(Player* bot, Creature* boss, RagnarosSpot& out)
+    {
+        float const clear = LavaBurstRadius() + LAVA_BURST_MARGIN + LAVA_BURST_CLEAR;
+        float const reach = bot->GetMeleeRange(boss);
+        float best = 1000.0f;
+        for (RagnarosSpot const& spot : MeleeSpotsRound(boss))
+        {
+            if (spot.gap < clear || boss->GetExactDist(spot.x, spot.y, spot.z) >= reach - 0.5f)
+                continue;
+            float const walk = bot->GetExactDist2d(spot.x, spot.y);
+            if (walk < best)
+            {
+                best = walk;
+                out = spot;
+            }
+        }
+        return best < 1000.0f;
+    }
+}
+
+bool RcMcRagnarosMeleeTrigger::IsActive()
+{
+    Creature* boss = nullptr;
+    if (!DodgesLavaBurstInReach(botAI, bot, boss) || !InLavaBurst(bot->GetPositionX(), bot->GetPositionY()))
+        return false;
+    RagnarosSpot spot;
+    return MeleeSpotFor(bot, boss, spot);
+}
+
+bool RcMcRagnarosMeleeAction::Execute(Event /*event*/)
+{
+    Creature* boss = nullptr;
+    RagnarosSpot spot;
+    if (!DodgesLavaBurstInReach(botAI, bot, boss) || !InLavaBurst(bot->GetPositionX(), bot->GetPositionY()) ||
+        !MeleeSpotFor(bot, boss, spot))
+        return false;
+    return MoveTo(bot->GetMapId(), spot.x, spot.y, spot.z, false, false, false, false,
+                  MovementPriority::MOVEMENT_COMBAT);
 }
 
 // --- Baron Geddon: Living Bomb --------------------------------------------

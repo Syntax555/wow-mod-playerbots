@@ -14,8 +14,14 @@
  *     first, the bot that cast it takes its sheep or stun off again, so nobody comes back as a
  *     sheep. Not Blind: nothing takes that off.
  *   - Nobody hurts it: a bot or pet on it lets go ("rc charmed target", where the raid has no
- *     wider rule of its own), and no spell that hits more than one enemy is cast within 12 yd of
- *     it.
+ *     wider rule of its own), no spell that hits more than one enemy is cast within 12 yd of
+ *     it, and a bot channelling fire on the ground (Rain of Fire, Volley, Blizzard) stops when
+ *     the member walks into it ("rc charmed in channel": a charmed warrior chasing the raid died
+ *     to a Rain of Fire and a Volley begun after it was taken over, Molten Core 2026-10-21).
+ *   - Nobody dispels it while it is stopped ("rc charmed dispel"): the core reads a charmed
+ *     player's dispels as its own side's, so a priest's Dispel Magic on the party took a mage's
+ *     Polymorph off a mind-controlled mage 0.4 s after it landed (Molten Core, 2026-10-21). One
+ *     nobody has stopped can still be dispelled.
  *
  * Released under the MIT License.
  */
@@ -65,6 +71,30 @@ class RcCharmedSplashMultiplier : public Multiplier
 {
 public:
     RcCharmedSplashMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc charmed splash") {}
+    float GetValue(Action* action) override;
+};
+
+// A mind-controlled raid member stands in the fire this bot is channelling on the ground.
+class RcCharmedInChannelTrigger : public Trigger
+{
+public:
+    RcCharmedInChannelTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc charmed in channel") {}
+    bool IsActive() override;
+};
+
+class RcStopChannelOnCharmedAction : public Action
+{
+public:
+    RcStopChannelOnCharmedAction(PlayerbotAI* botAI) : Action(botAI, "rc stop channel on charmed") {}
+    bool Execute(Event event) override;
+};
+
+// Zeroes dispels (a spell with a dispel effect) on a mind-controlled raid member that is stunned,
+// sheeped or feared: that is the raid's own hold on it.
+class RcCharmedDispelMultiplier : public Multiplier
+{
+public:
+    RcCharmedDispelMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc charmed dispel") {}
     float GetValue(Action* action) override;
 };
 

@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <list>
+#include <mutex>
 #include <unordered_map>
 
 using namespace RaidClear::Hazards;
@@ -107,6 +108,20 @@ namespace
         return unit->GetExactDist2d(victim) > 1.0f ? unit->GetAngle(victim) : unit->GetOrientation();
     }
 
+    // Whether a mob that throws fire traps was in a fight in the bot's instance within
+    // THROWN_TRAP_MS (its traps outlive it), noting now when one is. Map updates run on several
+    // threads, hence the lock.
+    bool ThrowerFoughtLately(Player* bot, bool fightingNow, uint32 now)
+    {
+        static std::mutex lock;
+        static std::unordered_map<uint32, uint32> lastFight;
+        std::lock_guard<std::mutex> guard(lock);
+        uint32& last = lastFight[bot->GetInstanceId()];
+        if (fightingNow)
+            last = now ? now : 1;
+        return last && getMSTimeDiff(last, now) < THROWN_TRAP_MS;
+    }
+
     // Everything this bot keeps out of, from the mobs fighting the raid, per bot for
     // HAZARD_FRESH_MS: the trigger asks every tick. One map thread updates a bot at a time.
     Found const& HazardsFor(PlayerbotAI* botAI, Player* bot)
@@ -167,14 +182,25 @@ namespace
             }
         }
 
-        // Fire traps: as far as the trap goes off or the fire it casts reaches.
-        if (!trapEntries.empty())
+        // Fire traps: as far as the trap goes off or the fire it casts reaches. A thrown one (no
+        // spawn of its own) burns on after its thrower is dead: the raid took 115,000 from
+        // Magmadar's Lava Bombs walking off after the kill, 10,000 in the fight.
+        std::vector<uint32> searchEntries = trapEntries;
+        if (ThrowerFoughtLately(bot, !trapEntries.empty(), now))
+            for (Trap const& trap : table->traps)
+                if (std::find(searchEntries.begin(), searchEntries.end(), trap.entry) == searchEntries.end())
+                    searchEntries.push_back(trap.entry);
+        if (!searchEntries.empty())
         {
             std::list<GameObject*> traps;
-            bot->GetGameObjectListWithEntryInGrid(traps, trapEntries, TRAP_SEARCH);
+            bot->GetGameObjectListWithEntryInGrid(traps, searchEntries, TRAP_SEARCH);
             for (GameObject* trap : traps)
             {
                 if (!trap->isSpawned() || trap->GetGoType() != GAMEOBJECT_TYPE_TRAP)
+                    continue;
+                bool const ownerFighting =
+                    std::find(trapEntries.begin(), trapEntries.end(), trap->GetEntry()) != trapEntries.end();
+                if (!ownerFighting && trap->GetSpawnId())
                     continue;
                 GameObjectTemplate const* goInfo = trap->GetGOInfo();
                 float radius = float(goInfo->trap.diameter) / 2.0f;

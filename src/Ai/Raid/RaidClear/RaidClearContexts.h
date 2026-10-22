@@ -98,6 +98,7 @@ public:
         creators["rc mc interrupt dark mending"] = &RaidClearActionContext::mc_interrupt_dark_mending;
         creators["rc mc ragnaros tank"] = &RaidClearActionContext::mc_ragnaros_tank;
         creators["rc mc ragnaros taunt"] = &RaidClearActionContext::mc_ragnaros_taunt;
+        creators["rc mc ragnaros melee spot"] = &RaidClearActionContext::mc_ragnaros_melee_spot;
 
         creators["rc bwl disarm suppression"] = &RaidClearActionContext::bwl_disarm_suppression;
         creators["rc bwl broodlord move out"] = &RaidClearActionContext::bwl_broodlord_move_out;
@@ -168,6 +169,7 @@ public:
         creators["rc aq40 veklor tank threat"] = &RaidClearActionContext::aq40_veklor_tank_threat;
         creators["rc control charmed"] = &RaidClearActionContext::control_charmed;
         creators["rc leave charmed target"] = &RaidClearActionContext::leave_charmed_target;
+        creators["rc stop channel on charmed"] = &RaidClearActionContext::stop_channel_on_charmed;
         creators["rc tranq"] = &RaidClearActionContext::tranq;
         creators["rc hazard stay clear"] = &RaidClearActionContext::hazard_stay_clear;
     }
@@ -205,6 +207,7 @@ private:
     static Action* mc_interrupt_dark_mending(PlayerbotAI* botAI) { return new RcMcInterruptDarkMendingAction(botAI); }
     static Action* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankAction(botAI); }
     static Action* mc_ragnaros_taunt(PlayerbotAI* botAI) { return new RcMcRagnarosTauntAction(botAI); }
+    static Action* mc_ragnaros_melee_spot(PlayerbotAI* botAI) { return new RcMcRagnarosMeleeAction(botAI); }
 
     static Action* bwl_disarm_suppression(PlayerbotAI* botAI) { return new RcBwlDisarmSuppressionAction(botAI); }
     static Action* bwl_broodlord_move_out(PlayerbotAI* botAI)
@@ -279,6 +282,7 @@ private:
     static Action* aq40_veklor_tank_threat(PlayerbotAI* botAI) { return new RcAq40VeklorTankThreatAction(botAI); }
     static Action* control_charmed(PlayerbotAI* botAI) { return new RcControlCharmedAction(botAI); }
     static Action* leave_charmed_target(PlayerbotAI* botAI) { return new RcLeaveCharmedTargetAction(botAI); }
+    static Action* stop_channel_on_charmed(PlayerbotAI* botAI) { return new RcStopChannelOnCharmedAction(botAI); }
     static Action* tranq(PlayerbotAI* botAI) { return new RcTranqAction(botAI); }
     static Action* hazard_stay_clear(PlayerbotAI* botAI) { return new RcHazardAction(botAI); }
 };
@@ -321,6 +325,7 @@ public:
         creators["rc mc dark mending"] = &RaidClearTriggerContext::mc_dark_mending;
         creators["rc mc ragnaros tank"] = &RaidClearTriggerContext::mc_ragnaros_tank;
         creators["rc mc ragnaros taunt"] = &RaidClearTriggerContext::mc_ragnaros_taunt;
+        creators["rc mc ragnaros melee"] = &RaidClearTriggerContext::mc_ragnaros_melee;
 
         creators["rc bwl suppression device"] = &RaidClearTriggerContext::bwl_suppression_device;
         creators["rc bwl broodlord ranged"] = &RaidClearTriggerContext::bwl_broodlord_ranged;
@@ -393,6 +398,7 @@ public:
         creators["rc aq40 veklor tank threat"] = &RaidClearTriggerContext::aq40_veklor_tank_threat;
         creators["rc charmed member"] = &RaidClearTriggerContext::charmed_member;
         creators["rc charmed target"] = &RaidClearTriggerContext::charmed_target;
+        creators["rc charmed in channel"] = &RaidClearTriggerContext::charmed_in_channel;
         creators["rc mage target reflects"] = &RaidClearTriggerContext::mage_target_reflects;
         creators["rc warlock target reflects"] = &RaidClearTriggerContext::warlock_target_reflects;
         creators["rc tranq"] = &RaidClearTriggerContext::tranq;
@@ -445,6 +451,7 @@ private:
     static Trigger* mc_dark_mending(PlayerbotAI* botAI) { return new RcMcDarkMendingTrigger(botAI); }
     static Trigger* mc_ragnaros_tank(PlayerbotAI* botAI) { return new RcMcRagnarosTankTrigger(botAI); }
     static Trigger* mc_ragnaros_taunt(PlayerbotAI* botAI) { return new RcMcRagnarosTauntTrigger(botAI); }
+    static Trigger* mc_ragnaros_melee(PlayerbotAI* botAI) { return new RcMcRagnarosMeleeTrigger(botAI); }
 
     static Trigger* bwl_suppression_device(PlayerbotAI* botAI) { return new RcBwlSuppressionDeviceTrigger(botAI); }
     static Trigger* bwl_broodlord_ranged(PlayerbotAI* botAI)
@@ -522,6 +529,7 @@ private:
     static Trigger* aq40_veklor_tank_threat(PlayerbotAI* botAI) { return new RcAq40VeklorTankThreatTrigger(botAI); }
     static Trigger* charmed_member(PlayerbotAI* botAI) { return new RcCharmedMemberTrigger(botAI); }
     static Trigger* charmed_target(PlayerbotAI* botAI) { return new RcCharmedTargetTrigger(botAI); }
+    static Trigger* charmed_in_channel(PlayerbotAI* botAI) { return new RcCharmedInChannelTrigger(botAI); }
     static Trigger* tranq(PlayerbotAI* botAI) { return new RcTranqTrigger(botAI); }
     static Trigger* hazard(PlayerbotAI* botAI) { return new RcHazardTrigger(botAI); }
     static Trigger* mage_target_reflects(PlayerbotAI* botAI)
