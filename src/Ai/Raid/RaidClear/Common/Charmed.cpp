@@ -121,14 +121,15 @@ float RcCharmedDispelMultiplier::GetValue(Action* action)
 {
     // Only while the raid holds it: the core reads a charmed player's dispels as its own side's
     // (Unit::GetDispellableAuraList), so a dispel on one nobody has stopped is what frees it.
+    // The spell first: most aren't dispels, and the target is a value lookup.
     CastSpellAction* cast = dynamic_cast<CastSpellAction*>(action);
     if (!cast)
         return 1.0f;
-    Unit* target = action->GetTarget();
-    if (!IsCharmedRaidMember(bot, target) || !target->HasUnitState(UNIT_STATE_CONTROLLED))
-        return 1.0f;
     SpellInfo const* info = sSpellMgr->GetSpellInfo(AI_VALUE2(uint32, "spell id", cast->getSpell()));
-    return info && info->HasEffect(SPELL_EFFECT_DISPEL) ? 0.0f : 1.0f;
+    if (!info || !info->HasEffect(SPELL_EFFECT_DISPEL))
+        return 1.0f;
+    Unit* target = action->GetTarget();
+    return IsCharmedRaidMember(bot, target) && target->HasUnitState(UNIT_STATE_CONTROLLED) ? 0.0f : 1.0f;
 }
 
 // --- Stopping the member ------------------------------------------------------

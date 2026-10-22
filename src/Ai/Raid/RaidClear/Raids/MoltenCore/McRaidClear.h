@@ -936,12 +936,13 @@ public:
 // --- Buffs between pulls ------------------------------------------------------
 
 // On both engines while in Molten Core (the registry's early strategy): the buffs a priest casts
-// out of combat.
+// out of combat, and the fire on the floor (Lava Bombs burn on after Magmadar is dead).
 class RaidClearMoltenCoreBuffsStrategy : public Strategy
 {
 public:
     RaidClearMoltenCoreBuffsStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
     std::string const getName() override { return "rc mc buffs"; }
+    void InitTriggers(std::vector<TriggerNode*>& triggers) override;
     void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
 };
 
