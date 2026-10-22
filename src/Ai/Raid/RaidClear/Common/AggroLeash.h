@@ -48,9 +48,10 @@
  *   - A bot's pet or guardian (a hunter's beast, an imp, a Water Elemental) has its walks judged
  *     the same way, from the same map update: in combat with the same buffer, a walk to its own
  *     target the gentle way; out of combat (following its owner, in or out of a camp) only a
- *     walk into a mob's aggro radius itself, plus a yard (and no boss room). A walk that would
- *     pull stops where the pet is; after 1.5 s standing it is sent after its target (or its
- *     owner) again, and that walk is judged afresh. Not companions: nothing attacks them.
+ *     walk into a mob's aggro radius itself, plus 2 yd (and no boss room). A walk that would
+ *     pull stops where the pet is; after 1.5 s standing it is sent after its target again the
+ *     way its own AI chases (or after its owner), and that walk is judged afresh. Not a pet
+ *     told to stay, and not companions: nothing attacks them.
  *
  * The aggro radius is the core's own (Creature::GetAggroRange: the mob's detection range, 20 yd
  * by default, plus a yard per level the mob is above the bot).
