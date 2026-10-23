@@ -31,7 +31,10 @@
  *         off by default). On these bosses they hold their damage while they are within 10% of
  *         the threat of the tank who would catch the boss next, and while their biggest hit so
  *         far (4,000 before the first) would take them past the point where the boss turns to
- *         them (110% of that tank's threat in melee, 130% at range). At a pull the tanks have
+ *         them (110% of that tank's threat in melee, 130% at range). Swings and Auto Shot too:
+ *         a bot over that stops attacking until the tanks catch up. On 10/22 rogues and
+ *         warriors opened Chromaggus at about 9,000 threat in 10 s, three quarters of it
+ *         white swings, Instant Poison and Auto Shot, which nothing held. At a pull the tanks have
  *         a few thousand threat and one cast is enough: on Chromaggus six mages opened with
  *         Arcane Barrage into his weak school, 4,000-8,000 each in 3 s, and he went to four
  *         damage dealers in his first 30 s.
@@ -209,6 +212,12 @@ namespace RaidClear::Tanks
     // Whether a threat limit holds this action back: anything that does damage or is cast for its
     // threat. Debuffs that do neither and Tranquilizing Shot still go out.
     bool HeldByThreatCap(PlayerbotAI* botAI, Action* action);
+
+    // A damage dealer that should hold everything it does to a threat-share boss right now, its
+    // swings and Auto Shot included: within 10% of the threat of the tank who catches the boss
+    // next, or close enough that its biggest hit so far would take it past the point where the
+    // boss turns to it.
+    bool OverThreatCap(Player* bot, Unit* boss);
 }
 
 class RaidClearTanksStrategy : public Strategy
@@ -334,22 +343,30 @@ public:
     bool Execute(Event event) override;
 };
 
-// Keeps damage dealers under the tank who catches a threat-share boss next, and holds a cast
-// whose hit could carry the bot past the point where the boss turns to it.
+// Keeps damage dealers under the tank who catches a threat-share boss next (OverThreatCap): no
+// spell, attack or Auto Shot at the boss while over.
 class RcTankThreatCapMultiplier : public Multiplier
 {
 public:
     RcTankThreatCapMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc tank threat cap") {}
     float GetValue(Action* action) override;
+};
 
-private:
-    // The biggest jump in this bot's threat on the boss seen so far this fight.
-    float BiggestHit(Unit* boss, float mine);
+// A damage dealer over that cap is still swinging at the boss or shooting it (Auto Shot), which
+// no action holds back: the swings, the poisons they proc and Auto Shot run by themselves.
+class RcThreatCapSwingTrigger : public Trigger
+{
+public:
+    RcThreatCapSwingTrigger(PlayerbotAI* botAI) : Trigger(botAI, "rc threat cap swing") {}
+    bool IsActive() override;
+};
 
-    ObjectGuid _hitBoss;
-    float _lastThreat = 0.0f;
-    uint32 _lastLookMs = 0;
-    float _biggestHit = 0.0f;
+// Stops them until the tanks have caught up.
+class RcThreatCapStopAction : public Action
+{
+public:
+    RcThreatCapStopAction(PlayerbotAI* botAI) : Action(botAI, "rc threat cap stop") {}
+    bool Execute(Event event) override;
 };
 
 // No taunt that does nothing else at a boss immune to taunts.

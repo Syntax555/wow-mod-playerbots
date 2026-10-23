@@ -22,6 +22,7 @@
 #include "Player.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
+#include "Spell.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -33,6 +34,7 @@
 #include <list>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 
 namespace RaidClear::Tanks
 {
@@ -1060,6 +1062,9 @@ void RaidClearTanksStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("rc boss on non tank", { NextAction("rc protect boss victim", ACTION_EMERGENCY + 4) }));
     triggers.push_back(
         new TriggerNode("rc player over threat", { NextAction("rc salvation on player", ACTION_RAID + 3) }));
+    // Over the cap on a threat-share boss: stop swinging and shooting before the next swing lands.
+    triggers.push_back(
+        new TriggerNode("rc threat cap swing", { NextAction("rc threat cap stop", ACTION_RAID + 3) }));
     triggers.push_back(
         new TriggerNode("rc pet over threat", { NextAction("rc warn pet owner", ACTION_RAID + 2) }));
 }
@@ -1486,12 +1491,71 @@ namespace RaidClear::Tanks
         SpellThreatEntry const* threat = sSpellMgr->GetSpellThreatEntry(spellId);
         return threat && (threat->flatMod > 0 || threat->apPctMod > 0.0f);
     }
+
+    namespace
+    {
+        // Per bot: its threat on the boss at the last look, and the biggest jump seen this fight.
+        // Asked from the bots' own updates, so on as many threads as there are maps.
+        struct HitWatch
+        {
+            ObjectGuid boss;
+            float lastThreat = 0.0f;
+            uint32 lastLookMs = 0;
+            float biggest = 0.0f;
+        };
+        std::mutex sHitLock;
+        std::unordered_map<ObjectGuid, HitWatch> sHits;
+
+        float BiggestHit(Player* bot, Unit* boss, float mine)
+        {
+            uint32 const now = getMSTime();
+            std::lock_guard<std::mutex> guard(sHitLock);
+            HitWatch& watch = sHits[bot->GetGUID()];
+            if (watch.boss != boss->GetGUID())
+            {
+                watch = HitWatch();
+                watch.boss = boss->GetGUID();
+                watch.lastThreat = mine;
+                watch.lastLookMs = now;
+            }
+            // Up since a recent look: one landed hit (or a swing or a tick with it, which only errs
+            // on the safe side). Down: a threat drop or a wipe, nothing to learn from.
+            if (mine > watch.lastThreat && getMSTimeDiff(watch.lastLookMs, now) <= HIT_SAMPLE_MS)
+                watch.biggest = std::max(watch.biggest, mine - watch.lastThreat);
+            watch.lastThreat = mine;
+            watch.lastLookMs = now;
+            return watch.biggest > 0.0f ? watch.biggest : FIRST_HIT_GUESS;
+        }
+    }
+
+    bool OverThreatCap(Player* bot, Unit* boss)
+    {
+        float const mine = boss->GetThreatMgr().GetThreat(bot);
+        float const hit = BiggestHit(bot, boss, mine);
+        float const limit = ThreatShareLimit(bot, boss);
+        if (limit <= 0.0f)
+            return false;
+        if (mine >= limit * DAMAGE_SHARE)
+            return true;
+        // One hit is worth more than the gap at a pull, when the tanks have a few thousand
+        // threat. The boss turns by the threat of whoever it is on, which may be under the limit.
+        float base = limit;
+        if (Unit* victim = boss->GetVictim())
+            if (victim != bot)
+                base = std::min(base, boss->GetThreatMgr().GetThreat(victim));
+        float const takes = base * (bot->IsWithinMeleeRange(boss) ? MELEE_TAKES : RANGED_TAKES);
+        return mine + hit >= takes * HIT_MARGIN;
+    }
 }
 
 float RcTankThreatCapMultiplier::GetValue(Action* action)
 {
-    // Melee swings and pets carry on; spells and special attacks are what's held.
-    if (!GetConfig().tankSplit || !action || action->getThreatType() == Action::ActionThreatType::None)
+    if (!GetConfig().tankSplit || !action)
+        return 1.0f;
+    // Pets and debuffs that do no damage carry on; spells, special attacks, attacking the boss and
+    // Auto Shot are what's held.
+    bool const swing = dynamic_cast<AttackAction*>(action) || action->getName() == "auto shot";
+    if (!swing && action->getThreatType() == Action::ActionThreatType::None)
         return 1.0f;
     // Nothing to look up in the raids that have no such boss; in the others the action's own target
     // tells.
@@ -1499,43 +1563,47 @@ float RcTankThreatCapMultiplier::GetValue(Action* action)
         return 1.0f;
 
     Unit* boss = action->GetTarget();
-    if (!IsThreatShareBoss(boss) || !HeldByThreatCap(botAI, action))
+    if (!IsThreatShareBoss(boss) || (!swing && !HeldByThreatCap(botAI, action)))
         return 1.0f;
-
-    float const mine = boss->GetThreatMgr().GetThreat(bot);
-    float const hit = BiggestHit(boss, mine);
-    float const limit = ThreatShareLimit(bot, boss);
-    if (limit <= 0.0f)
-        return 1.0f;
-    if (mine >= limit * DAMAGE_SHARE)
-        return 0.0f;
-    // One cast is worth more than the gap at a pull, when the tanks have a few thousand threat.
-    // The boss turns by the threat of whoever it is on, which may be under the limit.
-    float base = limit;
-    if (Unit* victim = boss->GetVictim())
-        if (victim != bot)
-            base = std::min(base, boss->GetThreatMgr().GetThreat(victim));
-    float const takes = base * (bot->IsWithinMeleeRange(boss) ? MELEE_TAKES : RANGED_TAKES);
-    return mine + hit >= takes * HIT_MARGIN ? 0.0f : 1.0f;
+    return OverThreatCap(bot, boss) ? 0.0f : 1.0f;
 }
 
-float RcTankThreatCapMultiplier::BiggestHit(Unit* boss, float mine)
+namespace
 {
-    uint32 const now = getMSTime();
-    if (boss->GetGUID() != _hitBoss)
+    // The threat-share boss this damage dealer is swinging at or shooting, if any.
+    Unit* SwingTarget(Player* bot)
     {
-        _hitBoss = boss->GetGUID();
-        _lastThreat = mine;
-        _lastLookMs = now;
-        _biggestHit = 0.0f;
+        if (Unit* victim = bot->GetVictim())
+            if (IsThreatShareBoss(victim))
+                return victim;
+        if (Spell* shot = bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+            if (Unit* target = shot->m_targets.GetUnitTarget())
+                if (IsThreatShareBoss(target))
+                    return target;
+        return nullptr;
     }
-    // Up since a recent look: one landed hit (or a swing or a tick with it, which only errs on
-    // the safe side). Down: a threat drop or a wipe, nothing to learn from.
-    if (mine > _lastThreat && getMSTimeDiff(_lastLookMs, now) <= HIT_SAMPLE_MS)
-        _biggestHit = std::max(_biggestHit, mine - _lastThreat);
-    _lastThreat = mine;
-    _lastLookMs = now;
-    return _biggestHit > 0.0f ? _biggestHit : FIRST_HIT_GUESS;
+}
+
+bool RcThreatCapSwingTrigger::IsActive()
+{
+    if (!GetConfig().tankSplit || !bot->IsInCombat() || PlayerbotAI::IsTank(bot) ||
+        !HasThreatShareBosses(bot->GetMapId()))
+        return false;
+    Unit* boss = SwingTarget(bot);
+    return boss && OverThreatCap(bot, boss);
+}
+
+bool RcThreatCapStopAction::Execute(Event /*event*/)
+{
+    Unit* boss = SwingTarget(bot);
+    if (!boss)
+        return false;
+    if (Spell* shot = bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+        if (shot->m_targets.GetUnitTarget() == boss)
+            bot->InterruptSpell(CURRENT_AUTOREPEAT_SPELL);
+    if (bot->GetVictim() == boss)
+        bot->AttackStop();
+    return true;
 }
 
 float RcImmuneTauntMultiplier::GetValue(Action* action)
