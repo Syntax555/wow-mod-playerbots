@@ -277,6 +277,7 @@ void RaidClearBlackwingLairStrategy::InitMultipliers(std::vector<Multiplier*>& m
     multipliers.push_back(new RcBwlShadowOfEbonrocMultiplier(botAI));
     multipliers.push_back(new RcBwlHoldCoverMultiplier(botAI));
     multipliers.push_back(new RcBwlSpotHoldMultiplier(botAI));
+    multipliers.push_back(new RcBwlDrakeWalkHoldMultiplier(botAI));
     multipliers.push_back(new RcBwlDetonationHoldMultiplier(botAI));
     multipliers.push_back(new RcBwlTechnicianHoldMultiplier(botAI));
     multipliers.push_back(new RcBwlCaptainMainTankMultiplier(botAI));

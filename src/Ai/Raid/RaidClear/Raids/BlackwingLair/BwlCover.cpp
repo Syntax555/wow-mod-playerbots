@@ -11,7 +11,9 @@
 #include "Common/AggroLeash.h"
 #include "Common/BossLookup.h"
 #include "Common/FixedSpots.h"
+#include "Common/TankRoles.h"
 
+#include "AttackAction.h"
 #include "Config.h"
 #include "Creature.h"
 #include "GameTime.h"
@@ -899,4 +901,56 @@ float RcBwlSpotHoldMultiplier::GetValue(Action* action)
     if (name == "rc knockback footing" || name == "rc bwl drake front")
         return 0.0f;
     return IsDodge(action) ? 1.0f : 0.0f;
+}
+
+// --- A drake on its way to the tank spot ---------------------------------------
+
+namespace
+{
+    // Ebonroc or Flamegor: the bot tank he is on is walking him to its fixed spot, and he was
+    // first on a tank less than DRAKE_WALK_HOLD_MS ago. On 10/22 Ebonroc was hit from the pull
+    // on: he never got to the spot, and the fight happened among the Wyrmguards.
+    bool DrakeOnItsWay(Creature* drake)
+    {
+        Unit* victim = drake->GetVictim();
+        Player* tank = victim ? victim->ToPlayer() : nullptr;
+        if (!tank || !PlayerbotAI::IsTank(tank) || !GET_PLAYERBOT_AI(tank))
+            return false;
+        // He is on a tank, so he has been held: 0 is this very tick.
+        if (DrakeHeldForMs(drake) >= DRAKE_WALK_HOLD_MS)
+            return false;
+        SpotWant want;
+        return WantedSpot(tank, want) && want.tank && tank->GetExactDist(want.place) > SPOT_HOLD;
+    }
+}
+
+float RcBwlDrakeWalkHoldMultiplier::GetValue(Action* action)
+{
+    // Heals go out; so does everything that isn't aimed at him.
+    if (!action || PlayerbotAI::IsHeal(bot))
+        return 1.0f;
+    bool const attack = dynamic_cast<AttackAction*>(action) != nullptr;
+    Action::ActionThreatType const threat = action->getThreatType();
+    if (!attack && threat == Action::ActionThreatType::None)
+        return 1.0f;
+    Creature* drake = SpotBoss(bot);
+    // Not Firemaw: his two spots and the stack swaps move him between them all fight.
+    if (!drake || (drake->GetEntry() != NPC_EBONROC && drake->GetEntry() != NPC_FLAMEGOR) ||
+        drake->GetVictim() == bot)
+        return 1.0f;
+
+    uint32 const now = getMSTime();
+    if (!_checkedAtMs || getMSTimeDiff(_checkedAtMs, now) >= 250)
+    {
+        _checkedAtMs = now ? now : 1;
+        _holds = DrakeOnItsWay(drake);
+    }
+    if (!_holds)
+        return 1.0f;
+
+    if (threat == Action::ActionThreatType::Aoe)
+        return bot->IsWithinCombatRange(drake, 10.0f) ? 0.0f : 1.0f;
+    if (action->GetTarget() != drake)
+        return 1.0f;
+    return attack || RaidClear::Tanks::HeldByThreatCap(botAI, action) ? 0.0f : 1.0f;
 }
