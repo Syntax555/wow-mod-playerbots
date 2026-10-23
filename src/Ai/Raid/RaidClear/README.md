@@ -65,7 +65,11 @@ pile. In any raid:
   raid and come within 10% of that tank's threat, a paladin puts **Hand of Salvation** on you.
   Playerbots' damage dealers don't watch their
   threat, so on these bosses they hold their damage while they are within 10% of the threat of the
-  tank who would catch the boss next. Curses, Hunter's Mark and Tranquilizing Shot still go out.
+  tank who would catch the boss next, and while their biggest hit so far would take them past the
+  point where the boss turns to them (110% of that tank's threat in melee, 130% at range). That
+  matters at the pull, when the tanks have only a few thousand threat: on Chromaggus six mages
+  opened with **Arcane Barrage** into his weak school, and he went to four damage dealers in his
+  first 30 seconds. Curses, Hunter's Mark and Tranquilizing Shot still go out.
 - **Endless adds are ignored.** Off-tanks don't chase adds that respawn faster than anyone can
   tank them (Blackwing Lair's Suppression Room whelps).
 - **Packs tanked in one heap.** Some packs only die together (Molten Core's Core Hounds). An
