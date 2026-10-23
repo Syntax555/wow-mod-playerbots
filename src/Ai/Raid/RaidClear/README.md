@@ -69,7 +69,10 @@ pile. In any raid:
   point where the boss turns to them (110% of that tank's threat in melee, 130% at range). That
   matters at the pull, when the tanks have only a few thousand threat: on Chromaggus six mages
   opened with **Arcane Barrage** into his weak school, and he went to four damage dealers in his
-  first 30 seconds. Curses, Hunter's Mark and Tranquilizing Shot still go out.
+  first 30 seconds. That holds swings and Auto Shot too: a bot over that line stops attacking
+  until the tanks catch up (in another raid rogues and warriors opened Chromaggus at about 9,000
+  threat in 10 seconds, three quarters of it white swings, Instant Poison and Auto Shot). Curses,
+  Hunter's Mark and Tranquilizing Shot still go out.
 - **Endless adds are ignored.** Off-tanks don't chase adds that respawn faster than anyone can
   tank them (Blackwing Lair's Suppression Room whelps).
 - **Packs tanked in one heap.** Some packs only die together (Molten Core's Core Hounds). An

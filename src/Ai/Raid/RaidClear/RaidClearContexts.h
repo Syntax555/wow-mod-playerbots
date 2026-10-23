@@ -71,6 +71,7 @@ public:
         creators["rc offtank separate"] = &RaidClearActionContext::offtank_separate;
         creators["rc offtank stack"] = &RaidClearActionContext::offtank_stack;
         creators["rc tank share threat"] = &RaidClearActionContext::tank_share_threat;
+        creators["rc threat cap stop"] = [](PlayerbotAI* botAI) -> Action* { return new RcThreatCapStopAction(botAI); };
         creators["rc protect boss victim"] = &RaidClearActionContext::protect_boss_victim;
         creators["rc salvation on player"] = &RaidClearActionContext::salvation_on_player;
         creators["rc warn pet owner"] = &RaidClearActionContext::warn_pet_owner;
@@ -297,6 +298,7 @@ public:
         creators["rc offtank separate"] = &RaidClearTriggerContext::offtank_separate;
         creators["rc offtank stack"] = &RaidClearTriggerContext::offtank_stack;
         creators["rc tank share threat"] = &RaidClearTriggerContext::tank_share_threat;
+        creators["rc threat cap swing"] = [](PlayerbotAI* botAI) -> Trigger* { return new RcThreatCapSwingTrigger(botAI); };
         creators["rc boss on non tank"] = &RaidClearTriggerContext::boss_on_non_tank;
         creators["rc player over threat"] = &RaidClearTriggerContext::player_over_threat;
         creators["rc pet over threat"] = &RaidClearTriggerContext::pet_over_threat;
