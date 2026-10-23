@@ -54,6 +54,8 @@
  *     told to stay, and not companions: nothing attacks them. A pet following its owner that
  *     is stopped three times running has its walks let through for 3 s: its owner walked that
  *     way without pulling, and a pet left standing for good is lost to the raid.
+ *   - A bot's pet doesn't cast (autocast included) an area attack that would reach one of those
+ *     idle mobs, judged like the bots' own area spells, nor a taunt while the raid has a tank.
  *
  * The aggro radius is the core's own (Creature::GetAggroRange: the mob's detection range, 20 yd
  * by default, plus a yard per level the mob is above the bot).

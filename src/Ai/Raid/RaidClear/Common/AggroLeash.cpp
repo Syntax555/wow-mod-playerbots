@@ -13,15 +13,19 @@
 #include "Common/TankRoles.h"
 
 #include "AllMapScript.h"
+#include "AllSpellScript.h"
 #include "CharmInfo.h"
 #include "Creature.h"
 #include "GenericSpellActions.h"
+#include "Group.h"
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "MoveSpline.h"
 #include "PetDefines.h"
 #include "Playerbots.h"
 #include "PlayerbotAI.h"
+#include "Spell.h"
+#include "SpellInfo.h"
 #include "Timer.h"
 #include "UnitAI.h"
 
@@ -865,7 +869,107 @@ public:
     }
 };
 
+// A bot's pet casts on its own (autocast), and nothing in the bot's AI sees those casts. The core
+// asks every cast whether it may go ahead, autocasts included (Spell::CanAutoCast checks the cast
+// before the pet's AI prepares it), and here two kinds are refused:
+//   - Taunts (Growl, a Voidwalker's Torment and Suffering) while the raid has a tank. The 10/22
+//     Blackwing Lair logs had some 240 pet Growls on the bosses per run, from a Scorpid, a Wolf
+//     and a Raptor; Flamegor turned to one of them and Chromaggus spent a few seconds on one.
+//   - Area attacks (a Scorpid's Thunderstomp) that would reach an idle mob, the way the bots' own
+//     area spells are judged (RcLeashSplashMultiplier). 10/22: a Thunderstomp in the middle of
+//     the 465 pack fight pulled Ebonroc's three Wyrmguards, and Ebonroc came after them;
+//     16 deaths.
+class RaidClearPetSpellScript : public AllSpellScript
+{
+public:
+    RaidClearPetSpellScript() : AllSpellScript("RaidClearPetSpellScript", { ALLSPELLHOOK_ON_SPELL_CHECK_CAST }) {}
+
+    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
+    {
+        if (res != SPELL_CAST_OK || !spell)
+            return;
+        WorldObject* caster = spell->GetCaster();
+        Unit* pet = caster ? caster->ToUnit() : nullptr;
+        if (!pet || !pet->IsCreature() || pet->IsTotem() || !pet->GetOwnerGUID().IsPlayer())
+            return;
+        Map* map = pet->GetMap();
+        Config const& config = GetConfig();
+        if (!map || !map->IsRaid() || !config.enable)
+            return;
+        Player* owner = pet->GetCharmerOrOwnerPlayerOrPlayerItself();
+        if (!owner || !GET_PLAYERBOT_AI(owner))
+            return;  // a real player's pet casts what its player lets it
+        SpellInfo const* info = spell->GetSpellInfo();
+        if (!info || info->IsPositive())
+            return;
+
+        if (IsTaunt(info))
+        {
+            if (RaidHasTank(owner))
+                res = SPELL_FAILED_DONT_REPORT;
+            return;
+        }
+
+        if (!config.aggroLeash || !config.aggroLeashSplash)
+            return;
+        Splash::Reach const reach = Splash::ReachOfSpell(owner, info);
+        if (reach.aroundCaster <= 0.0f && reach.aroundTarget <= 0.0f)
+            return;
+        Unit* target = spell->m_targets.GetUnitTarget();
+        if (target == pet)
+            target = nullptr;
+        // A pull: the target's own pack comes along whatever it is hit with.
+        if (target && (!target->IsAlive() || !target->IsInCombat()))
+            return;
+        if (ReachesIdleMob(map, pet, pet, reach.aroundCaster) ||
+            (target && ReachesIdleMob(map, pet, target, reach.aroundTarget)))
+            res = SPELL_FAILED_DONT_REPORT;
+    }
+
+private:
+    static bool IsTaunt(SpellInfo const* info)
+    {
+        return info->HasEffect(SPELL_EFFECT_ATTACK_ME) || info->HasAura(SPELL_AURA_MOD_TAUNT);
+    }
+
+    static bool RaidHasTank(Player* owner)
+    {
+        Group* group = owner->GetGroup();
+        if (!group)
+            return false;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member->IsAlive() && member->IsInMap(owner) && PlayerbotAI::IsTank(member))
+                return true;
+        }
+        return false;
+    }
+
+    // An idle mob hostile to the pet within `radius` of `centre` (to its edge, with the splash
+    // slack), that the blast can see. Runs on the map's own update, like the walk checks.
+    static bool ReachesIdleMob(Map* map, Unit* pet, Unit* centre, float radius)
+    {
+        if (radius <= 0.0f)
+            return false;
+        std::shared_ptr<InstanceState> state = StateOf(map);
+        RefreshIdle(map, *state);
+        for (ObjectGuid const& guid : state->idle)
+        {
+            Creature* creature = map->GetCreature(guid);
+            if (!creature || creature == centre || !WouldAggro(creature) || !creature->IsHostileTo(pet))
+                continue;
+            if (centre->GetExactDist(creature) > radius + creature->GetCombatReach() + SPLASH_SLACK)
+                continue;
+            if (creature->IsWithinLOSInMap(centre))
+                return true;
+        }
+        return false;
+    }
+};
+
 void RaidClear::Leash::AddScripts()
 {
     new RaidClearLeashMapScript();
+    new RaidClearPetSpellScript();
 }
