@@ -113,6 +113,12 @@ fight but would join it: hostile, aggressive, alive, in line of sight and on the
   walked that way without pulling. In one Molten Core
   run seven packs came in on pets, one of them a Firelord and two Lava Annihilators that a
   Scorpid walked into between pulls.
+- Bots' pets don't cast area attacks (a Scorpid's **Thunderstomp**) where they would reach a mob
+  that isn't in the fight, and don't taunt (**Growl**, a Voidwalker's **Torment** and
+  **Suffering**) while the raid has a tank. The pet's own autocast is stopped by the server's
+  cast check, so it works for every pet ability without turning autocast off. In one Blackwing
+  Lair run a Thunderstomp pulled Ebonroc's three Wyrmguards into another fight, and pets cast
+  some 240 Growls on the bosses.
 - An off-tank dragging its mob away from the main tank's doesn't pick a spot inside any of
   that. (Before, it could: the walk was stopped a step in, sent again two seconds later, and
   stopped a step further on.)
