@@ -28,17 +28,25 @@
  *     catches it (the tank strategies taunt it back). The Suppression Room whelps don't pull the
  *     off-tank away from Broodlord.
  *   - Firemaw, Ebonroc, Flamegor: two tanks hold the drake, the main tank and the first bot
- *     off-tank in group order that isn't holding an add, and both stand in front of it. Only
- *     those two taunt it, only from in front (or next to whoever it is on) and never while
- *     Shadow Flame is being cast; the other tanks stay under 80% of their threat. A taunt from
- *     a tank at its flank turned the drake, and the breath with it, onto the raid: five tanks
- *     taunted Flamegor within 0.3 s after a Wing Buffet and the next Shadow Flame killed 18.
+ *     off-tank in group order that isn't holding an add, and both stand in front of it. A tank
+ *     holding an add (a Wyrmguard) is never one of the two, the main tank included: the two
+ *     take the drake off it. Only those two taunt it, only from in front (or next to whoever it
+ *     is on) and never while Shadow Flame is being cast; the other tanks stay under 80% of their
+ *     threat. A taunt from a tank at its flank turned the drake, and the breath with it, onto
+ *     the raid: five tanks taunted Flamegor within 0.3 s after a Wing Buffet and the next Shadow
+ *     Flame killed 18. Until the drake has been on a tank only the main tank opens on it (else
+ *     the first free one): no off-tank taunts or co-tanks it first. Once it is on one of the two,
+ *     the other doesn't take it off for 15 s, and after that only for Shadow of Ebonroc or
+ *     Firemaw's stack swap; off a tank holding an add, or off a non-tank (a Wing Buffet), at any
+ *     time. On 10/22 the two handed Flamegor back and forth five times in 15 s. While the tank
+ *     it is on walks it to the configured tank spot (for up to 20 s), nobody but the healers
+ *     hits it, so the fight starts there.
  *   - Chromaggus: no taunt lands on him, and in one kill he spent most of the fight on rogues,
  *     warlocks and a death knight. The off-tanks build threat on him and the damage dealers stay
  *     under the tanks (the threat cap in Common/TankRoles.h), as on Nefarian.
  *   - Broodlord: ranged and healers stay out of Blast Wave (20 yd around him).
- *   - Ebonroc: the off-tank taunts him off a tank with Shadow of Ebonroc (he heals on every hit on
- *     it), and that tank doesn't taunt him back while it lasts.
+ *   - Ebonroc: his other tank taunts him off a tank with Shadow of Ebonroc (he heals on every hit
+ *     on it) once he has been held 15 s, and that tank doesn't taunt him back while it lasts.
  *   - Vaelastrasz is taunt immune, so the off-tank keeps itself second on threat for when Burning
  *     Adrenaline kills the main tank. Razorgore's tanks are placed by playerbots and
  *     mod-dungeon-clear, so the tank split stays out of that fight.
@@ -509,9 +517,15 @@ namespace RaidClear::BlackwingLair
     constexpr float DRAKE_OFFTANK_SHARE = 0.8f;
     // A drake on someone who isn't a tank for this long may be taunted by any tank, holder or
     // not (2026-10-17: Firemaw spent 40 s on non-tanks because both holders "could" taunt).
+    // Only once he has been on a tank: until then only his opener touches him.
     constexpr uint32 DRAKE_LOOSE_TAUNT_MS = 1500;
-    // The second tank is kept for the fight; one that has held an add this long is replaced.
-    constexpr uint32 DRAKE_SECOND_ADD_MS = 5000;
+    // Until he has been on a tank, his other holder waits this long for the opener first.
+    constexpr uint32 DRAKE_OPENER_WAIT_MS = 4000;
+    // For this long after he is first on a tank, the other holder doesn't take him off it.
+    constexpr uint32 DRAKE_OPENING_MS = 15000;
+    // While the tank he is on walks him to its fixed spot, nobody else hits him; for at most this
+    // long after he is first on a tank (Flamegor's spawn is 80 yd from the configured spot).
+    constexpr uint32 DRAKE_WALK_HOLD_MS = 20000;
 
     std::vector<KillOrderEntry> const& KillOrder();
 
@@ -547,8 +561,12 @@ namespace RaidClear::BlackwingLair
     Hazards::Table const& HazardTable();
 
     // Firemaw, Ebonroc and Flamegor: whether this tank is one of the two that hold the drake (the
-    // main tank, the first spare bot off-tank in group order, or whoever it is on now).
+    // main tank, the first spare bot off-tank in group order, or whoever it is on now; never a
+    // tank holding an add, unless the drake is on it).
     bool HoldsDrake(Player* tank, Creature* drake);
+
+    // How long since the drake was first on a tank this pull; 0 until he has been.
+    uint32 DrakeHeldForMs(Creature* drake);
 
     // Chromaggus has started casting something: kept for the breath clock.
     void NoteChromaggusBreath(Creature* boss, uint32 spellId);
@@ -909,6 +927,19 @@ private:
     bool _holds = false;
 };
 
+// A drake's tank is still walking him to its fixed spot: everyone else but the healers holds
+// their attacks, spells and area threat on him, so the fight starts where the spot is.
+class RcBwlDrakeWalkHoldMultiplier : public Multiplier
+{
+public:
+    RcBwlDrakeWalkHoldMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc bwl drake walk hold") {}
+    float GetValue(Action* action) override;
+
+private:
+    uint32 _checkedAtMs = 0;
+    bool _holds = false;
+};
+
 // --- Keep out of a boss's AoE (Broodlord, Nefarian) -----------------------
 
 // Ranged and healers closer than `minDistance` (edge to edge) to the boss step straight out to
@@ -1238,7 +1269,8 @@ public:
     bool Execute(Event event) override;
 };
 
-// Firemaw: the tank he is on has piled up Flame Buffet and this one, his other tank, hasn't.
+// The drake is on a tank that holds an add (any drake), or, Firemaw, on one that has piled up
+// Flame Buffet that this one, his other tank, hasn't: this holder takes him.
 class RcBwlDrakeSwapTrigger : public Trigger
 {
 public:

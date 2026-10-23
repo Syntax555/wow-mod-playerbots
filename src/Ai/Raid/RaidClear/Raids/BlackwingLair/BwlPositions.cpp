@@ -268,15 +268,15 @@ namespace
     }
 
     // Per instance: the drake's second tank, kept for the fight so who may taunt him and whose
-    // threat the others stay under don't change from one tick to the next as adds come and go,
-    // and since when the drake has been loose on someone who isn't a tank.
+    // threat the others stay under don't change from one tick to the next, since when the drake
+    // has been loose on someone who isn't a tank, and when he was first on a tank this pull.
     struct DrakeState
     {
         ObjectGuid drake;
-        uint32 touchedMs = 0;    // when a bot last looked at it
+        uint32 touchedMs = 0;  // when a bot last looked at it
         ObjectGuid second;
-        uint32 secondAddMs = 0;  // since when the second has held an add; 0: it holds none
-        uint32 looseMs = 0;      // since when he has been on someone who isn't a tank; 0: he isn't
+        uint32 looseMs = 0;    // since when he has been on someone who isn't a tank; 0: he isn't
+        uint32 heldMs = 0;     // when he was first seen on a tank; 0: not yet
     };
     std::mutex sDrakeLock;
     std::unordered_map<uint32, DrakeState> sDrakes;  // by instance id
@@ -306,7 +306,7 @@ namespace
     }
 
     // Keeps the loose clock: started when he is first seen on someone who isn't a tank, cleared
-    // when he is seen on one. Call with the lock held.
+    // when he is seen on one (the first time also starts the held clock). Call with the lock held.
     uint32 NoteLoose(DrakeState& state, Creature* drake, uint32 now)
     {
         Unit* victim = drake->GetVictim();
@@ -314,6 +314,8 @@ namespace
         if (player && PlayerbotAI::IsTank(player))
         {
             state.looseMs = 0;
+            if (!state.heldMs)
+                state.heldMs = now ? now : 1;
             return 0;
         }
         if (!state.looseMs)
@@ -327,10 +329,14 @@ namespace
         Player* second = nullptr;  // the one that takes him next
     };
 
-    // The drake's two tanks. The first is the tank he is on (a swap or a Wing Buffet hands him to
-    // the other), else the main tank. The second is the main tank when he is on someone else,
-    // else the one kept for the fight; a new one (the first free bot tank in group order) when
-    // that one is gone, off dropping stacks, or has held an add for DRAKE_SECOND_ADD_MS.
+    // The drake's two tanks, never one that holds an add: on 10/22 the three tanks holding
+    // Ebonroc's Wyrmguards held him as well, through the Shadow of Ebonroc swaps, and died one
+    // after the other. The first is the tank he is on (a swap or a Wing Buffet hands him to the
+    // other), else the main tank. The second is the main tank when he is on someone else, else
+    // the one kept for the fight; a new one (the first free bot tank in group order) when that
+    // one is gone, off dropping stacks, or picks up an add. A tank with an add he is on is
+    // neither: the two take him off it. With the main tank on an add and him on nobody there
+    // is no first, and the second opens on him.
     DrakeHolders HoldersOf(Group* group, Creature* drake)
     {
         uint32 const now = getMSTime();
@@ -343,32 +349,28 @@ namespace
         Player* mainTank = RaidClear::Tanks::ActingMainTank(group);
         Unit* victim = drake->GetVictim();
         Player* onTank = victim ? victim->ToPlayer() : nullptr;
-        if (onTank && PlayerbotAI::IsTank(onTank) && onTank->GetGroup() == group && onTank->IsInMap(drake))
+        bool const mainTankFree = MayHoldDrake(mainTank, drake, false) && !HoldsAnAdd(mainTank, drake);
+        if (onTank && PlayerbotAI::IsTank(onTank) && onTank->GetGroup() == group && onTank->IsInMap(drake) &&
+            !HoldsAnAdd(onTank, drake))
             holders.first = onTank;
-        else if (MayHoldDrake(mainTank, drake, false))
+        else if (mainTankFree)
             holders.first = mainTank;
 
-        if (mainTank && mainTank != holders.first && MayHoldDrake(mainTank, drake, false))
+        if (mainTank && mainTank != holders.first && mainTankFree)
         {
             holders.second = mainTank;
             return holders;
         }
 
         ObjectGuid kept;
-        uint32 keptAddMs = 0;
         {
             std::lock_guard<std::mutex> guard(sDrakeLock);
-            DrakeState const& state = DrakeStateOf(drake);
-            kept = state.second;
-            keptAddMs = state.secondAddMs;
+            kept = DrakeStateOf(drake).second;
         }
 
         // Looked up without the lock: MayHoldDrake asks about hiding through a lock of its own.
         Player* second = kept ? ObjectAccessor::GetPlayer(*drake, kept) : nullptr;
-        if (second && (second == holders.first || !MayHoldDrake(second, drake, true)))
-            second = nullptr;
-        bool const keptHoldsAdd = second && HoldsAnAdd(second, drake);
-        if (second && keptHoldsAdd && keptAddMs && getMSTimeDiff(keptAddMs, now) >= DRAKE_SECOND_ADD_MS)
+        if (second && (second == holders.first || !MayHoldDrake(second, drake, true) || HoldsAnAdd(second, drake)))
             second = nullptr;
 
         // A new one: the free bot tank with the fewest Flame Buffet stacks (on Ebonroc and
@@ -393,18 +395,10 @@ namespace
             }
         }
 
+        if (picked)
         {
             std::lock_guard<std::mutex> guard(sDrakeLock);
-            DrakeState& state = DrakeStateOf(drake);
-            if (picked)
-            {
-                state.second = second->GetGUID();
-                state.secondAddMs = 0;
-            }
-            else if (second && keptHoldsAdd && !state.secondAddMs)
-                state.secondAddMs = now ? now : 1;
-            else if (second && !keptHoldsAdd)
-                state.secondAddMs = 0;
+            DrakeStateOf(drake).second = second->GetGUID();
         }
         holders.second = second;
         return holders;
@@ -416,6 +410,22 @@ namespace
     {
         std::lock_guard<std::mutex> guard(sDrakeLock);
         return NoteLoose(DrakeStateOf(drake), drake, getMSTime());
+    }
+
+    // Whether he has been on a tank yet this pull.
+    bool EverHeld(Creature* drake)
+    {
+        std::lock_guard<std::mutex> guard(sDrakeLock);
+        DrakeState& state = DrakeStateOf(drake);
+        NoteLoose(state, drake, getMSTime());
+        return state.heldMs != 0;
+    }
+
+    // The tank that opens on him: the first of his two, else (the main tank is on an add) the
+    // second.
+    Player* DrakeOpener(DrakeHolders const& holders)
+    {
+        return holders.first ? holders.first : holders.second;
     }
 
     // The dragon with a frontal breath that is fighting near the bot, if any.
@@ -1496,6 +1506,17 @@ bool RaidClear::BlackwingLair::HoldsDrake(Player* tank, Creature* drake)
     return tank == holders.first || tank == holders.second;
 }
 
+uint32 RaidClear::BlackwingLair::DrakeHeldForMs(Creature* drake)
+{
+    if (!drake || !IsDrake(drake))
+        return 0;
+    std::lock_guard<std::mutex> guard(sDrakeLock);
+    DrakeState& state = DrakeStateOf(drake);
+    uint32 const now = getMSTime();
+    NoteLoose(state, drake, now);
+    return state.heldMs ? getMSTimeDiff(state.heldMs, now) : 0;
+}
+
 bool RcBwlDrakeFrontTrigger::IsActive()
 {
     if (!bot->IsAlive() || !botAI->CanMove() || !PlayerbotAI::IsTank(bot))
@@ -1578,19 +1599,50 @@ bool RcBwlDrakeSwapTrigger::IsActive()
 {
     if (!bot->IsAlive() || !PlayerbotAI::IsTank(bot))
         return false;
-    Creature* drake = FightingBoss(bot, NPC_FIREMAW);
-    if (!drake || drake->GetVictim() == bot || !DrakeVictimToJoin(bot, drake) || !HoldsDrake(bot, drake))
+    Creature* drake = FightingDrake(bot);
+    Player* victim = drake && drake->GetVictim() != bot ? DrakeVictimToJoin(bot, drake) : nullptr;
+    if (!victim || !HoldsDrake(bot, drake) || ConeCast(drake) == SPELL_SHADOW_FLAME || !TauntsFromFront(bot, drake))
         return false;
-    if (!FresherThanVictim(bot, drake, TANK_SWAP_STACKS) || ConeCast(drake) == SPELL_SHADOW_FLAME ||
-        !TauntsFromFront(bot, drake))
-        return false;
-    return RaidClear::Tanks::CanTaunt(botAI, drake);
+    // Off a tank that holds an add, on any drake: nothing else makes an off-tank taunt off
+    // another tank. Firemaw: off the tank with far more Flame Buffet stacks.
+    bool const handOff = HoldsAnAdd(victim, drake);
+    bool const firemawSwap = drake->GetEntry() == NPC_FIREMAW && FresherThanVictim(bot, drake, TANK_SWAP_STACKS);
+    return (handOff || firemawSwap) && RaidClear::Tanks::CanTaunt(botAI, drake);
 }
 
 bool RcBwlDrakeSwapAction::Execute(Event /*event*/)
 {
-    Creature* drake = FightingBoss(bot, NPC_FIREMAW);
+    Creature* drake = FightingDrake(bot);
     return drake && drake->GetVictim() != bot && RaidClear::Tanks::Taunt(botAI, drake);
+}
+
+namespace
+{
+    // The action hits or taunts the drake: a taunt that would take him, an attack or a spell at
+    // him, or area threat at his feet (Consecration, Thunder Clap, Swipe).
+    bool ReachesDrake(Player* bot, Action* action, std::string const& name, bool taunt, Creature* drake)
+    {
+        if (taunt)
+            return TauntsDrake(bot, action, name, drake);
+        if (action->getThreatType() == Action::ActionThreatType::Aoe)
+            return bot->IsWithinCombatRange(drake, 10.0f) && !HoldsAnAdd(bot, drake);
+        return action->GetTarget() == drake;
+    }
+
+    // A drake nobody has pulled yet, that this action would. Only the main tank opens on him
+    // (the 10/22 Flamegor pull was an off-tank's Hand of Reckoning, and the main tank taunted
+    // him back 4 s later), unless it can't: dead, gone, or on an add.
+    bool OpensIdleDrake(Player* bot, Action* action, std::string const& name, bool taunt)
+    {
+        Unit* target = action->GetTarget();
+        Creature* drake = target ? target->ToCreature() : nullptr;
+        if (!drake || !IsDrake(drake) || !drake->IsAlive() || drake->IsInCombat() || drake->GetMapId() != MAP_ID)
+            return false;
+        if (taunt && !TauntsDrake(bot, action, name, drake))
+            return false;
+        Player* mainTank = RaidClear::Tanks::ActingMainTank(bot->GetGroup());
+        return mainTank && mainTank != bot && MayHoldDrake(mainTank, drake, false) && !HoldsAnAdd(mainTank, drake);
+    }
 }
 
 float RcBwlDrakeTauntMultiplier::GetValue(Action* action)
@@ -1599,10 +1651,29 @@ float RcBwlDrakeTauntMultiplier::GetValue(Action* action)
         return 1.0f;
     std::string const name = action->getName();
     bool const taunt = IsTaunt(name);
-    if (!taunt && action->getThreatType() == Action::ActionThreatType::None)
+    bool const attack = dynamic_cast<AttackAction*>(action) != nullptr;
+    if (!taunt && !attack && action->getThreatType() == Action::ActionThreatType::None)
         return 1.0f;
     Creature* drake = FightingDrake(bot);
     if (!drake)
+        return OpensIdleDrake(bot, action, name, taunt) ? 0.0f : 1.0f;
+
+    // Pull discipline: until he has been on a tank, only his opener taunts or hits him. The
+    // off-tanks' co-tank attack and the loose taunts below wait for that; his other holder only
+    // steps in once he has been loose for DRAKE_OPENER_WAIT_MS (the opener is still on its way).
+    if (!EverHeld(drake))
+    {
+        if (!ReachesDrake(bot, action, name, taunt, drake))
+            return 1.0f;
+        Group* group = bot->GetGroup();
+        DrakeHolders const holders = group ? HoldersOf(group, drake) : DrakeHolders();
+        Player* opener = DrakeOpener(holders);
+        if (!opener || opener == bot)
+            return 1.0f;
+        return bot == holders.second && LooseForMs(drake) >= DRAKE_OPENER_WAIT_MS ? 1.0f : 0.0f;
+    }
+    // Melee swings carry on from here.
+    if (!taunt && action->getThreatType() == Action::ActionThreatType::None)
         return 1.0f;
 
     if (taunt)
@@ -1624,10 +1695,26 @@ float RcBwlDrakeTauntMultiplier::GetValue(Action* action)
         // A breath goes where he faces when it ends.
         if (ConeCast(drake) == SPELL_SHADOW_FLAME)
             return 0.0f;
-        // Firemaw on his other tank: only take him when that one has far more stacks (the swap),
-        // so the two don't hand him back and forth after every Wing Buffet.
-        if (drake->GetEntry() == NPC_FIREMAW && victim != bot && !FresherThanVictim(bot, drake, 0))
-            return 0.0f;
+        // On a tank, he stays there: the two handed Flamegor back and forth five times in his
+        // first 15 s on 10/22 and nobody could walk him anywhere. A holder takes him off a tank
+        // that holds an add, or that isn't one of his two, at any time. Off the other holder
+        // only past DRAKE_OPENING_MS, and then only for Shadow of Ebonroc or Firemaw's swap
+        // (the one with far more stacks gives him up). Being next to that tank is no reason.
+        if (victim != bot && !HoldsAnAdd(victimPlayer, drake))
+        {
+            Group* group = bot->GetGroup();
+            DrakeHolders const holders = group ? HoldersOf(group, drake) : DrakeHolders();
+            if (victimPlayer == holders.first || victimPlayer == holders.second)
+            {
+                if (DrakeHeldForMs(drake) < DRAKE_OPENING_MS)
+                    return 0.0f;
+                bool const shadow =
+                    drake->GetEntry() == NPC_EBONROC && victimPlayer->HasAura(SPELL_SHADOW_OF_EBONROC);
+                bool const firemawSwap = drake->GetEntry() == NPC_FIREMAW && FresherThanVictim(bot, drake, 0);
+                if (!shadow && !firemawSwap)
+                    return 0.0f;
+            }
+        }
         return TauntsFromFront(bot, drake) ? 1.0f : 0.0f;
     }
 
