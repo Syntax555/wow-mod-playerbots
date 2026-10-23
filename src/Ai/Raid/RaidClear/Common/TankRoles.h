@@ -29,7 +29,12 @@
  *       - one tank at a time: nobody taunts while another tank's taunt is still running.
  *       - Playerbots' damage dealers don't watch their threat at all (its "threat" strategy is
  *         off by default). On these bosses they hold their damage while they are within 10% of
- *         the threat of the tank who would catch the boss next.
+ *         the threat of the tank who would catch the boss next, and while their biggest hit so
+ *         far (4,000 before the first) would take them past the point where the boss turns to
+ *         them (110% of that tank's threat in melee, 130% at range). At a pull the tanks have
+ *         a few thousand threat and one cast is enough: on Chromaggus six mages opened with
+ *         Arcane Barrage into his weak school, 4,000-8,000 each in 3 s, and he went to four
+ *         damage dealers in his first 30 s.
  *       - Where no taunt lands (Hakkar is immune on this core, so none of the taunting above
  *         happens there) the paladins stand in for it. Hand of Protection on a player the boss
  *         is on who isn't a tank: the core doesn't let a creature stay on someone its swings
@@ -329,12 +334,22 @@ public:
     bool Execute(Event event) override;
 };
 
-// Keeps damage dealers under the tank who catches a threat-share boss next.
+// Keeps damage dealers under the tank who catches a threat-share boss next, and holds a cast
+// whose hit could carry the bot past the point where the boss turns to it.
 class RcTankThreatCapMultiplier : public Multiplier
 {
 public:
     RcTankThreatCapMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "rc tank threat cap") {}
     float GetValue(Action* action) override;
+
+private:
+    // The biggest jump in this bot's threat on the boss seen so far this fight.
+    float BiggestHit(Unit* boss, float mine);
+
+    ObjectGuid _hitBoss;
+    float _lastThreat = 0.0f;
+    uint32 _lastLookMs = 0;
+    float _biggestHit = 0.0f;
 };
 
 // No taunt that does nothing else at a boss immune to taunts.

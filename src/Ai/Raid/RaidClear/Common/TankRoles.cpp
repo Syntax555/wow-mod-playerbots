@@ -770,6 +770,18 @@ namespace RaidClear::Tanks
         constexpr uint32 THREAT_DRIFT_INTERVAL_MS = 30000;
         // Damage dealers stay under this share of the threat of the tank who catches the boss next.
         constexpr float DAMAGE_SHARE = 0.9f;
+        // The boss turns to someone with this share of its current target's threat: 110% in melee
+        // range, 130% outside it (ThreatManager). A damage dealer's next hit must land short of
+        // that, with this margin.
+        constexpr float MELEE_TAKES = 1.1f;
+        constexpr float RANGED_TAKES = 1.3f;
+        constexpr float HIT_MARGIN = 0.95f;
+        // A bot's biggest hit before it has landed one: a level 60 caster's crit, about what an
+        // Arcane Barrage into Chromaggus' weak school does.
+        constexpr float FIRST_HIT_GUESS = 4000.0f;
+        // A jump is only learnt from two looks this close together: over a longer gap it is
+        // several hits added up, and the bot would hold back for most of the fight.
+        constexpr uint32 HIT_SAMPLE_MS = 1000;
         // A second tank with less than this share of the threat of the tank the boss is on has
         // just lost its own and taunts within seconds: until then the tank the boss is on is the
         // limit, so the raid doesn't stop dead every time.
@@ -1490,10 +1502,40 @@ float RcTankThreatCapMultiplier::GetValue(Action* action)
     if (!IsThreatShareBoss(boss) || !HeldByThreatCap(botAI, action))
         return 1.0f;
 
+    float const mine = boss->GetThreatMgr().GetThreat(bot);
+    float const hit = BiggestHit(boss, mine);
     float const limit = ThreatShareLimit(bot, boss);
     if (limit <= 0.0f)
         return 1.0f;
-    return boss->GetThreatMgr().GetThreat(bot) >= limit * DAMAGE_SHARE ? 0.0f : 1.0f;
+    if (mine >= limit * DAMAGE_SHARE)
+        return 0.0f;
+    // One cast is worth more than the gap at a pull, when the tanks have a few thousand threat.
+    // The boss turns by the threat of whoever it is on, which may be under the limit.
+    float base = limit;
+    if (Unit* victim = boss->GetVictim())
+        if (victim != bot)
+            base = std::min(base, boss->GetThreatMgr().GetThreat(victim));
+    float const takes = base * (bot->IsWithinMeleeRange(boss) ? MELEE_TAKES : RANGED_TAKES);
+    return mine + hit >= takes * HIT_MARGIN ? 0.0f : 1.0f;
+}
+
+float RcTankThreatCapMultiplier::BiggestHit(Unit* boss, float mine)
+{
+    uint32 const now = getMSTime();
+    if (boss->GetGUID() != _hitBoss)
+    {
+        _hitBoss = boss->GetGUID();
+        _lastThreat = mine;
+        _lastLookMs = now;
+        _biggestHit = 0.0f;
+    }
+    // Up since a recent look: one landed hit (or a swing or a tick with it, which only errs on
+    // the safe side). Down: a threat drop or a wipe, nothing to learn from.
+    if (mine > _lastThreat && getMSTimeDiff(_lastLookMs, now) <= HIT_SAMPLE_MS)
+        _biggestHit = std::max(_biggestHit, mine - _lastThreat);
+    _lastThreat = mine;
+    _lastLookMs = now;
+    return _biggestHit > 0.0f ? _biggestHit : FIRST_HIT_GUESS;
 }
 
 float RcImmuneTauntMultiplier::GetValue(Action* action)
