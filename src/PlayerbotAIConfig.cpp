@@ -240,6 +240,7 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<std::string>("Playerbots.AttunementQuests", "10279,10277,10282,10283,10284,10285,10296,"
                                            "10297,10298,11481,11482,11488,11490,11492,10901,10888,10445,10985"),
         AttunementQuests);
+    LoadSet<std::set<uint32>>(sConfigMgr->GetOption<std::string>("Playerbots.IgnoredQuests", ""), IgnoredQuests);
 
     LoadSet<std::set<uint32>>(
         sConfigMgr->GetOption<std::string>("Playerbots.UnobtainableItems", "12468,44869,44870,46978"),
