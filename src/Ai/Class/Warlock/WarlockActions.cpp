@@ -201,7 +201,10 @@ bool DestroySoulShardAction::Execute(Event /*event*/)
                 {
                     if (pItem->GetTemplate()->ItemId == ITEM_SOUL_SHARD)
                     {
-                        bot->DestroyItem(pItem->GetBagSlot(), pItem->GetSlot(), true);
+                        // Shards can stack (mod-stack-size), so take one off the stack instead of
+                        // destroying the whole item.
+                        uint32 count = 1;
+                        bot->DestroyItemCount(pItem, count, true);
                         return true;  // Only destroy one!
                     }
                 }
@@ -215,7 +218,8 @@ bool DestroySoulShardAction::Execute(Event /*event*/)
         {
             if (pItem->GetTemplate()->ItemId == ITEM_SOUL_SHARD)
             {
-                bot->DestroyItem(pItem->GetBagSlot(), pItem->GetSlot(), true);
+                uint32 count = 1;
+                bot->DestroyItemCount(pItem, count, true);
                 return true;
             }
         }
