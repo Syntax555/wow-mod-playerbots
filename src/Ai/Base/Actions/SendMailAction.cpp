@@ -64,6 +64,16 @@ bool SendMailAction::Execute(Event event)
                      LANG_UNIVERSAL, tellTo);
         return false;
     }
+
+    // Hardcore: mail only between characters within a few levels of each other.
+    if (!Challenges::InLevelRange(bot->GetGUID().GetCounter(), bot->GetLevel(), receiver->GetGUID().GetCounter(),
+                                  receiver->GetLevel()))
+    {
+        bot->Whisper(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                         "send_mail_hardcore", "We are too many levels apart for Hardcore: I can't send you anything", {}),
+                     LANG_UNIVERSAL, tellTo);
+        return false;
+    }
 #endif
 
     if (!mailboxFound && !randomBot)
