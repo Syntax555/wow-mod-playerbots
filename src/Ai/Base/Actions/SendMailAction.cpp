@@ -11,6 +11,9 @@
 #include "Mail.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#if __has_include("ChallengesApi.h")
+#include "ChallengesApi.h"
+#endif
 
 bool SendMailAction::Execute(Event event)
 {
@@ -50,6 +53,18 @@ bool SendMailAction::Execute(Event event)
                      LANG_UNIVERSAL, tellTo);
         return false;
     }
+
+#if __has_include("ChallengesApi.h")
+    // mod-challenges: a Self-Found character takes no mail from other characters. The bot builds
+    // its mail itself, so the core's send-mail hook never sees it.
+    if (Challenges::IsSelfFound(receiver->GetGUID().GetCounter()))
+    {
+        bot->Whisper(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                         "send_mail_self_found", "You are Self-Found: I can't send you anything", {}),
+                     LANG_UNIVERSAL, tellTo);
+        return false;
+    }
+#endif
 
     if (!mailboxFound && !randomBot)
     {
