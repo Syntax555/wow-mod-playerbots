@@ -27,6 +27,20 @@ bool ReachAreaTriggerAction::Execute(Event event)
 
     if (!sObjectMgr->GetAreaTriggerTeleport(triggerId))
     {
+        uint32 questId = sObjectMgr->GetQuestForAreaTrigger(triggerId);
+        if (questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE)
+        {
+            if (!bot->IsAlive() || bot->IsInFlight() || bot->GetMapId() != at->map)
+                return false;
+
+            // Followers can enter a quest trigger after the master's client packet arrives.
+            if (!bot->IsInAreaTriggerRadius(at))
+            {
+                context->GetValue<LastMovement&>("last area trigger")->Get().lastAreaTrigger = triggerId;
+                return true;
+            }
+        }
+
         WorldPacket p1(CMSG_AREATRIGGER);
         p1 << triggerId;
         p1.rpos(0);
@@ -66,19 +80,35 @@ bool AreaTriggerAction::Execute(Event /*event*/)
     LastMovement& movement = context->GetValue<LastMovement&>("last area trigger")->Get();
 
     uint32 triggerId = movement.lastAreaTrigger;
-    movement.lastAreaTrigger = 0;
-
-    if (!sObjectMgr->GetAreaTrigger(triggerId))
+    AreaTrigger const* at = sObjectMgr->GetAreaTrigger(triggerId);
+    if (!at)
+    {
+        movement.lastAreaTrigger = 0;
         return false;
+    }
 
-    if (!sObjectMgr->GetAreaTriggerTeleport(triggerId))
-        return true;
+    bool isTeleport = sObjectMgr->GetAreaTriggerTeleport(triggerId) != nullptr;
+    if (!isTeleport)
+    {
+        uint32 questId = sObjectMgr->GetQuestForAreaTrigger(triggerId);
+        if (!questId || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE || !bot->IsAlive() ||
+            bot->IsInFlight() || bot->GetMapId() != at->map)
+        {
+            movement.lastAreaTrigger = 0;
+            return false;
+        }
 
+        if (!bot->IsInAreaTriggerRadius(at))
+            return false;
+    }
+
+    movement.lastAreaTrigger = 0;
     WorldPacket p(CMSG_AREATRIGGER);
     p << triggerId;
     p.rpos(0);
     bot->GetSession()->HandleAreaTriggerOpcode(p);
 
-    botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello", {}));
+    if (isTeleport)
+        botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello", {}));
     return true;
 }

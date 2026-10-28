@@ -19,7 +19,11 @@ bool WithinAreaTrigger::IsActive()
         return false;
 
     if (!sObjectMgr->GetAreaTriggerTeleport(movement.lastAreaTrigger))
-        return false;
+    {
+        uint32 questId = sObjectMgr->GetQuestForAreaTrigger(movement.lastAreaTrigger);
+        return questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE && bot->IsAlive() &&
+               !bot->IsInFlight() && bot->IsInAreaTriggerRadius(at);
+    }
 
     return IsPointInAreaTriggerZone(at, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
                                     0.5f);
