@@ -12,6 +12,7 @@
 #include "ItemVisitors.h"
 #include "Playerbots.h"
 #include "StatsWeightCalculator.h"
+#include <algorithm>
 #include <utility>
 
 bool EquipAction::Execute(Event event)
@@ -62,7 +63,7 @@ void EquipAction::EquipItem(FindItemVisitor* visitor)
         EquipItem(*items.begin());
 }
 
-void EquipAction::EquipItem(Item* item)
+void EquipAction::EquipItem(Item* item, uint8 forcedSlot)
 {
     uint8 bagIndex = item->GetBagSlot();
     uint8 slot = item->GetSlot();
@@ -117,7 +118,7 @@ void EquipAction::EquipItem(Item* item)
             return;
         }
 
-        uint8 dstSlot = botAI->FindEquipSlot(itemProto, NULL_SLOT, true);
+        uint8 dstSlot = forcedSlot == NULL_SLOT ? botAI->FindEquipSlot(itemProto, NULL_SLOT, true) : forcedSlot;
 
         // Check if the item is a weapon and whether the bot can dual wield or use Titan Grip
         bool isWeapon = (itemProto->Class == ITEM_CLASS_WEAPON);
@@ -142,7 +143,7 @@ void EquipAction::EquipItem(Item* item)
         bool canDualWieldOrTG = (canDualWield || isTwoHander);
 
         // If this is a weapon and we can dual wield or Titan Grip, check if we can improve main/off-hand setup
-        if (isWeapon && canDualWieldOrTG)
+        if (isWeapon && canDualWieldOrTG && forcedSlot == NULL_SLOT)
         {
             // Fetch current main hand and offhand items
             Item* mainHandItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
@@ -258,10 +259,10 @@ void EquipAction::EquipItem(Item* item)
         }
 
         // If not a special dual-wield/TG scenario or no improvement found, fall back to original logic
-        if (dstSlot == EQUIPMENT_SLOT_FINGER1 ||
+        if (forcedSlot == NULL_SLOT && (dstSlot == EQUIPMENT_SLOT_FINGER1 ||
             dstSlot == EQUIPMENT_SLOT_TRINKET1 ||
             (dstSlot == EQUIPMENT_SLOT_MAINHAND && canDualWield &&
-                ((invType != INVTYPE_2HWEAPON && !have2HWeaponEquipped) || (canTitanGrip && isValidTGWeapon))))
+                ((invType != INVTYPE_2HWEAPON && !have2HWeaponEquipped) || (canTitanGrip && isValidTGWeapon)))))
         {
             // Handle ring/trinket dual-slot logic
             Item* const equippedItems[2] = {
@@ -330,40 +331,89 @@ void EquipAction::EquipItem(Item* item)
     botAI->TellMaster(out);
 }
 
-ItemIds EquipAction::SelectInventoryItemsToEquip()
+bool EquipAction::EquipUpgrades()
 {
+    if (bot->IsInCombat())
+        return false;
+
     CollectItemsVisitor visitor;
     IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
 
-    ItemIds items;
-    for (auto i = visitor.items.begin(); i != visitor.items.end(); ++i)
+    StatsWeightCalculator calculator(bot);
+    calculator.SetItemSetBonus(false);
+    calculator.SetOverflowPenalty(false);
+    calculator.SetPvpSpec(sRandomPlayerbotMgr.IsSpecPvp(bot->GetGUID().GetCounter(), bot->getClass()));
+    std::vector<std::pair<Item*, float>> items;
+    bool const shieldTank = PlayerbotAI::IsTank(bot) && (bot->getClass() == CLASS_WARRIOR || bot->getClass() == CLASS_PALADIN);
+    bool haveShield = false;
+    bool haveOnehand = false;
+    if (Item* offhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+        haveShield = !offhand->IsBroken() && offhand->GetTemplate()->InventoryType == INVTYPE_SHIELD;
+    if (Item* mainhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
+        haveOnehand = !mainhand->IsBroken() && (mainhand->GetTemplate()->InventoryType == INVTYPE_WEAPON ||
+                                              mainhand->GetTemplate()->InventoryType == INVTYPE_WEAPONMAINHAND);
+    for (Item* item : visitor.items)
     {
-        Item* item = *i;
-        if (!item)
+        if (!item || !item->GetTemplate() || item->IsBroken() || item->GetTemplate()->InventoryType == INVTYPE_NON_EQUIP)
             continue;
-
-        ItemTemplate const* itemTemplate = item->GetTemplate();
-        if (!itemTemplate)
-            continue;
-
-        //TODO Expand to Glyphs and Gems, that can be placed in equipment
-        //Pre-filter non-equipable items
-        if (itemTemplate->InventoryType == INVTYPE_NON_EQUIP)
-            continue;
-
-        int32 randomProperty = item->GetItemRandomPropertyId();
-        uint32 itemId = item->GetTemplate()->ItemId;
-        std::string itemUsageParam;
-        if (randomProperty != 0)
-            itemUsageParam = std::to_string(itemId) + "," + std::to_string(randomProperty);
-        else
-            itemUsageParam = std::to_string(itemId);
-
-        ItemUsage usage = AI_VALUE2(ItemUsage, "item upgrade", itemUsageParam);
-        if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
-            items.insert(itemId);
+        float score = calculator.CalculateItem(item->GetEntry(), item->GetItemRandomPropertyId());
+        items.emplace_back(item, score);
+        if (score > 0 && bot->CanUseItem(item->GetTemplate()) == EQUIP_ERR_OK)
+        {
+            uint32 type = item->GetTemplate()->InventoryType;
+            if (type == INVTYPE_SHIELD)
+                haveShield = true;
+            if (type == INVTYPE_WEAPON || type == INVTYPE_WEAPONMAINHAND)
+                haveOnehand = true;
+        }
     }
-    return items;
+    bool const preferShield = shieldTank && haveShield && haveOnehand;
+    // Main-hand changes can make an owned shield equippable during the same pass.
+    auto mainHand = [](Item* item)
+    {
+        uint32 type = item->GetTemplate()->InventoryType;
+        return type == INVTYPE_WEAPON || type == INVTYPE_WEAPONMAINHAND || type == INVTYPE_2HWEAPON;
+    };
+    std::stable_sort(items.begin(), items.end(), [&](auto const& left, auto const& right)
+    {
+        if (mainHand(left.first) != mainHand(right.first))
+            return mainHand(left.first);
+        return left.second > right.second;
+    });
+    for (auto const& [item, score] : items)
+    {
+        if (item->IsEquipped())
+            continue;
+        uint32 type = item->GetTemplate()->InventoryType;
+        if (preferShield && type == INVTYPE_2HWEAPON)
+            continue;
+        uint8 forcedSlot = NULL_SLOT;
+        if (preferShield && (mainHand(item) || type == INVTYPE_SHIELD))
+        {
+            forcedSlot = type == INVTYPE_SHIELD ? EQUIPMENT_SLOT_OFFHAND : EQUIPMENT_SLOT_MAINHAND;
+            Item* current = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, forcedSlot);
+            if (score <= 0)
+                continue;
+            if (current && !current->IsBroken() && current->GetTemplate()->InventoryType != INVTYPE_2HWEAPON &&
+                (type != INVTYPE_SHIELD || current->GetTemplate()->InventoryType == INVTYPE_SHIELD))
+            {
+                float currentScore = calculator.CalculateItem(current->GetEntry(), current->GetItemRandomPropertyId());
+                if (score <= currentScore || score <= currentScore * sPlayerbotAIConfig.EquipUpgradeThreshold)
+                    continue;
+            }
+        }
+        std::string qualifier = std::to_string(item->GetEntry()) + "," + std::to_string(item->GetItemRandomPropertyId());
+        ItemUsage usage = AI_VALUE2(ItemUsage, "item upgrade", qualifier);
+        uint16 dest = 0;
+        InventoryResult canEquip = botAI->CanEquipItem(forcedSlot, dest, item, true, true);
+        if (canEquip != EQUIP_ERR_OK && canEquip != EQUIP_ERR_CANT_CARRY_MORE_OF_THIS)
+            continue;
+        if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
+            EquipItem(item, forcedSlot);
+        else if (forcedSlot != NULL_SLOT)
+            EquipItem(item, forcedSlot);
+    }
+    return true;
 }
 
 bool EquipUpgradesPacketAction::Execute(Event event)
@@ -403,14 +453,10 @@ bool EquipUpgradesPacketAction::Execute(Event event)
             return false;
     }
 
-    ItemIds items = SelectInventoryItemsToEquip();
-    EquipItems(items);
-    return true;
+    return EquipUpgrades();
 }
 
 bool EquipUpgradeAction::Execute(Event /*event*/)
 {
-    ItemIds items = SelectInventoryItemsToEquip();
-    EquipItems(items);
-    return true;
+    return EquipUpgrades();
 }

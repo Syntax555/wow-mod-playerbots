@@ -55,8 +55,7 @@ std::vector<uint32> WorldBuffAction::NeedWorldBuffs(Unit* unit)
     // If this is a druid in the Feral tab, decide Bear vs. Cat
     if (botClass == CLASS_DRUID && tab == 1)  // 1 = feral
     {
-        bool isBear = bot->HasTalent(16931, bot->GetActiveSpec()) ||
-                      bot->HasAura(EraKnown(bot, 16931));  // Thick Hide rank 3 (stock talent or era clone)
+        bool isBear = AiFactory::IsFeralTank(bot);
         if (!isBear)
         {
             // If not bear, then treat it as "cat" spec = 3

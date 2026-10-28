@@ -485,6 +485,14 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         bot->GetSession()->IsLoggingOut() || bot->IsDuringRemoveFromWorld())
         return;
 
+    if (combatProfileCheckDelay > elapsed)
+        combatProfileCheckDelay -= elapsed;
+    else
+    {
+        combatProfileCheckDelay = 5000;
+        RefreshCombatProfile();
+    }
+
     // Bots send no movement opcodes, so m_lastFallZ stays frozen and Player::IsFalling() (a Z test
     // against it) blocks LFG teleports. Unit::IsFalling() is the flag test, so real falls keep theirs.
     if (!bot->Unit::IsFalling())
@@ -2243,8 +2251,30 @@ Strategy* PlayerbotAI::GetStrategy(std::string const name, BotState type)
     return engines[type] ? engines[type]->GetStrategy(name) : nullptr;
 }
 
+void PlayerbotAI::RefreshCombatProfile(bool force)
+{
+    if (!bot || !aiObjectContext || !bot->IsInWorld() || bot->IsInCombat() || !bot->IsAlive() ||
+        bot->IsBeingTeleported() || !engines[BOT_STATE_COMBAT] || !engines[BOT_STATE_NON_COMBAT])
+        return;
+    std::string effective = AiFactory::GetEffectiveCombatProfile(bot);
+    if (effective.empty())
+        return;
+    std::ostringstream signature;
+    signature << AiFactory::GetCombatProfile(bot) << ':' << effective << ':' << uint32(bot->GetLevel())
+              << ':' << uint32(bot->GetActiveSpec()) << ':' << bot->GetMapId() << ':' << bool(bot->GetGroup())
+              << ':' << bot->GetSpellMap().size();
+    std::string key = signature.str();
+    bool dirty = combatProfileDirty.exchange(false, std::memory_order_relaxed);
+    if (!force && !dirty && key == combatProfileKey)
+        return;
+    AiFactory::RefreshCombatStrategies(bot, this, engines[BOT_STATE_COMBAT], engines[BOT_STATE_NON_COMBAT]);
+    combatProfileKey = key;
+    DoSpecificAction("equip upgrade", Event(), true);
+}
+
 void PlayerbotAI::ResetStrategies(bool /*load*/)
 {
+    InvalidateCombatProfile();
     for (uint8 i = 0; i < BOT_STATE_MAX; i++)
         engines[i]->removeAllStrategies();
 
@@ -2659,9 +2689,7 @@ bool PlayerbotAI::IsTank(Player* player, bool bySpec)
             }
             break;
         case CLASS_DRUID:
-            if (tab == DRUID_TAB_FERAL && (player->GetShapeshiftForm() == FORM_BEAR ||
-                                           player->GetShapeshiftForm() == FORM_DIREBEAR ||
-                                           player->HasAura(EraTalentBots_ResolveSpellId(player, 16931))))
+            if (tab == DRUID_TAB_FERAL && AiFactory::IsFeralTank(player))
             {
                 return true;
             }

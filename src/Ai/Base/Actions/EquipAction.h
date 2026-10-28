@@ -22,12 +22,12 @@ public:
 
     bool Execute(Event event) override;
     void EquipItems(ItemIds ids);
-    ItemIds SelectInventoryItemsToEquip();
+    bool EquipUpgrades();
 
 private:
     void EquipItem(FindItemVisitor* visitor);
     uint8 GetSmallestBagSlot();
-    void EquipItem(Item* item);
+    void EquipItem(Item* item, uint8 forcedSlot = NULL_SLOT);
 };
 
 class EquipUpgradesPacketAction : public EquipAction

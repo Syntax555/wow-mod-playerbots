@@ -5,6 +5,7 @@
  */
 
 #include "FeralDruidStrategy.h"
+#include "AiFactory.h"
 #include "EraTalentBridge.h"
 #include "Playerbots.h"
 
@@ -96,7 +97,7 @@ void FeralChargeDruidStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     Player* bot = botAI->GetBot();
 
-    if (bot->HasSpell(SPELL_CAT_FORM) && !bot->HasAura(EraKnown(bot, AURA_THICK_HIDE)))
+    if (bot->HasSpell(SPELL_CAT_FORM) && !AiFactory::IsFeralTank(bot))
         triggers.push_back(new TriggerNode(
             "enemy out of melee", { NextAction("feral charge - cat", 29.0f) }));
     else

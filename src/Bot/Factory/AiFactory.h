@@ -9,6 +9,7 @@
 
 #include "Common.h"
 #include <map>
+#include <vector>
 
 class AiObjectContext;
 class Engine;
@@ -30,6 +31,15 @@ public:
     static void AddDefaultDeadStrategies(Player* player, PlayerbotAI* const facade, Engine* deadEngine);
     static void AddDefaultCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* engine);
     static void AddDefaultReactionStrategies(Player* player, PlayerbotAI* const facade, ReactionEngine* reactionEngine);
+
+    static std::vector<std::string> GetCombatProfiles(uint8 cls);
+    static std::string GetCombatProfile(Player* player);
+    static std::string GetEffectiveCombatProfile(Player* player);
+    static bool SetCombatProfile(Player* player, std::string const& mode);
+    static bool IsFeralTank(Player* player);
+    static void AddClassCombatStrategies(Player* player, PlayerbotAI* facade, Engine* engine);
+    static void AddClassNonCombatStrategies(Player* player, PlayerbotAI* facade, Engine* engine);
+    static void RefreshCombatStrategies(Player* player, PlayerbotAI* facade, Engine* combat, Engine* nonCombat);
 
     static uint8 GetPlayerSpecTab(Player* player);
     static std::map<uint8, uint32> GetPlayerSpecTabs(Player* player);

@@ -20,6 +20,7 @@
 #include "CcTargetValue.h"
 #include "ChatValue.h"
 #include "CollisionValue.h"
+#include "CombatProfileValue.h"
 #include "CraftValue.h"
 #include "CurrentCcTargetValue.h"
 #include "CurrentTargetValue.h"
@@ -217,6 +218,7 @@ public:
         creators["attackers"] = &ValueContext::attackers;
         creators["invalid target"] = &ValueContext::invalid_target;
         creators["mana save level"] = &ValueContext::mana_save_level;
+        creators["combat profile"] = &ValueContext::combat_profile;
         creators["combat"] = &ValueContext::combat;
         creators["lfg proposal"] = &ValueContext::lfg_proposal;
         creators["bag space"] = &ValueContext::bag_space;
@@ -371,6 +373,7 @@ private:
     static UntypedValue* formation(PlayerbotAI* botAI) { return new FormationValue(botAI); }
     static UntypedValue* stance(PlayerbotAI* botAI) { return new StanceValue(botAI); }
     static UntypedValue* mana_save_level(PlayerbotAI* botAI) { return new ManaSaveLevelValue(botAI); }
+    static UntypedValue* combat_profile(PlayerbotAI* botAI) { return new CombatProfileValue(botAI); }
     static UntypedValue* invalid_target(PlayerbotAI* botAI) { return new InvalidTargetValue(botAI); }
     static UntypedValue* balance(PlayerbotAI* botAI) { return new BalancePercentValue(botAI); }
     static UntypedValue* attackers(PlayerbotAI* botAI) { return new AttackersValue(botAI); }

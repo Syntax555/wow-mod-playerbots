@@ -17,6 +17,7 @@
 #include "PaladinAiObjectContext.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "PlayerbotRepository.h"
 #include "Playerbots.h"
 #include "PriestAiObjectContext.h"
 #include "ReactionEngine.h"
@@ -27,6 +28,7 @@
 #include "SpellMgr.h"
 #include "WarlockAiObjectContext.h"
 #include "WarriorAiObjectContext.h"
+#include <algorithm>
 
 namespace
 {
@@ -66,8 +68,97 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* b
     return new AiObjectContext(botAI);
 }
 
+std::vector<std::string> AiFactory::GetCombatProfiles(uint8 cls)
+{
+    switch (cls)
+    {
+        case CLASS_WARRIOR: return {"auto", "arms", "fury", "prot"};
+        case CLASS_PALADIN: return {"auto", "holy", "prot", "ret"};
+        case CLASS_HUNTER: return {"auto", "bm", "mm", "surv"};
+        case CLASS_ROGUE: return {"auto", "assassin", "combat", "subtlety"};
+        case CLASS_PRIEST: return {"auto", "disc", "holy", "shadow"};
+        case CLASS_DEATH_KNIGHT: return {"auto", "blood", "frost", "unholy"};
+        case CLASS_SHAMAN: return {"auto", "ele", "enh", "resto"};
+        case CLASS_MAGE: return {"auto", "arcane", "fire", "frost"};
+        case CLASS_WARLOCK: return {"auto", "affli", "demo", "destro"};
+        case CLASS_DRUID: return {"auto", "balance", "cat", "bear", "resto"};
+        default: return {"auto"};
+    }
+}
+
+std::string AiFactory::GetCombatProfile(Player* player)
+{
+    PlayerbotAI* ai = player ? GET_PLAYERBOT_AI(player) : nullptr;
+    if (!ai || !ai->GetAiObjectContext())
+        return "auto";
+    std::string mode = ai->GetAiObjectContext()->GetValue<std::string>("combat profile")->Get();
+    auto profiles = GetCombatProfiles(player->getClass());
+    return std::find(profiles.begin(), profiles.end(), mode) != profiles.end() ? mode : "auto";
+}
+
+bool AiFactory::SetCombatProfile(Player* player, std::string const& mode)
+{
+    PlayerbotAI* ai = player ? GET_PLAYERBOT_AI(player) : nullptr;
+    if (!ai || !ai->GetAiObjectContext() || !player->IsInWorld() || !player->IsAlive() ||
+        player->IsInCombat() || player->IsBeingTeleported())
+        return false;
+    auto profiles = GetCombatProfiles(player->getClass());
+    if (std::find(profiles.begin(), profiles.end(), mode) == profiles.end())
+        return false;
+    auto value = ai->GetAiObjectContext()->GetValue<std::string>("combat profile");
+    bool changed = value->Get() != mode;
+    value->Set(mode);
+    ai->InvalidateCombatProfile();
+    ai->RefreshCombatProfile(true);
+    if (changed)
+        PlayerbotRepository::instance().Save(ai);
+    return true;
+}
+
+bool AiFactory::IsFeralTank(Player* player)
+{
+    std::string mode = GetCombatProfile(player);
+    if (mode == "cat")
+        return false;
+    if (mode == "bear")
+        return true;
+    int seeded = EraTalentBots_FeralSpec(player);
+    if (seeded >= 0)
+        return seeded == 1;
+    return player->GetShapeshiftForm() == FORM_BEAR || player->GetShapeshiftForm() == FORM_DIREBEAR ||
+           player->HasAura(EraKnown(player, SPELL_DRUID_THICK_HIDE));
+}
+
+std::string AiFactory::GetEffectiveCombatProfile(Player* player)
+{
+    if (!player)
+        return "";
+    std::string mode = GetCombatProfile(player);
+    if (mode != "auto")
+        return mode;
+    uint8 tab = GetPlayerSpecTab(player);
+    if (player->getClass() == CLASS_DRUID)
+        return tab == DRUID_TAB_BALANCE ? "balance" : tab == DRUID_TAB_RESTORATION ? "resto" :
+               IsFeralTank(player) ? "bear" : "cat";
+    if (player->getClass() == CLASS_WARRIOR && tab == WARRIOR_TAB_FURY && !player->HasSpell(SPELL_WHIRLWIND))
+        return "arms";
+    if (player->getClass() == CLASS_MAGE && tab == MAGE_TAB_FIRE &&
+        player->HasSpell(SPELL_FROSTFIRE_BOLT) && player->HasAura(SPELL_ICE_SHARDS))
+        return "frostfire";
+    auto profiles = GetCombatProfiles(player->getClass());
+    return tab + 1u < profiles.size() ? profiles[tab + 1] : "";
+}
+
 uint8 AiFactory::GetPlayerSpecTab(Player* bot)
 {
+    std::string mode = GetCombatProfile(bot);
+    if (mode != "auto")
+    {
+        if (bot->getClass() == CLASS_DRUID)
+            return mode == "balance" ? DRUID_TAB_BALANCE : mode == "resto" ? DRUID_TAB_RESTORATION : DRUID_TAB_FERAL;
+        auto profiles = GetCombatProfiles(bot->getClass());
+        return uint8(std::find(profiles.begin(), profiles.end(), mode) - profiles.begin() - 1);
+    }
     std::map<uint8, uint32> tabs = GetPlayerSpecTabs(bot);
 
     if (bot->GetLevel() >= 10 && ((tabs[0] + tabs[1] + tabs[2]) > 0))
@@ -153,51 +244,11 @@ std::map<uint8, uint32> AiFactory::GetPlayerSpecTabs(Player* bot)
 
 BotRoles AiFactory::GetPlayerRoles(Player* player)
 {
-    BotRoles role = BOT_ROLE_NONE;
-    uint8 tab = GetPlayerSpecTab(player);
-
-    switch (player->getClass())
-    {
-        case CLASS_PRIEST:
-            if (tab == PRIEST_TAB_SHADOW)
-                role = BOT_ROLE_DPS;
-            else
-                role = BOT_ROLE_HEALER;
-            break;
-        case CLASS_SHAMAN:
-            if (tab == SHAMAN_TAB_RESTORATION)
-                role = BOT_ROLE_HEALER;
-            else
-                role = BOT_ROLE_DPS;
-            break;
-        case CLASS_WARRIOR:
-            if (tab == WARRIOR_TAB_PROTECTION)
-                role = BOT_ROLE_TANK;
-            else
-                role = BOT_ROLE_DPS;
-            break;
-        case CLASS_PALADIN:
-            if (tab == PALADIN_TAB_HOLY)
-                role = BOT_ROLE_HEALER;
-            else if (tab == PALADIN_TAB_PROTECTION)
-                role = BOT_ROLE_TANK;
-            else if (tab == PALADIN_TAB_RETRIBUTION)
-                role = BOT_ROLE_DPS;
-            break;
-        case CLASS_DRUID:
-            if (tab == DRUID_TAB_BALANCE)
-                role = BOT_ROLE_DPS;
-            else if (tab == DRUID_TAB_FERAL)
-                role = (BotRoles)(BOT_ROLE_TANK | BOT_ROLE_DPS);
-            else if (tab == DRUID_TAB_RESTORATION)
-                role = BOT_ROLE_HEALER;
-            break;
-        default:
-            role = BOT_ROLE_DPS;
-            break;
-    }
-
-    return role;
+    if (PlayerbotAI::IsTank(player, true))
+        return BOT_ROLE_TANK;
+    if (PlayerbotAI::IsHeal(player, true))
+        return BOT_ROLE_HEALER;
+    return BOT_ROLE_DPS;
 }
 
 std::string AiFactory::GetPlayerSpecName(Player* player)
@@ -293,17 +344,9 @@ std::string AiFactory::GetPlayerSpecName(Player* player)
     return specName;
 }
 
-void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* engine)
+void AiFactory::AddClassCombatStrategies(Player* player, PlayerbotAI* const /*facade*/, Engine* engine)
 {
     uint8 tab = GetPlayerSpecTab(player);
-
-    if (!player->InBattleground())
-        engine->addStrategiesNoInit("racials", "chat", "default", "cast time", "potions", "duel", "boost", nullptr);
-
-    if (sPlayerbotAIConfig.AutoAvoidAoe && facade->HasGameClientMaster())
-        engine->addStrategy("avoid aoe", false);
-
-    engine->addStrategy("formation", false);
 
     switch (player->getClass())
     {
@@ -322,7 +365,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
                 engine->addStrategiesNoInit("arcane", "bdps", nullptr);
             else if (tab == MAGE_TAB_FIRE)
             {
-                if (player->HasSpell(SPELL_FROSTFIRE_BOLT) && player->HasAura(SPELL_ICE_SHARDS))
+                if (GetEffectiveCombatProfile(player) == "frostfire")
                     engine->addStrategiesNoInit("frostfire", "bdps", nullptr);
                 else
                     engine->addStrategiesNoInit("fire", "bdps", nullptr);
@@ -335,7 +378,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
         case CLASS_WARRIOR:
             if (tab == WARRIOR_TAB_PROTECTION)
                 engine->addStrategiesNoInit("prot", "tank assist", "pull", "pull back", "aoe", nullptr);
-            else if (tab == WARRIOR_TAB_ARMS || !player->HasSpell(SPELL_WHIRLWIND))
+            else if (GetEffectiveCombatProfile(player) == "arms")
                 engine->addStrategiesNoInit("arms", "aoe", "dps assist", nullptr);
             else // if (tab == WARRIOR_TAB_FURY)
                 engine->addStrategiesNoInit("fury", "aoe", "dps assist", nullptr);
@@ -369,7 +412,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
                 engine->addStrategiesNoInit("resto", "cure", "dps assist", "tranquility", nullptr);
             else
             {
-                if (player->HasSpell(SPELL_CAT_FORM) && !player->HasAura(EraKnown(player, SPELL_DRUID_THICK_HIDE)))
+                if (!IsFeralTank(player) && player->HasSpell(SPELL_CAT_FORM))
                     engine->addStrategiesNoInit("cat", "aoe", "cc", "dps assist", "feral charge", nullptr);
                 else
                     engine->addStrategiesNoInit("bear", "tank assist", "pull", "pull back", "feral charge", nullptr);
@@ -468,6 +511,137 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             }
         }
     }
+}
+
+void AiFactory::AddClassNonCombatStrategies(Player* player, PlayerbotAI* const /*facade*/, Engine* nonCombatEngine)
+{
+    uint8 tab = GetPlayerSpecTab(player);
+
+    switch (player->getClass())
+    {
+        case CLASS_PRIEST:
+            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", "rshadow", nullptr);
+            break;
+        case CLASS_PALADIN:
+            if (tab == PALADIN_TAB_PROTECTION)
+            {
+                nonCombatEngine->addStrategiesNoInit("bthreat", "tank assist", "pull", "barmor", nullptr);
+                if (player->GetLevel() >= 20)
+                    nonCombatEngine->addStrategy("bsanc", false);
+                else
+                    nonCombatEngine->addStrategy("bmight", false);
+            }
+            else if (tab == PALADIN_TAB_HOLY)
+                nonCombatEngine->addStrategiesNoInit("dps assist", "bwisdom", "bcast", nullptr);
+            else
+                nonCombatEngine->addStrategiesNoInit("dps assist", "bmight", "baoe", nullptr);
+
+            nonCombatEngine->addStrategiesNoInit("cure", nullptr);
+            break;
+        case CLASS_HUNTER:
+            nonCombatEngine->addStrategiesNoInit("bdps", "dps assist", "pet", nullptr);
+            break;
+        case CLASS_SHAMAN:
+            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
+            break;
+        case CLASS_MAGE:
+            if (tab == MAGE_TAB_ARCANE || tab == MAGE_TAB_FIRE)
+                nonCombatEngine->addStrategy("bdps", false);
+            else
+                nonCombatEngine->addStrategy("bmana", false);
+
+            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
+            break;
+        case CLASS_DRUID:
+            if (tab == DRUID_TAB_FERAL)
+            {
+                if (!IsFeralTank(player) && player->HasSpell(SPELL_CAT_FORM))
+                    nonCombatEngine->addStrategy("dps assist", false);
+                else
+                    nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
+            }
+            else
+                nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
+            break;
+        case CLASS_WARRIOR:
+            if (tab == WARRIOR_TAB_PROTECTION)
+                nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
+            else
+                nonCombatEngine->addStrategy("dps assist", false);
+            break;
+        case CLASS_WARLOCK:
+        {
+            // Historical warlock stones use equipment slots, rather than bag-use actions.
+            uint32 eraTabs[3] = {0, 0, 0};
+            bool eraManaged = EraTalentBots_SpecTabs(player, eraTabs);
+            if (tab == WARLOCK_TAB_AFFLICTION)
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("felhunter", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("felhunter", "spellstone", nullptr);
+            else if (tab == WARLOCK_TAB_DEMONOLOGY)
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("felguard", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("felguard", "spellstone", nullptr);
+            else if (tab == WARLOCK_TAB_DESTRUCTION)
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("imp", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("imp", "firestone", nullptr);
+
+            nonCombatEngine->addStrategiesNoInit("dps assist", "ss self", nullptr);
+            break;
+        }
+        case CLASS_DEATH_KNIGHT:
+            if (tab == DEATH_KNIGHT_TAB_BLOOD)
+                nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
+            else
+                nonCombatEngine->addStrategy("dps assist", false);
+            break;
+        default:
+            nonCombatEngine->addStrategy("dps assist", false);
+            break;
+    }
+
+    if (sPlayerbotAIConfig.AutoSaveMana && PlayerbotAI::IsHeal(player, true))
+        nonCombatEngine->addStrategy("save mana", false);
+
+}
+
+void AiFactory::RefreshCombatStrategies(Player* player, PlayerbotAI* facade, Engine* combat, Engine* nonCombat)
+{
+    // Only class and role defaults belong to a profile; user travel, loot and instance choices stay.
+    static char const* const managed[] = {
+        "affli", "aoe", "arcane", "arms", "assassin", "balance", "baoe",
+        "barmor", "bcast", "bdps", "bear", "behind", "blood", "bm",
+        "bmana", "bmight", "bsanc", "bthreat", "bwisdom", "caster aoe", "cat",
+        "cc", "combat", "cure", "curse of agony", "curse of elements", "demo", "destro",
+        "disc", "dps assist", "ele", "enh", "felguard", "felhunter", "feral charge",
+        "fire", "firestone", "flametongue", "frost", "frost aoe", "frostfire", "fury",
+        "healer dps", "healing stream", "holy", "holy dps", "holy heal", "imp", "magma",
+        "mana spring", "meta melee", "mm", "pet", "prot", "pull", "pull back",
+        "resto", "ret", "rshadow", "save mana", "shadow", "shadow aoe", "shadow debuff",
+        "spellstone", "ss self", "stoneskin", "strength of earth", "surv", "tank assist", "tank face",
+        "tranquility", "unholy", "unholy aoe", "windfury", "wrath", "wrath of air",
+    };
+    for (char const* name : managed)
+    {
+        combat->removeStrategy(name, false);
+        nonCombat->removeStrategy(name, false);
+    }
+    AddClassCombatStrategies(player, facade, combat);
+    AddClassNonCombatStrategies(player, facade, nonCombat);
+    combat->Init();
+    nonCombat->Init();
+}
+
+void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* engine)
+{
+    if (!player->InBattleground())
+        engine->addStrategiesNoInit("racials", "chat", "default", "cast time", "potions", "duel", "boost", nullptr);
+
+    if (sPlayerbotAIConfig.AutoAvoidAoe && facade->HasGameClientMaster())
+        engine->addStrategy("avoid aoe", false);
+
+    engine->addStrategy("formation", false);
+
+    AddClassCombatStrategies(player, facade, engine);
+
     if (sRandomPlayerbotMgr.IsRandomBot(player))
         engine->ChangeStrategy(sPlayerbotAIConfig.RandomBotCombatStrategies);
     else
@@ -519,97 +693,13 @@ Engine* AiFactory::createCombatEngine(Player* player, PlayerbotAI* const facade,
 
 void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* nonCombatEngine)
 {
-    uint8 tab = GetPlayerSpecTab(player);
-
-    switch (player->getClass())
-    {
-        case CLASS_PRIEST:
-            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", "rshadow", nullptr);
-            break;
-        case CLASS_PALADIN:
-            if (tab == PALADIN_TAB_PROTECTION)
-            {
-                nonCombatEngine->addStrategiesNoInit("bthreat", "tank assist", "pull", "barmor", nullptr);
-                if (player->GetLevel() >= 20)
-                    nonCombatEngine->addStrategy("bsanc", false);
-                else
-                    nonCombatEngine->addStrategy("bmight", false);
-            }
-            else if (tab == PALADIN_TAB_HOLY)
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bwisdom", "bcast", nullptr);
-            else
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bmight", "baoe", nullptr);
-
-            nonCombatEngine->addStrategiesNoInit("cure", nullptr);
-            break;
-        case CLASS_HUNTER:
-            nonCombatEngine->addStrategiesNoInit("bdps", "dps assist", "pet", nullptr);
-            break;
-        case CLASS_SHAMAN:
-            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
-            break;
-        case CLASS_MAGE:
-            if (tab == MAGE_TAB_ARCANE || tab == MAGE_TAB_FIRE)
-                nonCombatEngine->addStrategy("bdps", false);
-            else
-                nonCombatEngine->addStrategy("bmana", false);
-
-            nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
-            break;
-        case CLASS_DRUID:
-            if (tab == DRUID_TAB_FERAL)
-            {
-                if (player->GetLevel() >= 20 && !player->HasAura(EraKnown(player, SPELL_DRUID_THICK_HIDE)))
-                    nonCombatEngine->addStrategy("dps assist", false);
-                else
-                    nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
-            }
-            else
-                nonCombatEngine->addStrategiesNoInit("dps assist", "cure", nullptr);
-            break;
-        case CLASS_WARRIOR:
-            if (tab == WARRIOR_TAB_PROTECTION)
-                nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
-            else
-                nonCombatEngine->addStrategy("dps assist", false);
-            break;
-        case CLASS_WARLOCK:
-        {
-            // Historical warlock stones use equipment slots, rather than bag-use actions.
-            uint32 eraTabs[3] = {0, 0, 0};
-            bool eraManaged = EraTalentBots_SpecTabs(player, eraTabs);
-            if (tab == WARLOCK_TAB_AFFLICTION)
-                eraManaged ? nonCombatEngine->addStrategiesNoInit("felhunter", nullptr)
-                           : nonCombatEngine->addStrategiesNoInit("felhunter", "spellstone", nullptr);
-            else if (tab == WARLOCK_TAB_DEMONOLOGY)
-                eraManaged ? nonCombatEngine->addStrategiesNoInit("felguard", nullptr)
-                           : nonCombatEngine->addStrategiesNoInit("felguard", "spellstone", nullptr);
-            else if (tab == WARLOCK_TAB_DESTRUCTION)
-                eraManaged ? nonCombatEngine->addStrategiesNoInit("imp", nullptr)
-                           : nonCombatEngine->addStrategiesNoInit("imp", "firestone", nullptr);
-
-            nonCombatEngine->addStrategiesNoInit("dps assist", "ss self", nullptr);
-            break;
-        }
-        case CLASS_DEATH_KNIGHT:
-            if (tab == DEATH_KNIGHT_TAB_BLOOD)
-                nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
-            else
-                nonCombatEngine->addStrategy("dps assist", false);
-            break;
-        default:
-            nonCombatEngine->addStrategy("dps assist", false);
-            break;
-    }
+    AddClassNonCombatStrategies(player, facade, nonCombatEngine);
 
     if (!player->InBattleground())
     {
         nonCombatEngine->addStrategiesNoInit("nc", "food", "chat", "follow", "default", "force rebuff", "quest", "loot",
                                             "gather", "duel", "pvp", "buff", "mount", "emote", nullptr);
     }
-
-    if (sPlayerbotAIConfig.AutoSaveMana && PlayerbotAI::IsHeal(player, true))
-        nonCombatEngine->addStrategy("save mana", false);
 
     if ((sRandomPlayerbotMgr.IsRandomBot(player)) && !player->InBattleground())
     {

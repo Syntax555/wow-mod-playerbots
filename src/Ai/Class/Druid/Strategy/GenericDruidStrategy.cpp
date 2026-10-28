@@ -63,7 +63,7 @@ void GenericDruidStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     if (tab == DRUID_TAB_FERAL)
     {
-        if (!bot->HasAura(EraKnown(bot, 16931)) /*thick hide (stock or era clone) — bear spec*/)
+        if (!AiFactory::IsFeralTank(bot))
         {
             triggers.push_back(new TriggerNode("predator's swiftness and combat party member dead",
                                                { NextAction("rebirth", 29.0f) }));
@@ -126,7 +126,7 @@ void DruidCcStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     }
     if (tab == DRUID_TAB_FERAL)
     {
-        if (bot->HasSpell(SPELL_CAT_FORM) && !bot->HasAura(EraKnown(bot, AURA_THICK_HIDE)))
+        if (bot->HasSpell(SPELL_CAT_FORM) && !AiFactory::IsFeralTank(bot))
         {
             triggers.push_back(new TriggerNode(
                 "predator's swiftness and cyclone", { NextAction("cyclone on cc", 42.0f) }));
@@ -182,7 +182,7 @@ void DruidAoeStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         triggers.push_back(new TriggerNode("moonfire on attacker", { NextAction("moonfire on attacker", 5.1f) }));
     }
 
-    if (tab == DRUID_TAB_FERAL && bot->HasSpell(SPELL_CAT_FORM) && !bot->HasAura(EraKnown(bot, AURA_THICK_HIDE)))
+    if (tab == DRUID_TAB_FERAL && bot->HasSpell(SPELL_CAT_FORM) && !AiFactory::IsFeralTank(bot))
     {
         triggers.push_back(new TriggerNode("clearcasting and medium aoe", { NextAction("swipe (cat)", 25.5f) }));
         triggers.push_back(new TriggerNode("medium aoe", { NextAction("swipe (cat)", 25.0f) }));

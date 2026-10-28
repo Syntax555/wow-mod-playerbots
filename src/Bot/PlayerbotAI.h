@@ -442,6 +442,8 @@ public:
     bool HasStrategy(std::string const name, BotState type);
     BotState GetState() { return currentState; };
     void ResetStrategies(bool load = false);
+    void RefreshCombatProfile(bool force = false);
+    void InvalidateCombatProfile() { combatProfileDirty.store(true, std::memory_order_relaxed); }
     void ReInitCurrentEngine();
     void Reset(bool full = false);
     void LeaveOrDisbandGroup();
@@ -653,6 +655,9 @@ public:
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
 
 private:
+    std::atomic_bool combatProfileDirty = true;
+    std::string combatProfileKey;
+    uint32 combatProfileCheckDelay = 0;
     std::map<uint16, std::string> _masterTaxiPacketHandlers;
     std::optional<WorldPacket> _pendingMasterTaxiPacket;
     std::mutex _masterTaxiPacketMutex;

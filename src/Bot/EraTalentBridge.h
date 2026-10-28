@@ -14,6 +14,7 @@ class Player;
 uint32 EraTalentBots_ResolveSpellId(Player* bot, uint32 stockSpellId);
 bool EraTalentBots_SpecTabs(Player* bot, uint32* tabs3);
 bool EraTalentBots_FactoryReconcile(Player* bot, int specTab);
+int EraTalentBots_FeralSpec(Player* bot);
 
 // Resolve only known stock spells or their earned historical variants.
 inline uint32 EraKnown(Player* bot, uint32 spellId) { return EraTalentBots_ResolveSpellId(bot, spellId); }
