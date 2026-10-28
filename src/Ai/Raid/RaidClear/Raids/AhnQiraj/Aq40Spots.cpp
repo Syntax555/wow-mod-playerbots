@@ -377,7 +377,7 @@ namespace
         return BugWant(bot, want);
     }
 
-    float SpotNear(SpotWant const& want) { return want.tank ? Spots::TANK_NEAR : Spots::NEAR; }
+    float SpotNear(SpotWant const& want) { return want.tank ? Spots::TANK_NEAR : Spots::SPOT_NEAR; }
 
     // Skeram himself, landed on this off-tank's platform (it is standing on it) and not on a tank:
     // the off-tank takes him before he Earth Shocks whoever he is on.

@@ -1314,9 +1314,9 @@ namespace
         Unit* best = nullptr;
         for (Unit* down : hounds.down)
         {
-            std::list<Creature*> near;
-            down->GetCreaturesWithEntryInRange(near, CORE_HOUND_LINK_RANGE, NPC_CORE_HOUND);
-            for (Creature* hound : near)
+            std::list<Creature*> nearbyHounds;
+            down->GetCreaturesWithEntryInRange(nearbyHounds, CORE_HOUND_LINK_RANGE, NPC_CORE_HOUND);
+            for (Creature* hound : nearbyHounds)
             {
                 if (hound == down || !hound->IsAlive() || !hound->IsInCombat() || hound->HasAura(SPELL_PLAY_DEAD) ||
                     !down->IsWithinLOSInMap(hound) || !bot->IsValidAttackTarget(hound))

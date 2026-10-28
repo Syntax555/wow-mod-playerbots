@@ -22,11 +22,11 @@ class Unit;
 
 namespace RaidClear::Spots
 {
-    // A tank holds within TANK_NEAR of its spot, a caster or healer within NEAR of its own place
+    // A tank holds within TANK_NEAR of its spot, a caster or healer within SPOT_NEAR of its own place
     // round the spot (bots spread up to SCATTER round it). Within HOLD nothing but the raid
     // mechanics walks it away.
     constexpr float TANK_NEAR = 2.0f;
-    constexpr float NEAR = 3.5f;
+    constexpr float SPOT_NEAR = 3.5f;
     constexpr float SCATTER = 3.0f;
     constexpr float HOLD = 8.0f;
 
