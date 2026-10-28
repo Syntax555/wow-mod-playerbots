@@ -1157,7 +1157,8 @@ bool QuestRelationTravelDestination::isActive(Player* bot)
         if (getPoints().front()->GetMapId() != bot->GetMapId())
             return false;
 
-        if (!bot->GetMap()->GetEntry()->IsWorldMap() || !bot->CanTakeQuest(questTemplate, false))
+        if (!bot->GetMap()->GetEntry()->IsWorldMap() || !bot->CanTakeQuest(questTemplate, false) ||
+            sPlayerbotAIConfig.IgnoredQuests.contains(questTemplate->GetQuestId()))
             return false;
 
         //uint32 dialogStatus = TravelMgr::instance().getDialogStatus(bot, entry, questTemplate); //not used, shadowed by the next declaration, line marked for removal.
@@ -4609,7 +4610,8 @@ std::vector<WorldLocation> TravelMgr::GetValidQuestGiverLocations(Player* bot)
             continue;
         if (bot->GetQuestStatus(cand.questId) != QUEST_STATUS_NONE)
             continue;
-        if (!bot->CanTakeQuest(quest, false) || !bot->CanAddQuest(quest, false))
+        if (!bot->CanTakeQuest(quest, false) || !bot->CanAddQuest(quest, false) ||
+            sPlayerbotAIConfig.IgnoredQuests.contains(cand.questId))
             continue;
 
         // The team bucket only guarantees the right side: neutral and friendly spawns are both

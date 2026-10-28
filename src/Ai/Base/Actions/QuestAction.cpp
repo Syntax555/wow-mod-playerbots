@@ -223,7 +223,7 @@ bool QuestAction::CanAcceptQuest(Player* bot, Quest const* quest)
         return false;
 
     // Core eligibility: level/race/class/reputation/chain/conditions/...
-    if (!bot->CanTakeQuest(quest, false))
+    if (!bot->CanTakeQuest(quest, false) || sPlayerbotAIConfig.IgnoredQuests.contains(quest->GetQuestId()))
         return false;
 
     // Never accept grey quests (well below the bot's level), same band as QuestValues.cpp.
@@ -243,7 +243,7 @@ bool QuestAction::AcceptQuest(Quest const* quest, ObjectGuid questGiver)
 
     if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
         out << "Already completed";
-    else if (!bot->CanTakeQuest(quest, false))
+    else if (!bot->CanTakeQuest(quest, false) || sPlayerbotAIConfig.IgnoredQuests.contains(questId))
     {
         if (!bot->SatisfyQuestStatus(quest, false))
             out << "Already on";

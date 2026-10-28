@@ -572,6 +572,9 @@ uint32 NewRpgBaseAction::BestRewardIndex(Quest const* quest)
 
 bool NewRpgBaseAction::IsQuestWorthDoing(Quest const* quest)
 {
+    if (sPlayerbotAIConfig.IgnoredQuests.contains(quest->GetQuestId()))
+        return false;
+
     bool isLowLevelQuest =
         bot->GetLevel() > (bot->GetQuestLevel(quest) + sWorld->getIntConfig(CONFIG_QUEST_LOW_LEVEL_HIDE_DIFF));
 

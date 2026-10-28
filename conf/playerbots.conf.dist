@@ -500,6 +500,12 @@ Playerbots.SyncQuestForPlayer = 0
 # Default: 1 (enabled)
 Playerbots.DropObsoleteQuests = 1
 
+# Quests bots never take (comma-separated list of quest IDs): not picked up on their own, not
+# copied from the master and not accepted when shared. For quests bots can't do, such as a
+# module's profession quests that only show for characters who know that profession.
+# Default: "" (none)
+Playerbots.IgnoredQuests = ""
+
 #
 #
 ####################################################################################################

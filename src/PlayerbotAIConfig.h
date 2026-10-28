@@ -142,6 +142,7 @@ public:
     bool TellWhenAvoidAoe;
     std::set<uint32> DisallowedGameObjects;
     std::set<uint32> AttunementQuests;
+    std::set<uint32> IgnoredQuests;
     std::set<uint32> UnobtainableItems;
 
     uint32 OpenGoSpell;

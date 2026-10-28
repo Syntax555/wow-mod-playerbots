@@ -11,6 +11,9 @@
 #include "Mail.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#if __has_include("ChallengesApi.h")
+#include "ChallengesApi.h"
+#endif
 
 bool SendMailAction::Execute(Event event)
 {
@@ -53,6 +56,28 @@ bool SendMailAction::Execute(Event event)
                      LANG_UNIVERSAL, tellTo);
         return false;
     }
+
+#if __has_include("ChallengesApi.h")
+    // mod-challenges: a Self-Found character takes no mail from other characters. The bot builds
+    // its mail itself, so the core's send-mail hook never sees it.
+    if (Challenges::IsSelfFound(receiver->GetGUID().GetCounter()))
+    {
+        bot->Whisper(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                         "send_mail_self_found", "You are Self-Found: I can't send you anything", {}),
+                     LANG_UNIVERSAL, tellTo);
+        return false;
+    }
+
+    // Hardcore: mail only between characters within a few levels of each other.
+    if (!Challenges::InLevelRange(bot->GetGUID().GetCounter(), bot->GetLevel(), receiver->GetGUID().GetCounter(),
+                                  receiver->GetLevel()))
+    {
+        bot->Whisper(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                         "send_mail_hardcore", "We are too many levels apart for Hardcore: I can't send you anything", {}),
+                     LANG_UNIVERSAL, tellTo);
+        return false;
+    }
+#endif
 
     if (!mailboxFound && !randomBot)
     {
