@@ -937,6 +937,53 @@ std::vector<uint32> parseBrackets(std::string const& str)
     return brackets;
 }
 
+static void RecordEarnedBattlegroundQueue(EarnedBattlegroundQueueState& state, Player* player,
+                                          BattlegroundQueueTypeId queue, BattlegroundBracketId bracket)
+{
+    uint32 instanceId = 0;
+    bool waiting = false;
+    Battleground* active = player->GetBattleground(true);
+    if (active && BattlegroundMgr::BGQueueTypeId(active->GetBgTypeID(), active->GetArenaType()) == queue)
+    {
+        if (active->GetStatus() == STATUS_WAIT_LEAVE)
+            return;
+        instanceId = active->GetInstanceID();
+    }
+    else
+    {
+        GroupQueueInfo info;
+        if (!sBattlegroundMgr->GetBattlegroundQueue(queue).GetPlayerGroupInfoData(player->GetGUID(), &info))
+            return;
+
+        if (info.IsInvitedToBGInstanceGUID)
+        {
+            Battleground* invited =
+                sBattlegroundMgr->GetBattleground(info.IsInvitedToBGInstanceGUID, BattlegroundMgr::BGTemplateId(queue));
+            if (!invited || invited->GetStatus() == STATUS_WAIT_LEAVE)
+                return;
+            instanceId = invited->GetInstanceID();
+        }
+        else
+            waiting = true;
+    }
+    state.Record(queue, bracket, GetPlayerbotBattlegroundEra(player), player->GetTeamId(),
+                 player->GetSession()->IsHeadless(), waiting, instanceId);
+}
+
+bool RandomPlayerbotMgr::ShouldFillEarnedBattleground(Player* bot, BattlegroundQueueTypeId queue,
+                                                      BattlegroundBracketId bracket, uint32 teamSize) const
+{
+    auto state = _earnedBattlegroundQueue.load();
+    return bot && state->NeedsPlayer(queue, bracket, GetPlayerbotBattlegroundEra(bot), bot->GetTeamId(), teamSize);
+}
+
+bool RandomPlayerbotMgr::TryReserveEarnedBattleground(Player* bot, BattlegroundQueueTypeId queue,
+                                                      BattlegroundBracketId bracket, uint32 count, uint32 teamSize)
+{
+    return bot && _earnedBattlegroundQueue.load()->TryReserve(queue, bracket, GetPlayerbotBattlegroundEra(bot),
+                                                              bot->GetTeamId(), count, teamSize);
+}
+
 void RandomPlayerbotMgr::CheckBgQueue()
 {
     if (!BgCheckTimer)
@@ -954,6 +1001,9 @@ void RandomPlayerbotMgr::CheckBgQueue()
     BgCheckTimer = time(nullptr);
 
     LOG_DEBUG("playerbots", "Checking BG Queue...");
+
+    auto earnedQueue =
+        sPlayerbotAIConfig.earnedEraBattlegrounds ? std::make_shared<EarnedBattlegroundQueueState>() : nullptr;
 
     // Initialize Battleground Data (do not clear here)
 
@@ -1000,7 +1050,8 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
-            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+            if (!IsPlayerbotBattlegroundQueueAllowed(player, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
                 continue;
 
             // Check if real player is able to create/join this queue
@@ -1018,6 +1069,9 @@ void RandomPlayerbotMgr::CheckBgQueue()
             BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
             BattlegroundData[queueTypeId][bracketId].minLevel = pvpDiff->minLevel;
             BattlegroundData[queueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
+
+            if (sPlayerbotAIConfig.earnedEraBattlegrounds)
+                RecordEarnedBattlegroundQueue(*earnedQueue, player, queueTypeId, bracketId);
 
             // Arena logic
             bool isRated = false;
@@ -1104,7 +1158,8 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
-            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+            if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
                 continue;
 
             BattlegroundTypeId bgTypeId = sBattlegroundMgr->BGTemplateId(queueTypeId);
@@ -1120,6 +1175,9 @@ void RandomPlayerbotMgr::CheckBgQueue()
             BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
             BattlegroundData[queueTypeId][bracketId].minLevel = pvpDiff->minLevel;
             BattlegroundData[queueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
+
+            if (sPlayerbotAIConfig.earnedEraBattlegrounds)
+                RecordEarnedBattlegroundQueue(*earnedQueue, bot, queueTypeId, bracketId);
 
             if (BattlegroundMgr::BGArenaType(queueTypeId))
             {
@@ -1222,6 +1280,7 @@ void RandomPlayerbotMgr::CheckBgQueue()
         auto updateRatedArenaInstanceCount = [&](uint32 queueType, uint32 bracket, uint32 minCount)
         {
             if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     sPlayerbotAIConfig.earnedEraBattlegrounds,
                                                      BattlegroundQueueTypeId(queueType)))
                 return;
 
@@ -1234,6 +1293,7 @@ void RandomPlayerbotMgr::CheckBgQueue()
         auto updateBGInstanceCount = [&](uint32 queueType, std::vector<uint32> brackets, uint32 minCount)
         {
             if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     sPlayerbotAIConfig.earnedEraBattlegrounds,
                                                      BattlegroundQueueTypeId(queueType)))
                 return;
 
@@ -1263,6 +1323,8 @@ void RandomPlayerbotMgr::CheckBgQueue()
         updateBGInstanceCount(BATTLEGROUND_QUEUE_WS, wsBrackets, randomBotAutoJoinBGWSCount);
     }
 
+    if (earnedQueue)
+        _earnedBattlegroundQueue.store(std::move(earnedQueue));
     LogBattlegroundInfo();
 }
 

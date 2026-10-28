@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_RANDOMPLAYERBOTMGR_H
 #define PLAYERBOTS_RANDOMPLAYERBOTMGR_H
 
+#include "EarnedBattlegroundQueueState.h"
 #include "GameTime.h"
 #include "NewRpgInfo.h"
 #include "ObjectGuid.h"
@@ -187,6 +188,10 @@ public:
     std::map<uint32, std::map<uint32, std::map<uint32, uint32>>> Supporters;
     std::map<TeamId, std::vector<uint32>> LfgDungeons;
     void CheckBgQueue();
+    bool ShouldFillEarnedBattleground(Player* bot, BattlegroundQueueTypeId queue, BattlegroundBracketId bracket,
+                                      uint32 teamSize) const;
+    bool TryReserveEarnedBattleground(Player* bot, BattlegroundQueueTypeId queue, BattlegroundBracketId bracket,
+                                      uint32 count, uint32 teamSize);
     void CheckLfgQueue();
     void CheckPlayers();
     void LogBattlegroundInfo();
@@ -214,6 +219,9 @@ protected:
     void OnBotLoginInternal(Player* const bot) override;
 
 private:
+    std::atomic<std::shared_ptr<EarnedBattlegroundQueueState>> _earnedBattlegroundQueue{
+        std::make_shared<EarnedBattlegroundQueueState>()};
+
     RandomPlayerbotMgr() : PlayerbotHolder()
     {
         this->playersLevel = sPlayerbotAIConfig.RandomBotStartingLevel;

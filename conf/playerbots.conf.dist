@@ -1717,6 +1717,13 @@ Playerbots.AllowBattlegroundCommands = 0
 # Existing matches may finish. Disable when opening later-expansion PvP.
 Playerbots.VanillaBattlegroundsOnly = 0
 
+# Use earned Individual Progression tiers and native level brackets for bot PvP.
+# Fills real players' queues within the same era: Vanilla WS/AB/AV, TBC Eye of
+# the Storm and Wrath Isle of Conquest. Requires the portable earned IP patch.
+# Bot arenas, random battlegrounds and unsupported Strand of the Ancients stay
+# disabled. No character levels, progression, gear or gold are granted.
+Playerbots.EarnedEraBattlegrounds = 0
+
 # Enable auto-joining of battlegrounds - have bots start battlegrounds and arenas on their own
 Playerbots.RandomBotAutoJoinBG = 0
 

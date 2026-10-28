@@ -27,7 +27,8 @@ bool BGJoinAction::Execute(Event /*event*/)
             return false;
 
         BattlegroundQueueTypeId queueTypeId = (BattlegroundQueueTypeId)bgList[urand(0, bgList.size() - 1)];
-        if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+        if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                 sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
             return false;
 
         BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
@@ -65,7 +66,8 @@ bool BGJoinAction::Execute(Event /*event*/)
 
 bool BGJoinAction::gatherArenaTeam(ArenaType type)
 {
-    if (sPlayerbotAIConfig.vanillaBattlegroundsOnly)
+    if (sPlayerbotAIConfig.vanillaBattlegroundsOnly || sPlayerbotAIConfig.earnedEraBattlegrounds ||
+        sPlayerbotAIConfig.naturalProgression)
         return false;
 
     ArenaTeam* arenateam = sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type);
@@ -209,7 +211,8 @@ bool BGJoinAction::gatherArenaTeam(ArenaType type)
 
 bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
-    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                             sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
         return false;
 
     // check if bot can join this bracket for the specific Battleground/Arena type
@@ -243,7 +246,8 @@ bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBr
 
 bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
-    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                             sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
         return false;
 
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
@@ -309,6 +313,9 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
 
         return false;
     }
+
+    if (sPlayerbotAIConfig.earnedEraBattlegrounds)
+        return sRandomPlayerbotMgr.ShouldFillEarnedBattleground(bot, queueTypeId, bracketId, TeamSize);
 
     // Check if bots should join Battleground
     uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
@@ -412,7 +419,8 @@ bool BGJoinAction::JoinQueue(uint32 type)
 
     // get BG TypeId
     BattlegroundQueueTypeId queueTypeId = BattlegroundQueueTypeId(type);
-    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                             sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
     {
         botAI->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
         botAI->GetAiObjectContext()->GetValue<uint32>("arena type")->Set(0);
@@ -475,6 +483,24 @@ bool BGJoinAction::JoinQueue(uint32 type)
     // sRandomPlayerbotMgr.Refresh(bot);
 
     bool joinAsGroup = bot->GetGroup() && bot->GetGroup()->GetLeaderGUID() == bot->GetGUID();
+    uint32 queuedMembers = joinAsGroup ? bot->GetGroup()->GetMembersCount() : 1;
+
+    if (joinAsGroup && sPlayerbotAIConfig.earnedEraBattlegrounds)
+    {
+        uint8 era = GetPlayerbotBattlegroundEra(bot);
+        for (GroupReference* ref = bot->GetGroup()->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || GetPlayerbotBattlegroundEra(member) != era ||
+                !IsPlayerbotBattlegroundQueueAllowed(member, sPlayerbotAIConfig.vanillaBattlegroundsOnly, true,
+                                                     queueTypeId))
+                return false;
+
+            PvPDifficultyEntry const* memberBracket = GetBattlegroundBracketByLevel(mapId, member->GetLevel());
+            if (!memberBracket || memberBracket->GetBracketId() != bracketId)
+                return false;
+        }
+    }
 
     // in wotlk only arena requires battlemaster guid
     // ObjectGuid guid = isArena ? unit->GetGUID() : bot->GetGUID(); //not used, line marked for removal.
@@ -533,6 +559,14 @@ bool BGJoinAction::JoinQueue(uint32 type)
         }
     }
 
+    if (sPlayerbotAIConfig.earnedEraBattlegrounds && !botAI->HasGameClientMaster() &&
+        !sRandomPlayerbotMgr.TryReserveEarnedBattleground(bot, queueTypeId, bracketId, queuedMembers,
+                                                          bg->GetMaxPlayersPerTeam()))
+    {
+        botAI->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
+        return false;
+    }
+
     LOG_INFO("playerbots", "Bot {} {}:{} <{}> queued {} {}", bot->GetGUID().ToString().c_str(),
              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str(), _bgType.c_str(),
              isRated   ? "Rated Arena"
@@ -583,7 +617,8 @@ bool BGJoinAction::JoinQueue(uint32 type)
 // Not sure if this has ever worked, but it should be similar to BGJoinAction::shouldJoinBg
 bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
-    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    if (!IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                             sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
         return false;
 
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
@@ -650,6 +685,9 @@ bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battleg
 
         return false;
     }
+
+    if (sPlayerbotAIConfig.earnedEraBattlegrounds)
+        return sRandomPlayerbotMgr.ShouldFillEarnedBattleground(bot, queueTypeId, bracketId, TeamSize);
 
     // Check if bots should join Battleground
     uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
@@ -835,7 +873,8 @@ bool BGStatusAction::Execute(Event event)
         return false;
 
     if ((statusid == STATUS_WAIT_QUEUE || statusid == STATUS_WAIT_JOIN) &&
-        !IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+        !IsPlayerbotBattlegroundQueueAllowed(bot, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                             sPlayerbotAIConfig.earnedEraBattlegrounds, queueTypeId))
     {
         WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
         packet << uint8(BattlegroundMgr::BGArenaType(queueTypeId)) << uint8(0) << uint32(_bgTypeId) << uint16(0x1F90)

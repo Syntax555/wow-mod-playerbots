@@ -114,6 +114,7 @@ public:
     std::atomic<std::shared_ptr<EarnedLevelBracketPolicy const>> earnedLevelBrackets{
         std::make_shared<EarnedLevelBracketPolicy>()};
     bool vanillaBattlegroundsOnly = false;
+    bool earnedEraBattlegrounds = false;
     bool DisabledWithoutRealPlayer;
     bool EnableICCBuffs;
     bool AllowAccountBots, AllowGuildBots, AllowTrustedAccountBots;

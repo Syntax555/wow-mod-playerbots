@@ -7,6 +7,8 @@
 #include "Playerbots.h"
 #include "BattleGroundTactics.h"
 #include "BattlefieldScript.h"
+#include "BattlegroundMgr.h"
+#include "BattlegroundQueuePolicy.h"
 #include "Channel.h"
 #include "CheckMountStateAction.h"
 #include "Config.h"
@@ -142,8 +144,52 @@ public:
         PLAYERHOOK_CAN_PLAYER_USE_GUILD_CHAT,
         PLAYERHOOK_CAN_PLAYER_USE_CHANNEL_CHAT,
         PLAYERHOOK_ON_GIVE_EXP,
+        PLAYERHOOK_CAN_JOIN_IN_BATTLEGROUND_QUEUE,
+        PLAYERHOOK_CAN_JOIN_IN_ARENA_QUEUE,
         PLAYERHOOK_ON_BEFORE_TELEPORT
     }) {}
+
+    bool CanQueueWithBots(Player* player, uint8 joinAsGroup, BattlegroundQueueTypeId queue,
+                          GroupJoinBattlegroundResult& err)
+    {
+        if (!sPlayerbotAIConfig.earnedEraBattlegrounds)
+            return true;
+
+        auto allowed = [queue](Player* member)
+        {
+            // SelfBot keeps a human's own queue rights; only real bots use the bot queue policy.
+            return member && (!GET_PLAYERBOT_AI(member) || IsSelfBot(member) ||
+                              IsPlayerbotBattlegroundQueueAllowed(member, sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                                  true, queue));
+        };
+        if (!allowed(player))
+        {
+            err = ERR_BATTLEGROUND_JOIN_FAILED;
+            return false;
+        }
+
+        if (joinAsGroup && player->GetGroup())
+            for (GroupReference* ref = player->GetGroup()->GetFirstMember(); ref; ref = ref->next())
+                if (!allowed(ref->GetSource()))
+                {
+                    err = ERR_BATTLEGROUND_JOIN_FAILED;
+                    return false;
+                }
+        return true;
+    }
+
+    bool OnPlayerCanJoinInBattlegroundQueue(Player* player, ObjectGuid /*guid*/, BattlegroundTypeId bgType,
+                                            uint8 joinAsGroup, GroupJoinBattlegroundResult& err) override
+    {
+        return CanQueueWithBots(player, joinAsGroup, BattlegroundMgr::BGQueueTypeId(bgType, ARENA_TYPE_NONE), err);
+    }
+
+    bool OnPlayerCanJoinInArenaQueue(Player* player, ObjectGuid /*guid*/, uint8 /*arenaSlot*/,
+                                     BattlegroundTypeId /*bgType*/, uint8 joinAsGroup, uint8 /*rated*/,
+                                     GroupJoinBattlegroundResult& err) override
+    {
+        return CanQueueWithBots(player, joinAsGroup, BATTLEGROUND_QUEUE_2v2, err);
+    }
 
     void OnPlayerLogin(Player* player) override
     {

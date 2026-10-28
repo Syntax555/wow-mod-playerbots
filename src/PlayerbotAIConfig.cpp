@@ -87,6 +87,7 @@ bool PlayerbotAIConfig::Initialize()
     earnedAuctionInterval =
         std::clamp(sConfigMgr->GetOption<uint32>("Playerbots.EarnedAuctionInterval", 300), uint32(60), uint32(3600));
     vanillaBattlegroundsOnly = sConfigMgr->GetOption<bool>("Playerbots.VanillaBattlegroundsOnly", false);
+    earnedEraBattlegrounds = sConfigMgr->GetOption<bool>("Playerbots.EarnedEraBattlegrounds", false);
     if (!Enabled)
     {
         LOG_INFO("server.loading", "Playerbots Module is disabled in playerbots.conf");
