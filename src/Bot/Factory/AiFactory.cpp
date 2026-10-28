@@ -9,6 +9,7 @@
 #include "DKAiObjectContext.h"
 #include "DruidAiObjectContext.h"
 #include "Engine.h"
+#include "EraTalentBridge.h"
 #include "Group.h"
 #include "HunterAiObjectContext.h"
 #include "Item.h"
@@ -110,6 +111,17 @@ uint8 AiFactory::GetPlayerSpecTab(Player* bot)
 std::map<uint8, uint32> AiFactory::GetPlayerSpecTabs(Player* bot)
 {
     std::map<uint8, uint32> tabs = {{0, 0}, {0, 0}, {0, 0}};
+
+    // Custom era talents are stored separately from the native talent map.
+    uint32 eraTabs[3] = {0, 0, 0};
+    if (EraTalentBots_SpecTabs(bot, eraTabs))
+    {
+        tabs[0] = eraTabs[0];
+        tabs[1] = eraTabs[1];
+        tabs[2] = eraTabs[2];
+        return tabs;
+    }
+
     PlayerTalentMap const& talentMap = bot->GetTalentMap();
     for (PlayerTalentMap::const_iterator i = talentMap.begin(); i != talentMap.end(); ++i)
     {
@@ -357,7 +369,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
                 engine->addStrategiesNoInit("resto", "cure", "dps assist", "tranquility", nullptr);
             else
             {
-                if (player->HasSpell(SPELL_CAT_FORM) && !player->HasAura(SPELL_DRUID_THICK_HIDE))
+                if (player->HasSpell(SPELL_CAT_FORM) && !player->HasAura(EraKnown(player, SPELL_DRUID_THICK_HIDE)))
                     engine->addStrategiesNoInit("cat", "aoe", "cc", "dps assist", "feral charge", nullptr);
                 else
                     engine->addStrategiesNoInit("bear", "tank assist", "pull", "pull back", "feral charge", nullptr);
@@ -547,7 +559,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
             {
-                if (player->GetLevel() >= 20 && !player->HasAura(SPELL_DRUID_THICK_HIDE))
+                if (player->GetLevel() >= 20 && !player->HasAura(EraKnown(player, SPELL_DRUID_THICK_HIDE)))
                     nonCombatEngine->addStrategy("dps assist", false);
                 else
                     nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);
@@ -562,15 +574,23 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategy("dps assist", false);
             break;
         case CLASS_WARLOCK:
+        {
+            // Historical warlock stones use equipment slots, rather than bag-use actions.
+            uint32 eraTabs[3] = {0, 0, 0};
+            bool eraManaged = EraTalentBots_SpecTabs(player, eraTabs);
             if (tab == WARLOCK_TAB_AFFLICTION)
-                nonCombatEngine->addStrategiesNoInit("felhunter", "spellstone", nullptr);
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("felhunter", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("felhunter", "spellstone", nullptr);
             else if (tab == WARLOCK_TAB_DEMONOLOGY)
-                nonCombatEngine->addStrategiesNoInit("felguard", "spellstone", nullptr);
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("felguard", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("felguard", "spellstone", nullptr);
             else if (tab == WARLOCK_TAB_DESTRUCTION)
-                nonCombatEngine->addStrategiesNoInit("imp", "firestone", nullptr);
+                eraManaged ? nonCombatEngine->addStrategiesNoInit("imp", nullptr)
+                           : nonCombatEngine->addStrategiesNoInit("imp", "firestone", nullptr);
 
             nonCombatEngine->addStrategiesNoInit("dps assist", "ss self", nullptr);
             break;
+        }
         case CLASS_DEATH_KNIGHT:
             if (tab == DEATH_KNIGHT_TAB_BLOOD)
                 nonCombatEngine->addStrategiesNoInit("tank assist", "pull", nullptr);

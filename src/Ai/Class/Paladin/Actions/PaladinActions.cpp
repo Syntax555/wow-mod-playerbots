@@ -6,6 +6,7 @@
 
 #include "PaladinActions.h"
 #include "AiFactory.h"
+#include "EraTalentBridge.h"
 #include "Event.h"
 #include "GenericBuffUtils.h"
 #include "PaladinGreaterBlessingAction.h"
@@ -199,7 +200,7 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target)
 
 inline std::string const GetActualBlessingOfSanctuary(Unit* target, Player* bot)
 {
-    if (!bot->HasSpell(ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
+    if (!EraKnown(bot, ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
         return "";
 
     Player* targetPlayer = target->ToPlayer();
@@ -344,7 +345,7 @@ bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event /*event*/)
     if (IsGreaterBlessingMode(bot))
         return false;
 
-    if (!bot->HasSpell(ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
+    if (!EraKnown(bot, ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
         return false;
 
     Unit* target = GetTarget();
@@ -430,7 +431,7 @@ Unit* CastBlessingOfSanctuaryOnPartyAction::GetTarget()
     if (IsGreaterBlessingMode(bot))
         return nullptr;
 
-    if (!bot->HasSpell(ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
+    if (!EraKnown(bot, ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
         return nullptr;
 
     return FindBlessingTarget(bot, botAI, [&](Player* player)
@@ -520,7 +521,8 @@ bool CastBlessingOfKingsOnPartyAction::Execute(Event /*event*/)
         const bool isTank = IsTankRole(targetPlayer);
         const bool hasSanctFromMe =
             target->HasAura(ai::paladin::SPELL_BLESSING_OF_SANCTUARY, bot->GetGUID()) ||
-            target->HasAura(ai::paladin::SPELL_GREATER_BLESSING_OF_SANCTUARY, bot->GetGUID());
+            target->HasAura(ai::paladin::SPELL_GREATER_BLESSING_OF_SANCTUARY, bot->GetGUID()) ||
+            target->HasAura(EraKnown(bot, ai::paladin::SPELL_BLESSING_OF_SANCTUARY), bot->GetGUID());
         const bool hasSanctAny =
             botAI->HasAura("blessing of sanctuary", target) ||
             botAI->HasAura("greater blessing of sanctuary", target);

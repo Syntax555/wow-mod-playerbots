@@ -7,6 +7,7 @@
 #include "StatsWeightCalculator.h"
 #include "AiFactory.h"
 #include "DBCStores.h"
+#include "EraTalentBridge.h"
 #include "Item.h"
 #include "ItemEnchantmentMgr.h"
 #include "ItemTemplate.h"
@@ -772,12 +773,13 @@ void StatsWeightCalculator::CalculateItemTypePenalty(ItemTemplate const* proto)
             weight_ *= 1.5;
         }
 
-        if (cls == CLASS_ROGUE && player_->HasAura(SPELL_ROGUE_SWORD_SPECIALIZATION) &&
+        // Keep the native requirement for the highest specialization rank.
+        if (cls == CLASS_ROGUE && player_->HasAura(EraKnown(player_, SPELL_ROGUE_SWORD_SPECIALIZATION)) &&
             (proto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || proto->SubClass == ITEM_SUBCLASS_WEAPON_AXE))
         {
             weight_ *= 1.1;
         }
-        if (cls == CLASS_WARRIOR && player_->HasAura(SPELL_POLEAXE_SPECIALIZATION) &&
+        if (cls == CLASS_WARRIOR && player_->HasAura(EraKnown(player_, SPELL_POLEAXE_SPECIALIZATION)) &&
             (proto->SubClass == ITEM_SUBCLASS_WEAPON_POLEARM || proto->SubClass == ITEM_SUBCLASS_WEAPON_AXE2))
         {
             weight_ *= 1.1;

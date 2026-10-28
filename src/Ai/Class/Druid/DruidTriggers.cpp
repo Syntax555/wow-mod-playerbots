@@ -39,7 +39,7 @@ bool CatFormTrigger::IsActive() { return !botAI->HasAura("cat form", bot); }
 
 bool HealerShouldAttackAndNotBlanketingTrigger::IsActive()
 {
-    if (bot->GetGroup() && bot->HasSpell(SPELL_TREE_OF_LIFE) && botAI->HasStrategy("blanketing", BOT_STATE_COMBAT))
+    if (bot->GetGroup() && EraKnown(bot, SPELL_TREE_OF_LIFE) && botAI->HasStrategy("blanketing", BOT_STATE_COMBAT))
         return false;
 
     return HealerShouldAttackTrigger::IsActive();

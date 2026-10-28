@@ -18,6 +18,7 @@
 #include "DBCStores.h"
 #include "EmoteAction.h"
 #include "Engine.h"
+#include "EraTalentBridge.h"
 #include "EventProcessor.h"
 #include "ExternalEventHelper.h"
 #include "GameObjectData.h"
@@ -2634,7 +2635,8 @@ bool PlayerbotAI::IsTank(Player* player, bool bySpec)
             break;
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL && (player->GetShapeshiftForm() == FORM_BEAR ||
-                                           player->GetShapeshiftForm() == FORM_DIREBEAR || player->HasAura(16931)))
+                                           player->GetShapeshiftForm() == FORM_DIREBEAR ||
+                                           player->HasAura(EraTalentBots_ResolveSpellId(player, 16931))))
             {
                 return true;
             }

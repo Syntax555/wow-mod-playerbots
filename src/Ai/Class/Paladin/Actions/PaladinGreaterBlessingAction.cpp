@@ -7,6 +7,7 @@
 #include "PaladinGreaterBlessingAction.h"
 #include "AiFactory.h"
 #include "AiObjectContext.h"
+#include "EraTalentBridge.h"
 #include "Event.h"
 #include "GenericBuffUtils.h"
 #include "PaladinHelper.h"
@@ -72,16 +73,16 @@ namespace
 
         uint8 capabilities = PALADIN_BLESSING_CAPABILITY_NONE;
         if (player->HasAura(SPELL_IMPROVED_MIGHT_R1) ||
-            player->HasAura(SPELL_IMPROVED_MIGHT_R2))
+            player->HasAura(SPELL_IMPROVED_MIGHT_R2) || player->HasAura(EraKnown(player, SPELL_IMPROVED_MIGHT_R1)))
         {
             capabilities |= PALADIN_BLESSING_CAPABILITY_IMPROVED_MIGHT;
         }
         if (player->HasAura(SPELL_IMPROVED_WISDOM_R1) ||
-            player->HasAura(SPELL_IMPROVED_WISDOM_R2))
+            player->HasAura(SPELL_IMPROVED_WISDOM_R2) || player->HasAura(EraKnown(player, SPELL_IMPROVED_WISDOM_R1)))
         {
             capabilities |= PALADIN_BLESSING_CAPABILITY_IMPROVED_WISDOM;
         }
-        if (player->HasSpell(ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
+        if (EraKnown(player, ai::paladin::SPELL_BLESSING_OF_SANCTUARY))
             capabilities |= PALADIN_BLESSING_CAPABILITY_SANCTUARY;
 
         return capabilities;
@@ -935,13 +936,14 @@ static int32 GetBlessingCastStrength(Player* caster, BlessingType type, uint32 s
     switch (category)
     {
         case BASE_MIGHT:
-            if (caster->HasAura(SPELL_IMPROVED_MIGHT_R2))
+            if (caster->HasAura(SPELL_IMPROVED_MIGHT_R2) || caster->HasAura(EraKnown(caster, SPELL_IMPROVED_MIGHT_R2)))
                 return amount * 125 / 100;
             if (caster->HasAura(SPELL_IMPROVED_MIGHT_R1))
                 return amount * 112 / 100;
             break;
         case BASE_WISDOM:
-            if (caster->HasAura(SPELL_IMPROVED_WISDOM_R2))
+            if (caster->HasAura(SPELL_IMPROVED_WISDOM_R2) ||
+                caster->HasAura(EraKnown(caster, SPELL_IMPROVED_WISDOM_R2)))
                 return amount * 120 / 100;
             if (caster->HasAura(SPELL_IMPROVED_WISDOM_R1))
                 return amount * 110 / 100;

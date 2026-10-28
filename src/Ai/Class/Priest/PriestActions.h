@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_PRIESTACTIONS_H
 #define PLAYERBOTS_PRIESTACTIONS_H
 
+#include "EraTalentBridge.h"
 #include "GenericSpellActions.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -145,7 +146,17 @@ public:
 
 // shadow talents
 SPELL_ACTION(CastMindFlayAction, "mind flay");
-BUFF_ACTION(CastVampiricEmbraceAction, "vampiric embrace");
+// Historical Vampiric Embrace is an enemy debuff; Wrath uses a self buff.
+class CastVampiricEmbraceAction : public CastBuffSpellAction
+{
+public:
+    CastVampiricEmbraceAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "vampiric embrace") {}
+    std::string const GetTargetName() override
+    {
+        uint32 const known = EraTalentBots_ResolveSpellId(bot, 15286);
+        return (known && known != 15286) ? "current target" : "self target";
+    }
+};
 BUFF_ACTION(CastShadowformAction, "shadowform");
 SPELL_ACTION(CastSilenceAction, "silence");
 ENEMY_HEALER_ACTION(CastSilenceOnEnemyHealerAction, "silence");

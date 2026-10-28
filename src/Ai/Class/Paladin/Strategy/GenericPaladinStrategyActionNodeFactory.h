@@ -28,6 +28,7 @@ public:
         creators["seal of justice"] = &seal_of_justice;
         creators["hand of reckoning"] = &hand_of_reckoning;
         creators["judgement of wisdom"] = &judgement_of_wisdom;
+        creators["judgement of light"] = &judgement_of_light;
         creators["divine shield"] = &divine_shield;
         creators["flash of light"] = &flash_of_light;
         creators["flash of light on party"] = &flash_of_light_on_party;
@@ -142,6 +143,14 @@ private:
         return new ActionNode("judgement of wisdom",
                               /*P*/ {},
                               /*A*/ { NextAction("judgement of light") },
+                              /*C*/ {});
+    }
+    // Historical paladins use the single Judgement spell after either Wrath alternative.
+    static ActionNode* judgement_of_light(PlayerbotAI* /* botAI */)
+    {
+        return new ActionNode("judgement of light",
+                              /*P*/ {},
+                              /*A*/ {NextAction("judgement")},
                               /*C*/ {});
     }
     static ActionNode* divine_shield(PlayerbotAI* /* botAI */)

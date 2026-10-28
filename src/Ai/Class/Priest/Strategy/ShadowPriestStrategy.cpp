@@ -35,6 +35,8 @@ void ShadowPriestStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             }
         )
     );
+    // Historical Vampiric Embrace targets an enemy during combat.
+    triggers.push_back(new TriggerNode("vampiric embrace", {NextAction("vampiric embrace", 19.0f)}));
     triggers.push_back(
         new TriggerNode(
             "low mana",

@@ -6,6 +6,7 @@
 
 #include "WorldBuffAction.h"
 #include "AiFactory.h"
+#include "EraTalentBridge.h"
 #include "Event.h"
 #include "Playerbots.h"
 
@@ -54,7 +55,8 @@ std::vector<uint32> WorldBuffAction::NeedWorldBuffs(Unit* unit)
     // If this is a druid in the Feral tab, decide Bear vs. Cat
     if (botClass == CLASS_DRUID && tab == 1)  // 1 = feral
     {
-        bool isBear = bot->HasTalent(16931, bot->GetActiveSpec()); // Thick Hide rank 3
+        bool isBear = bot->HasTalent(16931, bot->GetActiveSpec()) ||
+                      bot->HasAura(EraKnown(bot, 16931));  // Thick Hide rank 3 (stock talent or era clone)
         if (!isBear)
         {
             // If not bear, then treat it as "cat" spec = 3

@@ -6,6 +6,7 @@
 
 #include "LfgActions.h"
 #include "AiFactory.h"
+#include "EraTalentBridge.h"
 #include "ItemVisitors.h"
 #include "LFGMgr.h"
 #include "Opcodes.h"
@@ -59,7 +60,7 @@ uint32 LfgJoinAction::GetRoles()
         case CLASS_DRUID:
             if (spec == 2)
                 return PLAYER_ROLE_HEALER;
-            else if (spec == 1 && bot->HasAura(16931) /* thick hide */)
+            else if (spec == 1 && bot->HasAura(EraKnown(bot, 16931)) /* thick hide (stock or era clone) */)
                 return PLAYER_ROLE_TANK;
             else
                 return PLAYER_ROLE_DAMAGE;

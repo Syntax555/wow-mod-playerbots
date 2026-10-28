@@ -6,6 +6,7 @@
 
 #include "ShamanActions.h"
 #include "Action.h"
+#include "EraTalentBridge.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "TotemsShamanStrategy.h"
@@ -98,9 +99,9 @@ bool SetTotemAction::Execute(Event /*event*/)
     uint32 totemSpell = 0;
     for (size_t i = 0; i < totemSpellIdsCount; ++i)
     {
-        if (bot->HasSpell(totemSpellIds[i]))
+        if (uint32 known = EraKnown(bot, totemSpellIds[i]))
         {
-            totemSpell = totemSpellIds[i];
+            totemSpell = known;
             break;
         }
     }

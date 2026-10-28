@@ -8,6 +8,7 @@
 #define PLAYERBOTS_PRIESTTRIGGERS_H
 
 #include "CureTriggers.h"
+#include "EraTalentBridge.h"
 #include "SharedDefines.h"
 #include "Trigger.h"
 #include <set>
@@ -19,7 +20,17 @@ DEBUFF_CHECKISOWNER_TRIGGER(ShadowWordPainTrigger, "shadow word: pain");
 DEBUFF_ENEMY_TRIGGER(ShadowWordPainOnAttackerTrigger, "shadow word: pain");
 DEBUFF_CHECKISOWNER_TRIGGER(VampiricTouchTrigger, "vampiric touch");
 DEBUFF_ENEMY_TRIGGER(VampiricTouchOnAttackerTrigger, "vampiric touch on attacker");
-BUFF_TRIGGER(VampiricEmbraceTrigger, "vampiric embrace");
+// Historical Vampiric Embrace targets an enemy; Wrath uses a self buff.
+class VampiricEmbraceTrigger : public BuffTrigger
+{
+public:
+    VampiricEmbraceTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "vampiric embrace") {}
+    std::string const GetTargetName() override
+    {
+        uint32 const known = EraTalentBots_ResolveSpellId(bot, 15286);
+        return (known && known != 15286) ? "current target" : "self target";
+    }
+};
 CURE_TRIGGER(DispelMagicTrigger, "dispel magic", DISPEL_MAGIC);
 CURE_PARTY_TRIGGER(DispelMagicPartyMemberTrigger, "dispel magic", DISPEL_MAGIC);
 CURE_TRIGGER(CureDiseaseTrigger, "cure disease", DISPEL_DISEASE);

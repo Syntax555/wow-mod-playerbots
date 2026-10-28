@@ -42,6 +42,10 @@ uint32 SpellIdValue::Calculate()
         if (itr->second->State == PLAYERSPELL_REMOVED || !itr->second->Active)
             continue;
 
+        // Ignore inactive talents when resolving a same-name historical spell.
+        if (!itr->second->IsInSpec(bot->GetActiveSpec()))
+            continue;
+
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
         if (!spellInfo || spellInfo->IsPassive())
             continue;

@@ -13,6 +13,7 @@
 #include "ArenaTeamMgr.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
+#include "EraTalentBridge.h"
 #include "GuildMgr.h"
 #include "InventoryAction.h"
 #include "Item.h"
@@ -1737,7 +1738,7 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
         /// @todo: fix cat druid hardcode
         if (bot->getClass() == CLASS_DRUID && specTab == DRUID_TAB_FERAL && bot->GetLevel() >= 20)
         {
-            bool isCat = !bot->HasAura(SPELL_DRUID_THICK_HIDE);
+            bool isCat = !bot->HasAura(EraKnown(bot, SPELL_DRUID_THICK_HIDE));
             if (!isCat && bot->GetLevel() == 20)
             {
                 uint32 bearP = sPlayerbotAIConfig.RandomClassSpecProb[cls][1];
@@ -1775,6 +1776,17 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
             specTab = 0;
             LOG_ERROR("playerbots", "Fail to select spec num for bot {}! Set to 0.", bot->GetName());
         }
+    }
+    // Managed eras allocate only earned, unspent points and preserve the existing build.
+    if (EraTalentBots_FactoryReconcile(bot, int(specTab)))
+    {
+        if (bot->getClass() == CLASS_SHAMAN && bot->HasSpell(SPELL_SHAMAN_DUAL_WIELD))
+        {
+            bot->SetSkill(SKILL_DUAL_WIELD, 0, 1, 1);
+            bot->SetCanDualWield(true);
+        }
+        bot->SendTalentsInfoData(false);
+        return sPlayerbotAIConfig.RandomClassSpecIndex[cls][specTab];
     }
     if (reset && !sPlayerbotAIConfig.naturalProgression)
     {
