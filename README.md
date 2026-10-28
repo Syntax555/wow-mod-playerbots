@@ -1,3 +1,22 @@
+## Portable assembly integration
+
+This **Playerbots** fork is maintained for
+[AzerothCore Playerbots Portable](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md). Its original upstream is
+[buildthehomelab/wow-mod-playerbots](https://github.com/buildthehomelab/wow-mod-playerbots), imported at
+[`80f2afa04543`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/80f2afa04543871245d22ee0a314e78e29f2feb0).
+The assembly pins a tested commit of this fork's `main` branch in
+[`versions.lock.json`](https://github.com/Syntax555/mod-playerbots-portable/blob/main/versions.lock.json), together with its matching core and modules.
+
+Use the assembly's [installation and build instructions](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md),
+[module catalog](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/module-versions.md#server-modules) and
+[Bot dungeons and raids](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/bot-dungeons.md). Before contributing, read its
+[repository rules](https://github.com/Syntax555/mod-playerbots-portable/blob/main/AGENTS.md) and [fork workflow](https://github.com/Syntax555/mod-playerbots-portable/blob/main/CONTRIBUTING.md#changing-the-server).
+The **Portable integration** workflow checks this fork's current commit against
+the assembly's pinned dependencies with the relevant production fixtures.
+
+---
+
+
 <p align="center">
     <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README.md">English</a>
     |
