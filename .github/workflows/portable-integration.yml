@@ -2,7 +2,7 @@ name: Portable integration
 
 on:
   push:
-    branches: [main]
+    branches: [evermore]
   pull_request:
   workflow_dispatch:
 

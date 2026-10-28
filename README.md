@@ -4,7 +4,7 @@ This **Playerbots** fork is maintained for
 [AzerothCore Playerbots Portable](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md). Its original upstream is
 [buildthehomelab/wow-mod-playerbots](https://github.com/buildthehomelab/wow-mod-playerbots), imported at
 [`80f2afa04543`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/80f2afa04543871245d22ee0a314e78e29f2feb0).
-The assembly pins a tested commit of this fork's `main` branch in
+The assembly pins a tested commit of this fork's `evermore` branch in
 [`versions.lock.json`](https://github.com/Syntax555/mod-playerbots-portable/blob/main/versions.lock.json), together with its matching core and modules.
 
 Use the assembly's [installation and build instructions](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md),
