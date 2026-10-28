@@ -125,14 +125,15 @@ bool RaidOnyxiaMoveToSafeZoneAction::Execute(Event /*event*/)
 
 bool RaidOnyxiaKillWhelpsAction::Execute(Event /*event*/)
 {
-    static constexpr uint32 NPC_ONYXIAN_WHELP = 11262;
+    using namespace RaidClear::OnyxiasLair;
 
     // A whelp that can't find a way to its victim evades every attack but goes on biting: leave it
     // for one that can be hurt.
     auto const hittable = [](Unit const* unit)
     {
         Creature const* whelp = unit ? unit->ToCreature() : nullptr;
-        return whelp && whelp->IsAlive() && whelp->GetEntry() == NPC_ONYXIAN_WHELP && !whelp->IsEvadingAttacks();
+        return whelp && whelp->IsAlive() && (whelp->GetEntry() == NPC_ONYXIAN_WHELP || whelp->GetEntry() == NPC_ONYXIAN_WHELP_40) &&
+               !whelp->IsEvadingAttacks();
     };
 
     // If already attacking a whelp, don't swap targets

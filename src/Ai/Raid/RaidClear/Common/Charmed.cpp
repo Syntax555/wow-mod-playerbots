@@ -238,6 +238,8 @@ namespace
     std::vector<std::pair<Player*, uint32>> ControlsToLetGo(Player* bot)
     {
         std::vector<std::pair<Player*, uint32>> spells;
+        if (sPlayerbotAIConfig.naturalProgression)
+            return spells;
         Group* group = bot->GetGroup();
         if (!group)
             return spells;

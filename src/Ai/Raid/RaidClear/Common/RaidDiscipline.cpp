@@ -136,6 +136,8 @@ namespace RaidClear::Discipline
 
     void TeachRaidSpells(Player* bot)
     {
+        if (sPlayerbotAIConfig.naturalProgression)
+            return;
         if (!GetConfig().teachTranquilizingShot || !bot->IsClass(CLASS_HUNTER) ||
             bot->GetLevel() < TRANQUILIZING_SHOT_LEVEL || bot->HasSpell(SPELL_TRANQUILIZING_SHOT))
             return;

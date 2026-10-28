@@ -306,8 +306,11 @@ namespace
     }
 
     // Same rule as mod-playerbots' own disarm: rogues always, everyone else with the "raid" cheat.
+    // Natural progression uses playerbots' own Disarm Trap cast instead.
     bool MayDisarm(PlayerbotAI* botAI, Player* bot)
     {
+        if (sPlayerbotAIConfig.naturalProgression)
+            return false;
         return bot->IsClass(CLASS_ROGUE) || botAI->HasCheat(BotCheatMask::raid);
     }
 
@@ -337,6 +340,8 @@ bool RcBwlSuppressionDeviceTrigger::IsActive()
 
 bool RcBwlDisarmSuppressionAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
     std::list<GameObject*> armed;
     ArmedDevicesInReach(bot, armed);
 
@@ -1026,6 +1031,9 @@ public:
     // Shadow Flame without it. Death strips it; this puts it back the moment the bot stands up.
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
     {
+        // Only an equipped Onyxia Scale Cloak protects a bot under natural progression.
+        if (sPlayerbotAIConfig.naturalProgression)
+            return;
         using namespace RaidClear::BlackwingLair;
         if (player->GetMapId() != MAP_ID || !RaidClear::GetConfig().IsRaidEnabled(MAP_ID) || !GET_PLAYERBOT_AI(player))
             return;
