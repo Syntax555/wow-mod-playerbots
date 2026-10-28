@@ -14,6 +14,9 @@
 
 bool SendMailAction::Execute(Event event)
 {
+    // Re-enabling the old mail setting must not bypass mailbox proximity/postage.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
     uint32 account = bot->GetSession()->GetAccountId();
     bool randomBot = sPlayerbotAIConfig.IsInRandomAccountList(account);
 

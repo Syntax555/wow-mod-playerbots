@@ -92,6 +92,19 @@ struct NewRpgInfo
 
     uint32 startT{0};  // start timestamp of the current status
 
+    // Map-thread visit scheduling; auction/mail operations themselves run on the world thread.
+    bool earnedAuctionClockStarted{false};
+    bool earnedAuctionVisitMailbox{true};
+    uint32 earnedAuctionLastVisit{0};
+    uint32 earnedAuctionVisitDelay{0};
+    bool earnedAuctionTravelActive{false};
+    bool earnedAuctionTravelClockStarted{false};
+    uint32 earnedAuctionTravelStarted{0};
+    uint32 earnedAuctionTravelLastAttempt{0};
+    WorldPosition earnedAuctionTravelDestination;
+    ObjectGuid earnedAuctionRejected;
+    uint32 earnedAuctionRejectedAt{0};
+
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};

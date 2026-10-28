@@ -12,6 +12,9 @@
 
 bool CheckMailAction::Execute(Event /*event*/)
 {
+    // The legacy guild-task mailbox path skips normal delivery/range/COD rules.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
     WorldPacket p;
     bot->GetSession()->HandleQueryNextMailTime(p);
 
@@ -59,6 +62,8 @@ bool CheckMailAction::Execute(Event /*event*/)
 
 bool CheckMailAction::isUseful()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
     if (botAI->GetMaster() || !bot->GetMailSize() || bot->InBattleground())
         return false;
 

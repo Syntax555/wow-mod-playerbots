@@ -16,6 +16,7 @@
 #include "PlayerbotsDatabase.h"
 #include <mysqld_error.h>
 #include "AllMapScript.h"
+#include "EarnedAuctionTravel.h"
 #include "GatherNodeMgr.h"
 #include "GlobalScript.h"
 #include "GuildTaskMgr.h"
@@ -521,6 +522,7 @@ class PlayerbotsWorldScript : public WorldScript
 public:
     PlayerbotsWorldScript() : WorldScript("PlayerbotsWorldScript", {
         WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED,
+        WORLDHOOK_ON_STARTUP,
         WORLDHOOK_ON_UPDATE,
         WORLDHOOK_ON_SHUTDOWN
     }) {}
@@ -560,6 +562,8 @@ public:
 
         LOG_INFO("server.loading", "Playerbots World Thread Processor initialized");
     }
+
+    void OnStartup() override { EarnedAuctionTravel::LoadMarkets(); }
 
     void OnUpdate(uint32 diff) override
     {

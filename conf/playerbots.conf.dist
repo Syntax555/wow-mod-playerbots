@@ -91,6 +91,13 @@ Playerbots.RandomBotAutologin = 1
 # Does not provide missing quest, crafting, profession or raid AI.
 Playerbots.NaturalProgression = 0
 
+# Optional natural-mode trading by autonomous random bots using owned surplus,
+# earned gold, normal auction fees and physical auctioneer/mailbox visits.
+# The portable earned-play profile enables this; upstream-style defaults opt out.
+Playerbots.EarnedAuctions = 0
+# Base seconds between visits, plus per-bot staggering; clamped to 60..3600.
+Playerbots.EarnedAuctionInterval = 300
+
 # Optional earned caps in natural mode: level:percentage pairs, unique levels 1-80,
 # positive percentages totaling at most 100. Example: 19:5,29:5,39:5,49:5,59:5.
 # Unassigned bots progress normally. Bots earn every level; no level/gear grants,

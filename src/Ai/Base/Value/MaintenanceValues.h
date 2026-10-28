@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_MAINTENANCEVALUES_H
 #define PLAYERBOTS_MAINTENANCEVALUES_H
 
+#include "TravelMgr.h"
 #include "Value.h"
 
 class PlayerbotAI;
@@ -17,7 +18,10 @@ enum class NaturalMaintenanceType : uint8
     SELL,
     REPAIR,
     TRAIN,
-    BUY
+    BUY,
+    AUCTION,
+    AUCTION_MAIL,
+    AUCTION_TRAVEL
 };
 
 struct NaturalMaintenanceTask
@@ -26,6 +30,7 @@ struct NaturalMaintenanceTask
     NaturalMaintenanceType type = NaturalMaintenanceType::NONE;
     uint32 itemId = 0;
     uint32 budgetType = 0;
+    WorldPosition destination;
 };
 
 // Natural upkeep runs only for a living, idle bot that may move and has no game-client master.

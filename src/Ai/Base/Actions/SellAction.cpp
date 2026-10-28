@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "ChatHelper.h"
+#include "EarnedAuction.h"
 #include "Event.h"
 #include "ItemPackets.h"
 #include "ItemUsageValue.h"
@@ -77,14 +78,22 @@ private:
 class SellVendorItemsVisitor : public SellItemsVisitor
 {
 public:
-    SellVendorItemsVisitor(SellAction* action, AiObjectContext* con) : SellItemsVisitor(action) { context = con; }
+    SellVendorItemsVisitor(SellAction* action, AiObjectContext* con, PlayerbotAI* ai)
+        : SellItemsVisitor(action), context(con), botAI(ai)
+    {
+    }
 
     AiObjectContext* context;
+    PlayerbotAI* botAI;
 
     bool Visit(Item* item) override
     {
-        ItemUsage usage = context->GetValue<ItemUsage>("item usage", item->GetEntry())->Get();
-        if (usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
+        std::string qualifier =
+            std::to_string(item->GetEntry()) + "," + std::to_string(item->GetItemRandomPropertyId());
+        ItemUsage usage = context->GetValue<ItemUsage>("item usage", qualifier)->Get();
+        if (!EarnedAuction::SellsToVendor(botAI, item, usage))
+            return true;
+        if (EarnedAuction::ShouldReserveForAuction(botAI, item, usage))
             return true;
 
         return SellItemsVisitor::Visit(item);
@@ -103,7 +112,7 @@ bool SellAction::Execute(Event event)
 
     if (text == "vendor")
     {
-        SellVendorItemsVisitor visitor(this, context);
+        SellVendorItemsVisitor visitor(this, context, botAI);
         IterateItems(&visitor);
         return true;
     }

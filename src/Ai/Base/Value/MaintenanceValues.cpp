@@ -9,6 +9,8 @@
 #include <unordered_map>
 
 #include "BudgetValues.h"
+#include "EarnedAuction.h"
+#include "EarnedAuctionTravel.h"
 #include "ItemUsageValue.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
@@ -33,7 +35,46 @@ bool CanRunNaturalMaintenance(PlayerbotAI* botAI)
 NaturalMaintenanceTask NaturalMaintenanceValue::Calculate()
 {
     if (!CanRunNaturalMaintenance(botAI))
+    {
+        EarnedAuctionTravel::AbortTrip(botAI);
         return {};
+    }
+
+    if (EarnedAuction::IsEnabled(botAI))
+    {
+        auto& info = botAI->rpgInfo;
+        if (!info.earnedAuctionClockStarted)
+        {
+            info.earnedAuctionClockStarted = true;
+            info.earnedAuctionLastVisit = getMSTime();
+            info.earnedAuctionVisitDelay = (bot->GetGUID().GetCounter() % 120) * IN_MILLISECONDS;
+        }
+        if (GetMSTimeDiffToNow(info.earnedAuctionLastVisit) >= info.earnedAuctionVisitDelay)
+        {
+            ObjectGuid const rejected = EarnedAuctionTravel::RejectedTarget(botAI);
+            // Alternate browsing and collecting receipts. Do not inspect world-thread mail or AH state here.
+            if (info.earnedAuctionVisitMailbox)
+                for (ObjectGuid guid : AI_VALUE(GuidVector, "natural mailboxes"))
+                    if (guid != rejected)
+                        return {guid, NaturalMaintenanceType::AUCTION_MAIL};
+
+            for (ObjectGuid guid : AI_VALUE(GuidVector, "possible new rpg targets"))
+            {
+                Creature* npc = botAI->GetCreature(guid);
+                if (guid != rejected && EarnedAuctionTravel::CompatibleAuctioneer(botAI, npc))
+                    return {guid, NaturalMaintenanceType::AUCTION};
+            }
+
+            // A distant market comes before a nearby mailbox, which would otherwise take
+            // every turn. Old receipts are still collected when no market is in reach.
+            if (WorldPosition destination = EarnedAuctionTravel::PlanTrip(botAI))
+                return {{}, NaturalMaintenanceType::AUCTION_TRAVEL, 0, 0, destination};
+
+            for (ObjectGuid guid : AI_VALUE(GuidVector, "natural mailboxes"))
+                if (guid != rejected)
+                    return {guid, NaturalMaintenanceType::AUCTION_MAIL};
+        }
+    }
 
     bool const canSell = AI_VALUE(bool, "can sell");
     bool const needsRepair = AI_VALUE(bool, "should repair") && AI_VALUE(bool, "can repair");
@@ -197,6 +238,9 @@ bool ShouldSellValue::Calculate() { return AI_VALUE(uint8, "bag space") > 80; }
 
 bool CanSellValue::Calculate()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return EarnedAuction::HasVendorSurplus(botAI);
+
     return (AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_VENDOR)) +
             AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH))) > 1;
 }

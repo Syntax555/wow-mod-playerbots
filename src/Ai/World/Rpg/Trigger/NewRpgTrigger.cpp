@@ -13,6 +13,8 @@ bool NewRpgStatusTrigger::IsActive() { return status == botAI->rpgInfo.GetStatus
 
 bool NewRpgNaturalMaintenanceTrigger::IsActive()
 {
-    return sPlayerbotAIConfig.naturalProgression &&
-           !AI_VALUE(NaturalMaintenanceTask, "natural maintenance").target.IsEmpty();
+    if (!sPlayerbotAIConfig.naturalProgression)
+        return false;
+    NaturalMaintenanceTask const task = AI_VALUE(NaturalMaintenanceTask, "natural maintenance");
+    return !task.target.IsEmpty() || task.type == NaturalMaintenanceType::AUCTION_TRAVEL;
 }

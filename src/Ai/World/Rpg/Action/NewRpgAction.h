@@ -105,6 +105,9 @@ class NewRpgNaturalMaintenanceAction : public NewRpgBaseAction
 public:
     NewRpgNaturalMaintenanceAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg natural maintenance") {}
     bool Execute(Event event) override;
+
+private:
+    uint32 lastAuctioneerSearch = 0;
 };
 
 class NewRpgDoQuestAction : public NewRpgBaseAction

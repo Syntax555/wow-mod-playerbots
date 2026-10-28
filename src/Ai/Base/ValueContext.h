@@ -289,6 +289,7 @@ public:
         creators["should home bind"] = &ValueContext::should_home_bind;
         creators["should repair"] = &ValueContext::should_repair;
         creators["natural maintenance"] = &ValueContext::natural_maintenance;
+        creators["natural mailboxes"] = &ValueContext::natural_mailboxes;
         creators["can repair"] = &ValueContext::can_repair;
         creators["should sell"] = &ValueContext::should_sell;
         creators["can sell"] = &ValueContext::can_sell;
@@ -446,6 +447,7 @@ private:
     static UntypedValue* possible_rpg_targets(PlayerbotAI* botAI) { return new PossibleRpgTargetsValue(botAI); }
     static UntypedValue* possible_new_rpg_targets(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsValue(botAI); }
     static UntypedValue* possible_new_rpg_game_objects(PlayerbotAI* botAI) { return new PossibleNewRpgGameObjectsValue(botAI); }
+    static UntypedValue* natural_mailboxes(PlayerbotAI* botAI) { return new NaturalMailboxTargetsValue(botAI); }
     static UntypedValue* possible_targets(PlayerbotAI* botAI) { return new PossibleTargetsValue(botAI); }
     static UntypedValue* possible_triggers(PlayerbotAI* botAI) { return new PossibleTriggersValue(botAI); }
     static UntypedValue* possible_targets_no_los(PlayerbotAI* botAI)

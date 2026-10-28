@@ -253,6 +253,10 @@ std::map<uint32, Mail*> filterList(std::vector<Mail*> src, std::string const fil
 
 bool MailAction::Execute(Event event)
 {
+    // Legacy processors can delete attachments after a failed take. Earned auction
+    // receipts use normal world-thread handlers and only remove confirmed-empty mail.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
     Player* master = GetMaster();
     if (!master)
         return false;

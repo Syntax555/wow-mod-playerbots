@@ -56,4 +56,14 @@ private:
     bool ignoreLos;
 };
 
+class NaturalMailboxTargetsValue : public ObjectGuidListCalculatedValue
+{
+public:
+    NaturalMailboxTargetsValue(PlayerbotAI* ai)
+        : ObjectGuidListCalculatedValue(ai, "natural mailboxes", 30 * IN_MILLISECONDS)
+    {
+    }
+    GuidVector Calculate() override;
+};
+
 #endif

@@ -224,3 +224,20 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
     }
     return results;
 }
+
+GuidVector NaturalMailboxTargetsValue::Calculate()
+{
+    if (!sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.earnedAuctions)
+        return {};
+    std::list<GameObject*> objects;
+    AnyGameObjectInObjectRangeCheck check(bot, 150.0f);
+    Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> searcher(bot, objects, check);
+    Cell::VisitObjects(bot, searcher, 150.0f);
+    objects.remove_if([](GameObject* object) { return object->GetGoType() != GAMEOBJECT_TYPE_MAILBOX; });
+    objects.sort([this](GameObject* left, GameObject* right)
+                 { return bot->GetExactDist(left) < bot->GetExactDist(right); });
+    GuidVector result;
+    for (GameObject* object : objects)
+        result.push_back(object->GetGUID());
+    return result;
+}

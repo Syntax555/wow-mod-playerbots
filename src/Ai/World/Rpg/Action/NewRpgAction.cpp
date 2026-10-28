@@ -10,6 +10,8 @@
 #include "BudgetValues.h"
 #include "ChatHelper.h"
 #include "DBCStores.h"
+#include "EarnedAuction.h"
+#include "EarnedAuctionTravel.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
 #include "MaintenanceValues.h"
@@ -42,11 +44,86 @@ bool NewRpgNaturalMaintenanceAction::Execute(Event /*event*/)
     Value<NaturalMaintenanceTask>* value = context->GetValue<NaturalMaintenanceTask>("natural maintenance");
     if (!CanRunNaturalMaintenance(botAI))
     {
+        EarnedAuctionTravel::AbortTrip(botAI);
         value->Set({});
         return false;
     }
 
     NaturalMaintenanceTask const task = value->Get();
+    if (task.type == NaturalMaintenanceType::AUCTION_TRAVEL)
+    {
+        if (!EarnedAuctionTravel::ContinueTrip(botAI))
+        {
+            value->Set({});
+            return false;
+        }
+        float const distance = bot->GetExactDist(task.destination);
+        bool const arrived = distance <= INTERACTION_DISTANCE;
+        // Each search scans every unit within 150 yards, so search every few seconds and on arrival.
+        if (arrived || (distance <= 150.0f && GetMSTimeDiffToNow(lastAuctioneerSearch) >= 2 * IN_MILLISECONDS))
+        {
+            lastAuctioneerSearch = getMSTime();
+            ObjectGuid const rejected = EarnedAuctionTravel::RejectedTarget(botAI);
+            for (ObjectGuid guid : AI_VALUE(GuidVector, "possible new rpg targets"))
+            {
+                if (guid != rejected && EarnedAuctionTravel::CompatibleAuctioneer(botAI, botAI->GetCreature(guid)))
+                {
+                    value->Set({guid, NaturalMaintenanceType::AUCTION});
+                    return true;
+                }
+            }
+            if (arrived)
+            {
+                EarnedAuctionTravel::AbortTrip(botAI);
+                value->Set({});
+                return false;
+            }
+        }
+        if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) || MoveFarTo(task.destination))
+            return true;
+        EarnedAuctionTravel::AbortTrip(botAI);
+        value->Set({});
+        return false;
+    }
+    if (task.type == NaturalMaintenanceType::AUCTION || task.type == NaturalMaintenanceType::AUCTION_MAIL)
+    {
+        if (botAI->rpgInfo.earnedAuctionTravelActive && !EarnedAuctionTravel::ContinueTrip(botAI))
+        {
+            value->Set({});
+            return false;
+        }
+        WorldObject* target = botAI->GetWorldObject(task.target);
+        if (!EarnedAuction::IsEnabled(botAI) || !target)
+        {
+            EarnedAuctionTravel::AbortTrip(botAI);
+            value->Set({});
+            return false;
+        }
+        if (!bot->IsWithinDistInMap(target, INTERACTION_DISTANCE))
+        {
+            if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) || MoveWorldObjectTo(task.target))
+                return true;
+            // An unreachable mailbox or auctioneer must not hold back repairs, sales and training.
+            EarnedAuctionTravel::RejectVisit(botAI, task.target);
+            value->Set({});
+            return false;
+        }
+        value->Set({});
+        bool const mailbox = task.type == NaturalMaintenanceType::AUCTION_MAIL;
+        bool const queued = EarnedAuction::QueueVisit(botAI, task.target, mailbox);
+        if (queued)
+        {
+            EarnedAuctionTravel::FinishTrip(botAI);
+            auto& info = botAI->rpgInfo;
+            info.earnedAuctionLastVisit = getMSTime();
+            info.earnedAuctionVisitDelay =
+                (sPlayerbotAIConfig.earnedAuctionInterval + bot->GetGUID().GetCounter() % 120) * IN_MILLISECONDS;
+            info.earnedAuctionVisitMailbox = !mailbox;
+        }
+        else
+            EarnedAuctionTravel::PostponeVisit(botAI);
+        return queued;
+    }
     Creature* npc = botAI->GetCreature(task.target);
     if (!npc || !npc->IsAlive() || !npc->IsFriendlyTo(bot))
     {
@@ -99,6 +176,9 @@ bool NewRpgNaturalMaintenanceAction::Execute(Event /*event*/)
             }
             break;
         case NaturalMaintenanceType::NONE:
+        case NaturalMaintenanceType::AUCTION:
+        case NaturalMaintenanceType::AUCTION_MAIL:
+        case NaturalMaintenanceType::AUCTION_TRAVEL:
             break;
     }
     bot->SetSelection(oldSelection);

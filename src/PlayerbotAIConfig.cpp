@@ -83,6 +83,9 @@ bool PlayerbotAIConfig::Initialize()
 
     Enabled = sConfigMgr->GetOption<bool>("Playerbots.Enabled", true);
     naturalProgression = sConfigMgr->GetOption<bool>("Playerbots.NaturalProgression", false);
+    earnedAuctions = sConfigMgr->GetOption<bool>("Playerbots.EarnedAuctions", false);
+    earnedAuctionInterval =
+        std::clamp(sConfigMgr->GetOption<uint32>("Playerbots.EarnedAuctionInterval", 300), uint32(60), uint32(3600));
     vanillaBattlegroundsOnly = sConfigMgr->GetOption<bool>("Playerbots.VanillaBattlegroundsOnly", false);
     if (!Enabled)
     {

@@ -109,6 +109,8 @@ public:
 
     bool Enabled;
     bool naturalProgression = false;
+    bool earnedAuctions = false;
+    uint32 earnedAuctionInterval = 300;
     std::atomic<std::shared_ptr<EarnedLevelBracketPolicy const>> earnedLevelBrackets{
         std::make_shared<EarnedLevelBracketPolicy>()};
     bool vanillaBattlegroundsOnly = false;
