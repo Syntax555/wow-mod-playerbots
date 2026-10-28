@@ -7,6 +7,10 @@
 #ifndef PLAYERBOTS_PLAYERBOTAI_H
 #define PLAYERBOTS_PLAYERBOTAI_H
 
+#include <atomic>
+#include <mutex>
+#include <optional>
+
 #include "Chat.h"
 #include "ChatFilter.h"
 #include "ChatHelper.h"
@@ -416,7 +420,7 @@ public:
     void HandleCommand(uint32 type, std::string const text, Player* fromPlayer);
     void QueueChatResponse(const ChatQueuedReply reply);
     void HandleBotOutgoingPacket(WorldPacket const& packet);
-    void HandleMasterIncomingPacket(WorldPacket const& packet);
+    void HandleMasterIncomingPacket(WorldPacket const& packet, Player* packetMaster = nullptr);
     void HandleMasterOutgoingPacket(WorldPacket const& packet);
     void HandleTeleportAck();
     void ChangeEngine(BotState type);
@@ -649,6 +653,11 @@ public:
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
 
 private:
+    std::map<uint16, std::string> _masterTaxiPacketHandlers;
+    std::optional<WorldPacket> _pendingMasterTaxiPacket;
+    std::mutex _masterTaxiPacketMutex;
+    std::atomic_bool _masterTaxiPacketPending = false;
+
     static void _fillGearScoreData(Player* player, Item* item, std::vector<uint32>* gearScore, uint32& twoHandScore,
                                    bool mixed = false);
     bool IsTellAllowed(PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);

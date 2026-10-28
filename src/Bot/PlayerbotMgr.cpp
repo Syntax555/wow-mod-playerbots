@@ -1646,7 +1646,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(WorldPacket const& packet)
             continue;
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         if (botAI)
-            botAI->HandleMasterIncomingPacket(packet);
+            botAI->HandleMasterIncomingPacket(packet, GetMaster());
     }
 
     for (PlayerBotMap::const_iterator it = sRandomPlayerbotMgr.GetPlayerBotsBegin();
@@ -1655,7 +1655,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(WorldPacket const& packet)
         Player* const bot = it->second;
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         if (botAI && botAI->GetMaster() == GetMaster())
-            botAI->HandleMasterIncomingPacket(packet);
+            botAI->HandleMasterIncomingPacket(packet, GetMaster());
     }
 
     switch (packet.GetOpcode())

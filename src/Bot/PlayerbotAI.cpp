@@ -395,6 +395,8 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     masterIncomingPacketHandlers.AddHandler(CMSG_AREATRIGGER, "area trigger");
     // masterIncomingPacketHandlers.AddHandler(CMSG_GAMEOBJ_USE, "use game object");
     // masterIncomingPacketHandlers.AddHandler(CMSG_LOOT_ROLL, "loot roll");
+    _masterTaxiPacketHandlers.emplace(CMSG_GOSSIP_HELLO, "learn taxi");
+    _masterTaxiPacketHandlers.emplace(CMSG_TAXIQUERYAVAILABLENODES, "learn taxi");
     masterIncomingPacketHandlers.AddHandler(CMSG_GOSSIP_HELLO, "gossip hello");
     masterIncomingPacketHandlers.AddHandler(CMSG_QUESTGIVER_HELLO, "gossip hello");
     masterIncomingPacketHandlers.AddHandler(CMSG_ACTIVATETAXI, "activate taxi");
@@ -847,6 +849,18 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
 
     botOutgoingPacketHandlers.Handle(helper);
     masterIncomingPacketHandlers.Handle(helper);
+    if (_masterTaxiPacketPending.load())
+    {
+        std::optional<WorldPacket> taxiPacket;
+        {
+            std::lock_guard<std::mutex> lock(_masterTaxiPacketMutex);
+            taxiPacket = std::move(_pendingMasterTaxiPacket);
+            _pendingMasterTaxiPacket.reset();
+            _masterTaxiPacketPending.store(false);
+        }
+        if (taxiPacket && sPlayerbotAIConfig.LearnFlightPathsWithMaster)
+            helper.HandlePacket(_masterTaxiPacketHandlers, *taxiPacket);
+    }
     masterOutgoingPacketHandlers.Handle(helper);
 
     DoNextAction(minimal);
@@ -1731,9 +1745,20 @@ int32 PlayerbotAI::CalculateGlobalCooldown(uint32 spellid)
     return sPlayerbotAIConfig.ReactDelay;
 }
 
-void PlayerbotAI::HandleMasterIncomingPacket(WorldPacket const& packet)
+void PlayerbotAI::HandleMasterIncomingPacket(WorldPacket const& packet, Player* packetMaster)
 {
     masterIncomingPacketHandlers.AddPacket(packet);
+    if (!sPlayerbotAIConfig.LearnFlightPathsWithMaster || !HasGameClientMaster() || packetMaster != GetMaster() ||
+        packet.size() != sizeof(uint64) ||
+        (packet.GetOpcode() != CMSG_GOSSIP_HELLO && packet.GetOpcode() != CMSG_TAXIQUERYAVAILABLENODES))
+        return;
+
+    // Retain the sender's GUID so a queued click cannot follow a change of master.
+    WorldPacket learnPacket(packet);
+    learnPacket << packetMaster->GetGUID();
+    std::lock_guard<std::mutex> lock(_masterTaxiPacketMutex);
+    _pendingMasterTaxiPacket = std::move(learnPacket);
+    _masterTaxiPacketPending.store(true);
 }
 
 void PlayerbotAI::HandleMasterOutgoingPacket(WorldPacket const& packet)

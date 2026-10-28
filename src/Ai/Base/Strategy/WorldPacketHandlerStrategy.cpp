@@ -33,6 +33,7 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("activate taxi", { NextAction("remember taxi", relevance),
                                                                           NextAction("taxi", relevance) }));
     triggers.push_back(new TriggerNode("taxi done", { NextAction("taxi", relevance) }));
+    triggers.push_back(new TriggerNode("learn taxi", {NextAction("learn taxi", relevance)}));
     triggers.push_back(new TriggerNode("trade status", { NextAction("accept trade", relevance), NextAction("equip upgrades packet action", relevance) }));
     triggers.push_back(new TriggerNode("trade status extended", { NextAction("trade status extended", relevance) }));
     triggers.push_back(new TriggerNode("area trigger", { NextAction("reach area trigger", relevance) }));

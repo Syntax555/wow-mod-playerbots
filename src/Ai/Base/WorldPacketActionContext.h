@@ -21,6 +21,7 @@
 #include "GuildAcceptAction.h"
 #include "GuildCreateActions.h"
 #include "InventoryChangeFailureAction.h"
+#include "LearnTaxiAction.h"
 #include "LeaveGroupAction.h"
 #include "LfgActions.h"
 #include "LootAction.h"
@@ -69,6 +70,7 @@ public:
         creators["reach area trigger"] = &WorldPacketActionContext::reach_area_trigger;
         creators["check mount state"] = &WorldPacketActionContext::check_mount_state;
         creators["remember taxi"] = &WorldPacketActionContext::remember_taxi;
+        creators["learn taxi"] = &WorldPacketActionContext::learn_taxi;
         creators["accept trade"] = &WorldPacketActionContext::accept_trade;
         creators["trade status extended"] = &WorldPacketActionContext::trade_status_extended;
         creators["store loot"] = &WorldPacketActionContext::store_loot;
@@ -133,6 +135,7 @@ private:
     static Action* accept_trade(PlayerbotAI* botAI) { return new TradeStatusAction(botAI); }
     static Action* trade_status_extended(PlayerbotAI* botAI) { return new TradeStatusExtendedAction(botAI); }
     static Action* remember_taxi(PlayerbotAI* botAI) { return new RememberTaxiAction(botAI); }
+    static Action* learn_taxi(PlayerbotAI* botAI) { return new LearnTaxiAction(botAI); }
     static Action* check_mount_state(PlayerbotAI* botAI) { return new CheckMountStateAction(botAI); }
     static Action* area_trigger(PlayerbotAI* botAI) { return new AreaTriggerAction(botAI); }
     static Action* reach_area_trigger(PlayerbotAI* botAI) { return new ReachAreaTriggerAction(botAI); }
