@@ -11,6 +11,7 @@
 #include "Value.h"
 
 class PlayerbotAI;
+struct ItemTemplate;
 
 enum class NaturalMaintenanceType : uint8
 {
@@ -38,6 +39,11 @@ bool CanRunNaturalMaintenance(PlayerbotAI* botAI);
 
 // Natural bots do not craft, so a spell on a profession skill line is no upkeep goal.
 bool IsProfessionSpell(uint32 spellId);
+
+// A general bag rated an upgrade may be bought when the ordinary upgrade action can
+// equip it without displacing a quiver, ammo pouch or profession bag, and no carried
+// bag already upgrades.
+bool BagPurchaseUseful(PlayerbotAI* botAI, ItemTemplate const* proto);
 
 class NaturalMaintenanceValue : public CalculatedValue<NaturalMaintenanceTask>
 {

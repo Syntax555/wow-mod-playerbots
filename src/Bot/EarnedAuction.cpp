@@ -429,7 +429,9 @@ bool CollectReceipts(Player* bot, ObjectGuid mailbox)
         {
             Item* item = bot->GetMItem(itemGuid);
             ItemPosCountVec destination;
-            if (!item || bot->CanStoreItem(NULL_BAG, NULL_SLOT, destination, item, false) != EQUIP_ERR_OK)
+            // A bag stored inside the bag it replaces could not be equipped from there.
+            uint8 const bag = item && item->IsBag() ? uint8(INVENTORY_SLOT_BAG_0) : uint8(NULL_BAG);
+            if (!item || bot->CanStoreItem(bag, NULL_SLOT, destination, item, false) != EQUIP_ERR_OK)
                 continue;
             UnsoldStock::Key const stock = StockKey(bot, item);
             WorldPacket packet(CMSG_MAIL_TAKE_ITEM);
@@ -696,6 +698,10 @@ bool BuyUseful(PlayerbotAI* ai, Creature* auctioneer, AuctionHouseObject* house,
         else if (usage == ITEM_USAGE_SKILL && GatheringTool(proto))
             tier = 3;
         else if (usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_REPLACE)
+            continue;
+        // Bags follow the vendor bag rules; a quiver cannot hold the items of a bag it replaces.
+        if ((proto->Class == ITEM_CLASS_CONTAINER || proto->Class == ITEM_CLASS_QUIVER) &&
+            !BagPurchaseUseful(ai, proto))
             continue;
         uint32 const budget = PurchaseBudget(ai, usage);
         uint32 const ceiling = PriceCeiling(proto->BuyPrice, proto->BuyCount, proto->SellPrice, auction->itemCount);
