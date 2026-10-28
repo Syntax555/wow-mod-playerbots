@@ -1,103 +1,71 @@
-## Portable assembly integration
+# Playerbots — portable integration
 
-This **Playerbots** fork is maintained for
-[AzerothCore Playerbots Portable](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md). Its original upstream is
-[buildthehomelab/wow-mod-playerbots](https://github.com/buildthehomelab/wow-mod-playerbots), imported at
-[`5283a13e0a5d`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/5283a13e0a5d873350fdaef777b95d553d354bee).
-The assembly pins a tested commit of this fork's `evermore` branch in
-[`versions.lock.json`](https://github.com/Syntax555/mod-playerbots-portable/blob/main/versions.lock.json), together with its matching core and modules.
+This fork supplies bot companions and autonomous random bots for
+[AzerothCore Playerbots Portable](https://github.com/Syntax555/mod-playerbots-portable).
+It includes native Playerbots class AI and Raid Clear tactics, with the assembly's
+earned progression, auction trading, combat profiles and battleground gates.
 
-Use the assembly's [installation and build instructions](https://github.com/Syntax555/mod-playerbots-portable/blob/main/README.md),
-[module catalog](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/module-versions.md#server-modules) and
-[Bot dungeons and raids](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/bot-dungeons.md). Before contributing, read its
-[repository rules](https://github.com/Syntax555/mod-playerbots-portable/blob/main/AGENTS.md) and [fork workflow](https://github.com/Syntax555/mod-playerbots-portable/blob/main/CONTRIBUTING.md#changing-the-server).
-The **Portable integration** workflow checks this fork's current commit against
-the assembly's pinned dependencies with the relevant production fixtures.
+## Install or build
 
----
+For normal use, download the Windows server and matching EraTalents client pack
+from the assembly's [Latest release](https://github.com/Syntax555/mod-playerbots-portable/releases/latest)
+and follow its [quick start](https://github.com/Syntax555/mod-playerbots-portable#quick-start).
+Optional [MultiBot and other client addons](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/addons.md)
+are published by the maintained addon forks.
 
+For source builds, follow the assembly's
+[build guide](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/building.md).
+Use the exact core and module commits in
+[versions.lock.json](https://github.com/Syntax555/mod-playerbots-portable/blob/main/versions.lock.json).
+This fork develops on `evermore` and requires the assembly's Playerbots core;
+the standard AzerothCore core and unrelated module heads are not verified
+replacements. The complete native build runs in the assembly.
 
-<p align="center">
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README.md">English</a>
-    |
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README_CN.md">中文</a>
-    |
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README_ES.md">Español</a>
-</p>
+## Behavior and configuration
 
+With the portable profile, random bots begin at level 1 with normal starter
+items and earn XP, gold, gear and each expansion unlock. They travel with normal
+navigation and discovered travel access, pay trainers and vendors, and trade
+owned items through ordinary auctions and mail. Grant, summon and recovery
+shortcuts guarded by natural progression are refused. Existing inventories and
+gold are preserved without checking their origin.
 
-<div align="center">
-  <img src="banner.png" alt="Playerbots Banner" width="700px">
-</div>
+Humans, SelfBots and controlled altbots retain human character rights; their
+talents remain manually controlled. Automatic talent spending applies to random
+bots' earned points. Combat profiles reuse native class strategies and score
+usable equipment already in the character's bags.
 
-<div align="center">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/macos_build.yml/badge.svg">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/core_build.yml/badge.svg">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/windows_build.yml/badge.svg">
-</div>
+The portable configuration is `configs/modules/playerbots.conf`. Its managed
+profile enables `Playerbots.NaturalProgression`, `Playerbots.EarnedAuctions` and
+`Playerbots.EarnedEraBattlegrounds`; this repository's
+[configuration template](conf/playerbots.conf.dist) leaves those opt-in flags off.
+Use the assembly's [configuration guide](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/configuration.md),
+[combat profiles](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/combat-profiles.md),
+[auction guide](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/earned-auctions.md)
+and [PvP guide](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/earned-bot-brackets.md).
 
-# Playerbots Module
-`mod-playerbots` is an [AzerothCore](https://www.azerothcore.org/) module that adds player-like bots to a server. The project is based off [IKE3's Playerbots](https://github.com/ike3/mangosbot).
+Navigation, quests, professions and encounters depend on existing AI support.
+Some upstream encounter actions still use movement or combat shortcuts.
+Autonomous raids, bot arenas and bot Strand of the Ancients are unavailable in
+the portable profile. Source fixtures do not establish full dungeon/raid runs,
+every class's live behavior or performance at the configured 2,500-bot target.
+See [dungeons and raids](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/bot-dungeons.md)
+and [outstanding validation](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/todo.md).
 
-Features include:
+## Development and provenance
 
-- The ability to log in alt characters as bots, allowing players to interact with their other characters, form parties, level up, and more
-- Random bots that wander through the world, complete quests, and otherwise behave like players, simulating the MMO experience
-- Bots capable of running most raids and battlegrounds
-- Highly configurable settings to define how bots behave
-- Excellent performance, even when running thousands of bots
+Read [AGENTS.md](AGENTS.md) and the assembly's
+[contributing guide](https://github.com/Syntax555/mod-playerbots-portable/blob/main/CONTRIBUTING.md).
+Make validated changes on `evermore`, then pin the commit in the assembly.
+Preserve earned-play gates, user data, configuration and pinned history.
 
-We also have a **[Discord server](https://discord.gg/NQm5QShwf9)** where you can discuss the project, ask questions, and get involved in the community!
+Imported from [buildthehomelab/wow-mod-playerbots at `5283a13e0a5d`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/5283a13e0a5d873350fdaef777b95d553d354bee).
+The [original README](https://github.com/buildthehomelab/wow-mod-playerbots/blob/5283a13e0a5d873350fdaef777b95d553d354bee/README.md)
+and [Playerbots command wiki](https://github.com/mod-playerbots/mod-playerbots/wiki/Playerbot-Commands)
+provide general references; some documented shortcuts are intentionally refused
+in this assembly.
 
-## Installation
-
-Supported platforms are Ubuntu, Windows, and macOS. Other Linux distributions may work, but may not receive support.
-
-> **Important:** All `mod-playerbots` installations require a custom fork of AzerothCore: [mod-playerbots/azerothcore-wotlk (Playerbot branch)](https://github.com/mod-playerbots/azerothcore-wotlk/tree/Playerbot). The standard AzerothCore repository will **not** work.
-
-### Quick Start
-
-```bash
-git clone https://github.com/mod-playerbots/azerothcore-wotlk.git --branch=Playerbot
-cd azerothcore-wotlk/modules
-git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
-```
-
-Then build the server following the platform-specific instructions in our **[Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide)**.
-
-> **Testing branch:** A `test-staging` branch is available with the latest features and fixes before they are merged into `master`. To use it, clone with `--branch=test-staging` instead. Note that this branch may contain unstable or breaking changes — use it at your own risk and only if you are comfortable troubleshooting issues.
-
-### Detailed Guides
-
-| Guide | Description |
-|---|---|
-| **[Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide)** | Full step-by-step instructions for clean installs, migrating from existing AzerothCore, Docker setup, adding modules, and updating |
-| **[Troubleshooting](https://github.com/mod-playerbots/mod-playerbots/wiki/Troubleshooting)** | Solutions to the most common build errors, database issues, configuration mistakes, crashes, and platform-specific problems |
-
-For additional references, see the [AzerothCore Installation Guide](https://www.azerothcore.org/wiki/installation) and [Installing a Module](https://www.azerothcore.org/wiki/installing-a-module) pages.
-
-## Documentation
-
-The [Playerbots Wiki](https://github.com/mod-playerbots/mod-playerbots/wiki) contains an extensive overview of AddOns, commands, raids with programmed bot strategies, and recommended performance configurations. Please note that documentation may be incomplete or out-of-date in some sections, and contributions are welcome.
-
-Bots are controlled via chat commands. For larger bot groups, this can be cumbersome. Because of this, community members have developed client AddOns to allow controlling bots through the in-game UI. We recommend you check out their projects listed in the [AddOns and Submodules](https://github.com/mod-playerbots/mod-playerbots/wiki/Playerbot-Addons-and-Sub%E2%80%90Modules) page.
-
-## Contributing
-
-This project is still under development. We encourage anyone to make contributions, anything from pull requests to reporting issues. If you encounter any errors or experience crashes, we encourage you [report them as GitHub issues](https://github.com/mod-playerbots/mod-playerbots/issues/new?template=bug_report.md). Your valuable feedback will help us improve this project collaboratively.
-
-If you make coding contributions, `mod-playerbots` complies with the [C++ Code Standards](https://www.azerothcore.org/wiki/cpp-code-standards) established by AzerothCore. Each Pull Request must include all test scenarios the author performed, along with their results, to demonstrate that the changes were properly verified.
-
-We recommend joining the [Discord server](https://discord.gg/NQm5QShwf9) to make your contributions to the project easier, as a lot of active support is carried out through this server.
-
-Please click on the "⭐" button to stay up to date and help us gain more visibility on GitHub!
-
-## Acknowledgements
-
-`mod-playerbots` is based on [ZhengPeiRu21/mod-playerbots](https://github.com/ZhengPeiRu21/mod-playerbots) and [celguar/mangosbot-bots](https://github.com/celguar/mangosbot-bots). We extend our gratitude to [@ZhengPeiRu21](https://github.com/ZhengPeiRu21) and [@celguar](https://github.com/celguar) for their continued efforts in maintaining the module.
-
-Also, a thank you to the many contributors who've helped build this project:
-
-<a href="https://github.com/mod-playerbots/mod-playerbots/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=mod-playerbots/mod-playerbots" />
-</a>
+Playerbots builds on IKE3's Playerbots, ZhengPeiRu21/mod-playerbots,
+celguar/mangosbot-bots, mod-playerbots contributors and the imported fork's
+authors. Preserve the [GPL-2.0 license](LICENSE) and individual source notices,
+including notices permitting later GPL versions.
