@@ -1498,6 +1498,9 @@ bool NightbaneFlightPhaseStackAndMoveAction::Execute(Event /*event*/)
 // Failsafe in case bots fall through the world or off the terrace
 bool NightbaneTeleportBackToTerraceAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     Position const& position = NIGHTBANE_TELEPORT_POSITION;
     bot->NearTeleportTo(
         position.GetPositionX(), position.GetPositionY(),

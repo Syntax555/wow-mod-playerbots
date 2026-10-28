@@ -255,7 +255,9 @@ bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer
     if (!bot || !trainer || !trainerSpell)
         return false;
 
-    if (trainer->GetTrainerType() != Trainer::Type::Tradeskill || !sRandomPlayerbotMgr.IsRandomBot(bot))
+    // Natural bots learn professions at trainers without a factory-assigned profession pair.
+    if (sPlayerbotAIConfig.naturalProgression || trainer->GetTrainerType() != Trainer::Type::Tradeskill ||
+        !sRandomPlayerbotMgr.IsRandomBot(bot))
         return true;
 
     uint16 const skillId = GetTrainerSpellTradeSkill(trainerSpell);
@@ -825,6 +827,10 @@ void PlayerbotFactory::Prepare()
 
 void PlayerbotFactory::Randomize(bool incremental)
 {
+    // Natural bots retain their starter kit, earned items, money, skills and quests.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     // if (sPlayerbotAIConfig.DisableRandomLevels)
     //     return;
 
@@ -1089,6 +1095,10 @@ void PlayerbotFactory::Randomize(bool incremental)
 
 void PlayerbotFactory::Refresh()
 {
+    // Natural bots retain their starter kit, earned items, money, skills and quests.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     // Prepare();
     // if (!sPlayerbotAIConfig.EquipAndSpecPersistence ||
     //     bot->GetLevel() < sPlayerbotAIConfig.EquipAndSpecPersistenceLevel)
@@ -1129,6 +1139,9 @@ void PlayerbotFactory::Refresh()
 
 void PlayerbotFactory::InitConsumables()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint8 specTab = AiFactory::GetPlayerSpecTab(bot);
     std::vector<std::pair<uint32, uint32>> items;
 
@@ -1495,6 +1508,9 @@ void PlayerbotFactory::InitPetTalents()
 
 void PlayerbotFactory::InitPet()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     Pet* pet = bot->GetPet();
 
     if (!pet && bot->GetPetStable() && bot->GetPetStable()->CurrentPet)
@@ -1651,6 +1667,9 @@ void PlayerbotFactory::ClearSkills()
 
 void PlayerbotFactory::ClearEverything()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     bot->GiveLevel(bot->getClass() == CLASS_DEATH_KNIGHT ? sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL)
                                                          : sWorld->getIntConfig(CONFIG_START_PLAYER_LEVEL));
     bot->SetUInt32Value(PLAYER_XP, 0);
@@ -1757,7 +1776,7 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
             LOG_ERROR("playerbots", "Fail to select spec num for bot {}! Set to 0.", bot->GetName());
         }
     }
-    if (reset)
+    if (reset && !sPlayerbotAIConfig.naturalProgression)
     {
         bot->resetTalents(true);
     }
@@ -1801,7 +1820,7 @@ static bool IsAboveTalentExpansionLimit(Player* bot, uint32 row, uint32 col)
 
 void PlayerbotFactory::InitTalentsBySpecNo(Player* bot, int specNo, bool reset)
 {
-    if (reset)
+    if (reset && !sPlayerbotAIConfig.naturalProgression)
     {
         bot->resetTalents(true);
     }
@@ -1891,7 +1910,7 @@ void PlayerbotFactory::InitTalentsBySpecNo(Player* bot, int specNo, bool reset)
 void PlayerbotFactory::InitTalentsByParsedSpecLink(Player* bot, std::vector<std::vector<uint32>> parsedSpecLink,
                                                    bool reset)
 {
-    if (reset)
+    if (reset && !sPlayerbotAIConfig.naturalProgression)
     {
         bot->resetTalents(true);
     }
@@ -2341,6 +2360,9 @@ void Shuffle(std::vector<uint32>& items)
 
 void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (level < 5)
     {
         // original items
@@ -2902,6 +2924,9 @@ inline Item* StoreNewItemInInventorySlot(Player* player, uint32 newItemId, uint3
 
 void PlayerbotFactory::InitBags(bool destroyOld)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
     {
         uint32 newItemId = 51809;
@@ -3378,6 +3403,9 @@ void PlayerbotFactory::UpdateTradeSkills()
 
 void PlayerbotFactory::InitSkills()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     //uint32 maxValue = level * 5; //not used, line marked for removal.
     bot->UpdateSkillsForLevel();
 
@@ -3548,6 +3576,9 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
 void PlayerbotFactory::InitAvailableSpells()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (trainerIdCache[bot->getClass()].empty())
     {
         CreatureTemplateContainer const* creatureTemplateContainer = sObjectMgr->GetCreatureTemplates();
@@ -3598,6 +3629,9 @@ void PlayerbotFactory::InitAvailableSpells()
 
 void PlayerbotFactory::InitClassSpells()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     int32_t level = bot->GetLevel();
     switch (bot->getClass())
     {
@@ -3695,6 +3729,9 @@ void PlayerbotFactory::InitClassSpells()
 
 void PlayerbotFactory::InitSpecialSpells()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     for (std::vector<uint32>::iterator i = sPlayerbotAIConfig.RandomBotSpellIds.begin();
          i != sPlayerbotAIConfig.RandomBotSpellIds.end(); ++i)
     {
@@ -3723,6 +3760,14 @@ void PlayerbotFactory::InitTalents(uint32 specNo)
             continue;
 
         if ((classMask & talentTabInfo->ClassMask) == 0)
+            continue;
+
+        if (sPlayerbotAIConfig.LimitTalentsExpansion && bot->GetLevel() <= 60 &&
+            (talentInfo->Row > 6 || (talentInfo->Row == 6 && talentInfo->Col != 1)))
+            continue;
+
+        if (sPlayerbotAIConfig.LimitTalentsExpansion && bot->GetLevel() <= 70 &&
+            (talentInfo->Row > 8 || (talentInfo->Row == 8 && talentInfo->Col != 1)))
             continue;
 
         spells[talentInfo->Row].push_back(talentInfo);
@@ -3944,6 +3989,9 @@ void PlayerbotFactory::InitQuests(std::list<uint32>& questMap, bool withRewardIt
 
 void PlayerbotFactory::InitInstanceQuests()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     // Yunfan: use configuration instead of hard code
     uint32 currentXP = bot->GetUInt32Value(PLAYER_XP);
     // LOG_INFO("playerbots", "Initializing quests...");
@@ -4007,6 +4055,9 @@ static void DestroyObsoleteAmmo(Player* bot, ItemTemplate const* ammo)
 
 void PlayerbotFactory::InitAmmo()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint8 const botClass = bot->getClass();
     if (botClass != CLASS_HUNTER && botClass != CLASS_ROGUE && botClass != CLASS_WARRIOR)
         return;
@@ -4095,6 +4146,9 @@ void PlayerbotFactory::AutoGear(Player* bot, uint32 itemQuality, uint32 ilvl, bo
 
 void PlayerbotFactory::InitMounts()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint32 firstmount = sPlayerbotAIConfig.UseGroundMountAtMinLevel;
     uint32 secondmount = sPlayerbotAIConfig.UseFastGroundMountAtMinLevel;
     uint32 thirdmount = sPlayerbotAIConfig.UseFlyMountAtMinLevel;
@@ -4240,6 +4294,9 @@ void PlayerbotFactory::UnbindInstance()
 
 void PlayerbotFactory::InitPotions()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint32 effects[] = {SPELL_EFFECT_HEAL, SPELL_EFFECT_ENERGIZE};
     for (uint8 i = 0; i < 2; ++i)
     {
@@ -4320,6 +4377,9 @@ std::vector<uint32> PlayerbotFactory::GetCurrentGemsCount()
 
 void PlayerbotFactory::InitFood()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (botAI && botAI->HasCheat(BotCheatMask::food))
     {
         return;
@@ -4385,6 +4445,9 @@ void PlayerbotFactory::InitFood()
 
 void PlayerbotFactory::InitReagents()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     std::vector<std::pair<uint32, uint32>> items;
     switch (bot->getClass())
     {
@@ -4570,6 +4633,9 @@ void PlayerbotFactory::CleanupConsumables() // remove old consumables as part of
 
 void PlayerbotFactory::InitGlyphs(bool increment)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     bot->InitGlyphsForLevel();
     if (!increment && botAI &&
         botAI->GetAiObjectContext()->GetValue<bool>("custom_glyphs")->Get())
@@ -5633,6 +5699,9 @@ void PlayerbotFactory::IterateItemsInBank(IterateItemsVisitor* visitor)
 
 void PlayerbotFactory::InitKeyring()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!bot)
         return;
 
@@ -5683,6 +5752,9 @@ void PlayerbotFactory::InitKeyring()
 }
 void PlayerbotFactory::InitReputation()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!bot)
         return;
 
@@ -5728,6 +5800,9 @@ void PlayerbotFactory::InitReputation()
 
 void PlayerbotFactory::InitAttunementQuests()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint32 level = bot->GetLevel();
     if (level < 55)
         return; // Only apply for level 55+ bots

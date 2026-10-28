@@ -221,6 +221,9 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32& type, uint32& guid1, std:
 
 bool ChatReplyAction::HandleThunderfuryReply(Player* bot, ChatChannelSource chatChannelSource)
 {
+    if (!sPlayerbotAIConfig.ThunderfuryRepliesChance)
+        return false;
+
     std::map<std::string, std::string> placeholders;
     const auto thunderfury = sObjectMgr->GetItemTemplate(19019);
     placeholders["%thunderfury_link"] = GET_PLAYERBOT_AI(bot)->GetChatHelper()->FormatItem(thunderfury);
@@ -249,6 +252,9 @@ bool ChatReplyAction::HandleThunderfuryReply(Player* bot, ChatChannelSource chat
 
 bool ChatReplyAction::HandleToxicLinksReply(Player* bot, ChatChannelSource chatChannelSource)
 {
+    if (!sPlayerbotAIConfig.ToxicLinksRepliesChance)
+        return false;
+
     //quests
     std::vector<uint32> incompleteQuests;
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)

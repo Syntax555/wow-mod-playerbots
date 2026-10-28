@@ -8,16 +8,23 @@
 #define PLAYERBOTS_NEWPLAYERNEARBYVALUE_H
 
 #include "ObjectGuid.h"
+#include "PlayerbotAIConfig.h"
 #include "Value.h"
 
+class Player;
 class PlayerbotAI;
 
 class NewPlayerNearbyValue : public CalculatedValue<ObjectGuid>
 {
 public:
-    NewPlayerNearbyValue(PlayerbotAI* botAI) : CalculatedValue<ObjectGuid>(botAI, "new player nearby") {}
+    NewPlayerNearbyValue(PlayerbotAI* botAI)
+        : CalculatedValue<ObjectGuid>(botAI, "new player nearby", sPlayerbotAIConfig.greetRealPlayersOnly ? 10 : 1)
+    {
+    }
 
     ObjectGuid Calculate() override;
+    static bool CanGreet(PlayerbotAI* botAI);
+    static bool IsEligiblePlayer(PlayerbotAI* botAI, Player* player);
 };
 
 class AlreadySeenPlayersValue : public ManualSetValue<GuidSet&>

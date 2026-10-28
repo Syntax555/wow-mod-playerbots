@@ -99,6 +99,9 @@ struct NewRpgInfo
     WorldPosition moveFarPos;
     // END MOVE_FAR
 
+    // Natural maintenance skips an NPC for one search after failing to reach or use it.
+    ObjectGuid naturalMaintenanceRejected;
+
     using RpgData = std::variant<
         Idle,
         GoGrind,

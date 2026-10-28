@@ -40,7 +40,9 @@ bool TaxiAction::Execute(Event event)
         if (!(npc->GetNpcFlags() & UNIT_NPC_FLAG_FLIGHTMASTER))
             continue;
 
-        if (bot->GetDistance(npc) > sPlayerbotAIConfig.FarDistance)
+        // Natural bots must be able to talk to the flight master like a player.
+        if (sPlayerbotAIConfig.naturalProgression ? !bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_FLIGHTMASTER)
+                                                  : bot->GetDistance(npc) > sPlayerbotAIConfig.FarDistance)
             continue;
 
         bot->GetSession()->SendLearnNewTaxiNode(npc);
@@ -54,7 +56,7 @@ bool TaxiAction::Execute(Event event)
                 if (entry->from == curloc)
                 {
                     uint8 field = uint8((i - 1) / 32);
-                    if (field < TaxiMaskSize)
+                    if (field < TaxiMaskSize && CanUseTaxiNodes(bot, {entry->from, entry->to}))
                         nodes.push_back(i);
                 }
         }
@@ -62,6 +64,15 @@ bool TaxiAction::Execute(Event event)
         // Only for follower bots
         if (botAI->HasGameClientMaster())
         {
+            if (!CanUseTaxiNodes(bot, movement.taxiNodes))
+            {
+                movement.taxiNodes.clear();
+                movement.Set(nullptr);
+                botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                    "taxi_route_not_discovered", "I have not discovered that flight path", {}));
+                return false;
+            }
+
             uint32 index = botAI->GetGroupSlotIndex(bot);
             uint32 delay = sPlayerbotAIConfig.BotTaxiDelayMin +
                           index * sPlayerbotAIConfig.BotTaxiGapMs +
@@ -76,9 +87,11 @@ bool TaxiAction::Execute(Event event)
             botAI->AddTimedEvent(
                 [bot = bot, &movement, npcGuid]() -> void
                 {
-                    if (Creature* npcPtr = ObjectAccessor::GetCreature(*bot, npcGuid))
-                        if (!movement.taxiNodes.empty())
-                            bot->ActivateTaxiPathTo(movement.taxiNodes, npcPtr, 0);
+                    Creature* npcPtr = sPlayerbotAIConfig.naturalProgression
+                                           ? bot->GetNPCIfCanInteractWith(npcGuid, UNIT_NPC_FLAG_FLIGHTMASTER)
+                                           : ObjectAccessor::GetCreature(*bot, npcGuid);
+                    if (npcPtr && !movement.taxiNodes.empty() && CanUseTaxiNodes(bot, movement.taxiNodes))
+                        bot->ActivateTaxiPathTo(movement.taxiNodes, npcPtr, 0);
                 },
                 delay);
             botAI->SetNextCheckDelay(delay + 50);
@@ -111,6 +124,9 @@ bool TaxiAction::Execute(Event event)
         uint32 selected = atoi(param.c_str());
         if (selected)
         {
+            if (selected > nodes.size())
+                return false;
+
             uint32 path = nodes[selected - 1];
             TaxiPathEntry const* entry = sTaxiPathStore.LookupEntry(path);
             if (!entry)
@@ -119,7 +135,8 @@ bool TaxiAction::Execute(Event event)
             return bot->ActivateTaxiPathTo({entry->from, entry->to}, npc, 0);
         }
 
-        if (!movement.taxiNodes.empty() && !bot->ActivateTaxiPathTo(movement.taxiNodes, npc, 0))
+        if (!movement.taxiNodes.empty() &&
+            (!CanUseTaxiNodes(bot, movement.taxiNodes) || !bot->ActivateTaxiPathTo(movement.taxiNodes, npc, 0)))
         {
             movement.taxiNodes.clear();
             movement.Set(nullptr);

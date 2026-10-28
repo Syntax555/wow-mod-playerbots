@@ -13,10 +13,12 @@
 #include "GuildCreateActions.h"
 #include "LastMovementValue.h"
 #include "MovementActions.h"
+#include "PlayerbotFactory.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "PossibleRpgTargetsValue.h"
 #include "SocialMgr.h"
+#include "Trainer.h"
 
 void RpgHelper::OnExecute(std::string nextAction)
 {
@@ -177,7 +179,8 @@ bool RpgTaxiAction::Execute(Event /*event*/)
 
     uint32 path = nodes[urand(0, nodes.size() - 1)];
     uint32 money = bot->GetMoney();
-    bot->SetMoney(money + 100000);
+    if (!sPlayerbotAIConfig.naturalProgression)
+        bot->SetMoney(money + 100000);
 
     TaxiPathEntry const* entry = sTaxiPathStore.LookupEntry(path);
     if (!entry)
@@ -203,7 +206,8 @@ bool RpgTaxiAction::Execute(Event /*event*/)
     LOG_INFO("playerbots", "Bot {} <{}> is flying from {} to {} ({} location available)",
              bot->GetGUID().ToString().c_str(), bot->GetName(), nodeFrom->name[0], nodeTo->name[0], nodes.size());
 
-    bot->SetMoney(money);
+    if (!sPlayerbotAIConfig.naturalProgression)
+        bot->SetMoney(money);
 
     rpg->AfterExecute();
 
@@ -276,19 +280,17 @@ bool RpgTrainAction::isPossible()
 {
     GuidPosition gp = rpg->guidP();
 
-    CreatureTemplate const* cinfo = gp.GetCreatureTemplate();
-    if (!cinfo)
+    Creature* npc = gp.GetCreature();
+    if (!npc)
         return false;
 
-    Trainer::Trainer* trainer = sObjectMgr->GetTrainer(cinfo->Entry);
+    Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry());
     if (!trainer)
         return false;
 
     if (!trainer->IsTrainerValidForPlayer(bot))
         return false;
 
-    FactionTemplateEntry const* factionTemplate = sFactionTemplateStore.LookupEntry(cinfo->faction);
-    float reputationDiscount = bot->GetReputationPriceDiscount(factionTemplate);
     uint32 currentGold = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::spells);
 
     for (auto& spell : trainer->GetSpells())
@@ -297,10 +299,11 @@ bool RpgTrainAction::isPossible()
         if (!trainerSpell)
             continue;
 
-        if (!trainer->CanTeachSpell(bot, trainerSpell))
+        if (!PlayerbotFactory::IsTrainerSpellAllowedForBot(bot, trainer, trainerSpell) ||
+            !trainer->CanTeachSpell(bot, trainerSpell))
             continue;
 
-        if (currentGold < static_cast<uint32>(floor(trainerSpell->MoneyCost * reputationDiscount)))
+        if (currentGold < trainer->GetSpellCost(bot, npc, trainerSpell))
             continue;
 
         // we only check if at least one spell can be learned from the trainer;

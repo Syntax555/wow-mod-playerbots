@@ -85,8 +85,18 @@ bool TeleportAction::Execute(Event /*event*/)
         out << "Teleporting using " << goInfo->name;
         botAI->TellMasterNoFacing(out.str());
 
-        botAI->ChangeStrategy("-follow,+stay", BOT_STATE_NON_COMBAT);
+        if (sPlayerbotAIConfig.naturalProgression)
+        {
+            if (!bot->IsWithinDistInMap(go, INTERACTION_DISTANCE))
+                continue;
+            botAI->ChangeStrategy("-follow,+stay", BOT_STATE_NON_COMBAT);
+            WorldPacket packet(CMSG_GAMEOBJ_USE);
+            packet << go->GetGUID();
+            bot->GetSession()->HandleGameObjectUseOpcode(packet);
+            return true;
+        }
 
+        botAI->ChangeStrategy("-follow,+stay", BOT_STATE_NON_COMBAT);
         Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
         SpellCastTargets targets;
         targets.SetUnitTarget(bot);

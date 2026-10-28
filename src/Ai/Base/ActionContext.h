@@ -276,6 +276,7 @@ public:
         creators["pet attack"] = &ActionContext::pet_attack;
         creators["set pet stance"] = &ActionContext::set_pet_stance;
 
+        creators["new rpg natural maintenance"] = &ActionContext::new_rpg_natural_maintenance;
         creators["new rpg status update"] = &ActionContext::new_rpg_status_update;
         creators["new rpg go grind"] = &ActionContext::new_rpg_go_grind;
         creators["new rpg go camp"] = &ActionContext::new_rpg_go_camp;
@@ -488,6 +489,7 @@ private:
     static Action* pet_attack(PlayerbotAI* botAI) { return new PetAttackAction(botAI); }
     static Action* set_pet_stance(PlayerbotAI* botAI) { return new SetPetStanceAction(botAI); }
 
+    static Action* new_rpg_natural_maintenance(PlayerbotAI* botAI) { return new NewRpgNaturalMaintenanceAction(botAI); }
     static Action* new_rpg_status_update(PlayerbotAI* botAI) { return new NewRpgStatusUpdateAction(botAI); }
     static Action* new_rpg_go_grind(PlayerbotAI* botAI) { return new NewRpgGoGrindAction(botAI); }
     static Action* new_rpg_go_camp(PlayerbotAI* botAI) { return new NewRpgGoCampAction(botAI); }

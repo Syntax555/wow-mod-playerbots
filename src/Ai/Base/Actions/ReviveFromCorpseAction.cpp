@@ -98,7 +98,7 @@ bool FindCorpseAction::Execute(Event /*event*/)
 
     uint32 dCount = AI_VALUE(uint32, "death count");
 
-    if (!botAI->HasGameClientMaster())
+    if (!sPlayerbotAIConfig.naturalProgression && !botAI->HasGameClientMaster())
     {
         if (dCount >= 5)
         {
@@ -165,7 +165,7 @@ bool FindCorpseAction::Execute(Event /*event*/)
     // Actual mobing part.
     bool moved = false;
 
-    if (!botAI->AllowActivity(ALL_ACTIVITY))
+    if (!sPlayerbotAIConfig.naturalProgression && !botAI->AllowActivity(ALL_ACTIVITY))
     {
         uint32 delay = ServerFacade::instance().GetDistance2d(bot, corpse) /
                        bot->GetSpeed(MOVE_RUN);        // Time a bot would take to travel to it's corpse.
@@ -321,7 +321,7 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     GraveyardStruct const* ClosestGrave =
         GetGrave(dCount > 10 || deadTime > 15 * MINUTE || AI_VALUE(uint8, "durability") < 10);
 
-    if (bot->GetDistance2d(ClosestGrave->x, ClosestGrave->y) < sPlayerbotAIConfig.SightDistance)
+    if (ClosestGrave && bot->GetDistance2d(ClosestGrave->x, ClosestGrave->y) < sPlayerbotAIConfig.SightDistance)
     {
         GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
         for (GuidVector::iterator i = npcs.begin(); i != npcs.end(); i++)
@@ -332,8 +332,23 @@ bool SpiritHealerAction::Execute(Event /*event*/)
                 LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at spirit healer", bot->GetGUID().ToString().c_str(),
                           bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
                 PlayerbotChatHandler ch(bot);
-                bot->ResurrectPlayer(0.5f);
-                bot->SpawnCorpseBones();
+                if (sPlayerbotAIConfig.naturalProgression)
+                {
+                    if (bot->GetDistance(unit) > INTERACTION_DISTANCE)
+                        return MoveNear(unit);
+
+                    // Core applies the usual sickness, durability loss and NPC interaction checks.
+                    WorldPacket packet(CMSG_SPIRIT_HEALER_ACTIVATE, 8);
+                    packet << unit->GetGUID();
+                    bot->GetSession()->HandleSpiritHealerActivateOpcode(packet);
+                    if (!bot->IsAlive())
+                        return false;
+                }
+                else
+                {
+                    bot->ResurrectPlayer(0.5f);
+                    bot->SpawnCorpseBones();
+                }
                 context->GetValue<Unit*>("current target")->Set(nullptr);
                 bot->SetTarget();
                 botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello", {}));
@@ -360,6 +375,9 @@ bool SpiritHealerAction::Execute(Event /*event*/)
 
     if (moved)
         return true;
+
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
 
     // if (!IsRealPlayer(botAI->GetMaster()))
     // {

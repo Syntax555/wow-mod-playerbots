@@ -306,6 +306,9 @@ int RandomBotLevelMgr::GetLevelRangeIndex(uint8 level, TeamId team)
 // be resized on a config reload.
 void RandomBotLevelMgr::AdjustBotToRange(Player* bot, int targetRangeIndex, TeamId team)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!bot || !bot->IsInWorld() || !bot->GetSession() || bot->GetSession()->IsLoggingOut() ||
         bot->IsDuringRemoveFromWorld())
         return;
@@ -849,6 +852,9 @@ uint8 RandomBotLevelMgr::ComputeResetChance(uint8 level) const
 // whichever is higher) via a full PlayerbotFactory randomize.
 void RandomBotLevelMgr::ResetBot(Player* player, uint8 currentLevel)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint8 levelToResetTo = sPlayerbotAIConfig.ResetBotLevelResetTo;
 
     uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
@@ -872,6 +878,9 @@ void RandomBotLevelMgr::ResetBot(Player* player, uint8 currentLevel)
 // level, whichever is higher) via a full PlayerbotFactory randomize.
 void RandomBotLevelMgr::SkipBotLevel(Player* player, uint8 currentLevel)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint8 levelToSkipTo = sPlayerbotAIConfig.ResetBotLevelSkipTo;
 
     uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
@@ -949,6 +958,9 @@ void RandomBotLevelMgr::RunResetPlayedTimeCheck()
 
 void RandomBotLevelMgr::Update(uint32 diff)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (sPlayerbotAIConfig.LevelBracketsEnabled)
     {
         _bracketsTimer += diff;
@@ -981,6 +993,9 @@ void RandomBotLevelMgr::Update(uint32 diff)
 
 void RandomBotLevelMgr::OnBotLogin(Player* player)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!sRandomPlayerbotMgr.IsRandomBot(player))
         return;
 
@@ -1034,6 +1049,9 @@ void RandomBotLevelMgr::OnBotLogin(Player* player)
 
 void RandomBotLevelMgr::OnBotLevelChanged(Player* player, uint8 oldLevel)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!sRandomPlayerbotMgr.IsRandomBot(player))
         return;
 
@@ -1155,11 +1173,34 @@ public:
 // =============================================================================
 class RandomBotLevelPlayerScript : public PlayerScript
 {
+    static uint8 GetEarnedLevelCap(Player* player)
+    {
+        if (!sPlayerbotAIConfig.naturalProgression || !player || !sRandomPlayerbotMgr.IsRandomBot(player))
+            return 0;
+
+        auto const policy = sPlayerbotAIConfig.earnedLevelBrackets.load();
+        return policy->GetCap(player->GetGUID().GetCounter(), player->GetLevel());
+    }
+
 public:
     RandomBotLevelPlayerScript()
         : PlayerScript("RandomBotLevelPlayerScript",
-              { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_LOGOUT })
+              { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_ON_GIVE_EXP,
+                PLAYERHOOK_ON_CAN_GIVE_LEVEL })
     {
+    }
+
+    void OnPlayerGiveXP(Player* player, uint32& amount, Unit* /*victim*/, uint8 /*xpSource*/) override
+    {
+        uint8 const cap = GetEarnedLevelCap(player);
+        if (cap && player->GetLevel() >= cap)
+            amount = 0;
+    }
+
+    bool OnPlayerCanGiveLevel(Player* player, uint8 newLevel) override
+    {
+        uint8 const cap = GetEarnedLevelCap(player);
+        return !cap || newLevel <= cap;
     }
 
     void OnPlayerLogin(Player* player) override

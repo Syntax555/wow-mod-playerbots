@@ -117,6 +117,10 @@ bool BwlInterruptVolleyAction::Execute(Event /*event*/)
 
 bool BwlOnyxiaScaleCloakAuraCheckAction::Execute(Event /*event*/)
 {
+    // Require the real equipped cloak; do not grant its protection aura.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     bot->AddAura(static_cast<uint32>(BlackwingLairSpells::SPELL_ONYXIA_SCALE_CLOAK), bot);
     return true;
 }
@@ -134,6 +138,8 @@ bool BwlTurnOffSuppressionDeviceAction::Execute(Event /*event*/)
         GameObject* go = botAI->GetGameObject(*i);
         if (IsActiveSuppressionDeviceInRange(go, bot))
         {
+            if (sPlayerbotAIConfig.naturalProgression)
+                return bot->HasSpell(1842) && bot->CastSpell(go, 1842, false) == SPELL_CAST_OK;
             go->SetGoState(GO_STATE_ACTIVE);
         }
     }

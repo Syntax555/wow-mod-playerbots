@@ -1423,7 +1423,7 @@ bool IllidariCouncilMainTankPositionGathiosAction::Execute(Event /*event*/)
         return false;
 
     // Failsafe for if bot falls through the floor, which tends to happen upon the pull
-    if (bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
+    if (!sPlayerbotAIConfig.naturalProgression && bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
     {
         bot->NearTeleportTo(
             gathios->GetPositionX(), gathios->GetPositionY(),
@@ -1497,7 +1497,7 @@ bool IllidariCouncilFirstAssistTankFocusMalandeAction::Execute(Event /*event*/)
         return false;
 
     // Failsafe for if bot falls through the floor, which tends to happen upon the pull
-    if (bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
+    if (!sPlayerbotAIConfig.naturalProgression && bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
     {
         bot->NearTeleportTo(
             malande->GetPositionX(), malande->GetPositionY(),
@@ -1522,7 +1522,7 @@ bool IllidariCouncilSecondAssistTankPositionDarkshadowAction::Execute(Event /*ev
         return false;
 
     // Failsafe for if bot falls through the floor, which tends to happen upon the pull
-    if (bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
+    if (!sPlayerbotAIConfig.naturalProgression && bot->GetPositionZ() < COUNCIL_FLOOR_Z_THRESHOLD)
     {
         bot->NearTeleportTo(
             darkshadow->GetPositionX(), darkshadow->GetPositionY(),

@@ -34,6 +34,10 @@ bool BuyAction::Execute(Event event)
     for (GuidVector::iterator i = vendors.begin(); i != vendors.end(); ++i)
     {
         ObjectGuid vendorguid = *i;
+        if (sPlayerbotAIConfig.naturalProgression && event.GetSource() == "natural maintenance" &&
+            vendorguid != bot->GetTarget())
+            continue;
+
         Creature* pCreature = bot->GetNPCIfCanInteractWith(vendorguid, UNIT_NPC_FLAG_VENDOR);
         if (!pCreature)
             continue;

@@ -163,6 +163,10 @@ bool SummonAction::SummonUsingNpcs(Player* summoner, Player* player, bool preser
 
 bool SummonAction::Teleport(Player* summoner, Player* player, bool preserveAuras)
 {
+    // Bot chat summoning bypasses spell, reagent and meeting-stone requirements.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     // Player* master = GetMaster();
     if (!summoner || summoner == player)
         return false;

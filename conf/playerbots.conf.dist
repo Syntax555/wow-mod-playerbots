@@ -85,6 +85,20 @@ Playerbots.Enabled = 1
 # Enable randombot system
 Playerbots.RandomBotAutologin = 1
 
+# Preserve normal character creation and earned progress. Disable random factory
+# gear/gold/spell/quest grants, free maintenance and bot cheat masks.
+# Disables periodic revive/teleport and teleport recovery; pathfinding can stall.
+# Does not provide missing quest, crafting, profession or raid AI.
+Playerbots.NaturalProgression = 0
+
+# Optional earned caps in natural mode: level:percentage pairs, unique levels 1-80,
+# positive percentages totaling at most 100. Example: 19:5,29:5,39:5,49:5,59:5.
+# Unassigned bots progress normally. Bots earn every level; no level/gear grants,
+# resets or XP-off matchmaking flags. GUID assignment survives relogs/restarts.
+# Existing bots above their assigned cap are left alone. Empty disables caps.
+# Invalid input logs an error and disables caps. Reload config or restart to apply.
+Playerbots.EarnedLevelBrackets = ""
+
 # Randombot count
 Playerbots.MinRandomBots = 500
 Playerbots.MaxRandomBots = 500
@@ -1691,6 +1705,11 @@ Playerbots.RandomBotJoinBG = 1
 # Default: 0 (disabled)
 Playerbots.AllowBattlegroundCommands = 0
 
+# Restrict bot queues and new invitations to Warsong Gulch, Arathi Basin and
+# Alterac Valley. Blocks arenas and expansion/random battleground queues.
+# Existing matches may finish. Disable when opening later-expansion PvP.
+Playerbots.VanillaBattlegroundsOnly = 0
+
 # Enable auto-joining of battlegrounds - have bots start battlegrounds and arenas on their own
 Playerbots.RandomBotAutoJoinBG = 0
 
@@ -2646,11 +2665,14 @@ Playerbots.RandomBotTalk = 1
 Playerbots.RandomBotEmote = 0
 # Enable randombots suggesting dungeons in chat
 Playerbots.RandomBotSuggestDungeons = 1
-# Bots greet players when invited
+# Bots greet nearby players once while they remain in the bot's seen-player list.
 Playerbots.EnableGreet = 0
-# Chance to reply to toxic links with toxic links (0-100)
+# Limit nearby greetings to real player sessions; excludes bot-to-bot greetings.
+# Requires EnableGreet. Default 0 preserves the unrestricted greeting behavior.
+Playerbots.GreetRealPlayersOnly = 0
+# Chance to reply to toxic links with toxic links (0-100; 0 disables replies)
 Playerbots.ToxicLinksRepliesChance = 30
-# Chance to reply to Thunderfury with Thunderfury (0-100)
+# Chance to reply to Thunderfury with Thunderfury (0-100; 0 disables replies)
 Playerbots.ThunderfuryRepliesChance = 40
 # Chance bots will chat in guild about certain events (int) (0-100)
 Playerbots.GuildRepliesRate = 100

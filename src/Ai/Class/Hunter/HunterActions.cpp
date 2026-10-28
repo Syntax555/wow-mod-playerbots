@@ -50,6 +50,25 @@ Value<Unit*>* CastFreezingTrap::GetTargetValue()
 
 bool FeedPetAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+    {
+        constexpr uint32 SPELL_FEED_PET = 6991;
+        constexpr uint32 SPELL_PET_FEEDING = 1539;
+        Pet* pet = bot->GetPet();
+        if (!pet || pet->getPetType() != HUNTER_PET || !pet->IsAlive() || pet->IsInCombat() || bot->IsInCombat() ||
+            pet->GetHappinessState() == HAPPY || pet->HasAura(SPELL_PET_FEEDING) || !bot->HasSpell(SPELL_FEED_PET))
+            return false;
+
+        // The learned Feed Pet spell consumes owned food and applies its normal happiness-over-time aura.
+        for (Item* food : AI_VALUE2(std::vector<Item*>, "inventory items", "food"))
+            if (food && pet->HaveInDiet(food->GetTemplate()) &&
+                pet->GetCurrentFoodBenefitLevel(food->GetTemplate()->ItemLevel) > 0 &&
+                botAI->CanCastSpell(SPELL_FEED_PET, bot, true, food))
+                return botAI->CastSpell(SPELL_FEED_PET, bot, food);
+
+        return false;
+    }
+
     if (Pet* pet = bot->GetPet(); pet && pet->getPetType() == HUNTER_PET &&
         pet->GetHappinessState() != HAPPY)
     {

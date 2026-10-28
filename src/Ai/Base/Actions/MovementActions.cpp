@@ -1766,7 +1766,8 @@ void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool gen
         return;
 
     // bot water collision correction
-    if (unit->HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING) && unit->HasWaterWalkAura())
+    if (!sPlayerbotAIConfig.naturalProgression &&
+        unit->HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING) && unit->HasWaterWalkAura())
     {
         float gZ = unit->GetMapWaterOrGroundLevel(unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ());
         unit->UpdatePosition(unit->GetPositionX(), unit->GetPositionY(), gZ, false);

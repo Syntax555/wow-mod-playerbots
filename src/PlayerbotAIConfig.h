@@ -8,9 +8,12 @@
 #define PLAYERBOTS_PLAYERBOTAICONFIG_H
 
 #include "DBCEnums.h"
+#include "EarnedLevelBracketPolicy.h"
 #include "SharedDefines.h"
 #include <algorithm>
+#include <atomic>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -105,6 +108,10 @@ public:
     bool IsInPvpProhibitedArea(uint32 id);
 
     bool Enabled;
+    bool naturalProgression = false;
+    std::atomic<std::shared_ptr<EarnedLevelBracketPolicy const>> earnedLevelBrackets{
+        std::make_shared<EarnedLevelBracketPolicy>()};
+    bool vanillaBattlegroundsOnly = false;
     bool DisabledWithoutRealPlayer;
     bool EnableICCBuffs;
     bool AllowAccountBots, AllowGuildBots, AllowTrustedAccountBots;
@@ -192,6 +199,7 @@ public:
     bool RandomBotSuggestDungeons;
     bool EnableBroadcasts;
     bool EnableGreet;
+    bool greetRealPlayersOnly = false;
     bool RandomBotSayWithoutMaster;
     bool AnnounceConsumableUse;
 

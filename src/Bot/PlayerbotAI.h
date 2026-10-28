@@ -84,6 +84,7 @@ enum BotState
 
 bool IsRealPlayer(Player* player);
 bool IsSelfBot(Player* player);
+bool CanUseTaxiNodes(Player* player, std::vector<uint32> const& nodes);
 bool IsAlliance(uint8 race);
 
 class PlayerbotChatHandler : protected ChatHandler
@@ -591,6 +592,9 @@ public:
 
     bool HasCheat(BotCheatMask mask)
     {
+        if (sPlayerbotAIConfig.naturalProgression)
+            return false;
+
         return ((uint32)mask & (uint32)cheatMask) != 0 ||
                ((uint32)mask & (uint32)sPlayerbotAIConfig.BotCheatMask) != 0;
     }

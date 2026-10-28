@@ -76,6 +76,14 @@ bool TrainerAction::isPossible()
         if (!PlayerbotFactory::IsTrainerSpellAllowedForBot(bot, trainer, trainerSpell))
             continue;
 
+        if (sPlayerbotAIConfig.naturalProgression)
+        {
+            uint32 const price = trainer->GetSpellCost(bot, target, trainerSpell);
+            if (price > AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::spells)) ||
+                !bot->HasEnoughMoney(price))
+                continue;
+        }
+
         if (trainer->CanTeachSpell(bot, trainerSpell))
             return true;
     }
@@ -88,6 +96,9 @@ Unit* TrainerAction::GetTarget()
     // There are just two scenarios: the bot has a master or it doesn't. If the
     // bot has a master, the master should target a unit; otherwise, the bot
     // should target the unit itself.
+    if (sPlayerbotAIConfig.naturalProgression && !botAI->HasGameClientMaster())
+        return bot->GetSelectedUnit();
+
     if (Player* master = GetMaster())
         return master->GetSelectedUnit();
 
@@ -97,7 +108,11 @@ Unit* TrainerAction::GetTarget()
 Creature* TrainerAction::GetCreatureTarget()
 {
     Unit* target = GetTarget();
-    return target ? target->ToCreature() : nullptr;
+    Creature* creature = target ? target->ToCreature() : nullptr;
+    if (sPlayerbotAIConfig.naturalProgression)
+        return creature ? bot->GetNPCIfCanInteractWith(creature->GetGUID(), UNIT_NPC_FLAG_TRAINER) : nullptr;
+
+    return creature;
 }
 
 void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId)
@@ -108,7 +123,6 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
     if (!trainer)
         return;
 
-    float reputationDiscount = bot->GetReputationPriceDiscount(creature);
     uint32 totalCost = 0;
 
     for (auto& spell : trainer->GetSpells())
@@ -132,14 +146,24 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
         if (!spellInfo)
             continue;
 
-        uint32 cost = static_cast<uint32>(floor(trainerSpell->MoneyCost * reputationDiscount));
+        uint32 const cost = trainer->GetSpellCost(bot, creature, trainerSpell);
         totalCost += cost;
 
         std::ostringstream out;
         out << chat->FormatSpell(spellInfo) << chat->formatMoney(cost);
 
         if (learnSpells)
-            Learn(spellInfo, cost, out);
+        {
+            if (sPlayerbotAIConfig.naturalProgression)
+            {
+                if (AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::spells) < cost)
+                    out << " - too expensive";
+                else
+                    trainer->TeachSpell(creature, bot, trainerSpell->SpellId);
+            }
+            else
+                Learn(spellInfo, cost, out);
+        }
 
         botAI->TellMaster(out);
     }
@@ -187,7 +211,7 @@ void TrainerAction::TellFooter(uint32 totalCost)
 
 bool MaintenanceAction::Execute(Event /*event*/)
 {
-    if (!sPlayerbotAIConfig.MaintenanceCommand)
+    if (sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.MaintenanceCommand)
     {
         botAI->TellError("maintenance command is not allowed, please check the configuration.");
         return false;
@@ -288,7 +312,7 @@ bool MaintenanceAction::Execute(Event /*event*/)
 
 bool BisGearAction::RunAutogearFallback(uint16 effectiveIlvl)
 {
-    if (!sPlayerbotAIConfig.AutoGearCommand)
+    if (sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.AutoGearCommand)
     {
         botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
             "bis_autogear_unavailable_error",
@@ -311,7 +335,7 @@ bool BisGearAction::RunAutogearFallback(uint16 effectiveIlvl)
 
 bool BisGearAction::Execute(Event event)
 {
-    if (!sPlayerbotAIConfig.AutoGearBisCommand)
+    if (sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.AutoGearBisCommand)
     {
         botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
             "bis_command_unavailable_error",
@@ -568,7 +592,7 @@ static uint32 GetWornItemLevelAverage(Player* player)
 
 bool AutoGearAction::Execute(Event event)
 {
-    if (!sPlayerbotAIConfig.AutoGearCommand)
+    if (sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.AutoGearCommand)
     {
         botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
             "autogear_command_disabled_error", "autogear command is not allowed, please check the configuration.", {}));

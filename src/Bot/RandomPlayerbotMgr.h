@@ -167,6 +167,7 @@ public:
     void RandomTeleportGrindForLevel(Player* bot);
     void RandomTeleportForRpg(Player* bot);
     uint32 GetMaxAllowedBotCount();
+    bool CanLogInRandomBots() const;
     bool ProcessBot(Player* player);
     void Revive(Player* player);
     void ChangeStrategy(Player* player);
@@ -267,7 +268,7 @@ private:
     time_t LfgCheckTimer;
     time_t PlayersCheckTimer;
     time_t RealPlayerLastTimeSeen = 0;
-    time_t DelayLoginBotsTimer;
+    time_t DelayLoginBotsTimer = 0;
     time_t printStatsTimer;
     uint32 AddRandomBots();
     bool ProcessBot(uint32 bot);

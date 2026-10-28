@@ -54,7 +54,8 @@ bool HireAction::Execute(Event /*event*/)
 
     botAI->TellMaster("I will join you at your next relogin");
 
-    bot->SetMoney(moneyReq);
+    if (!sPlayerbotAIConfig.naturalProgression)
+        bot->SetMoney(moneyReq);
     RandomPlayerbotMgr::instance().Remove(bot);
     CharacterDatabase.Execute("UPDATE characters SET account = {} WHERE guid = {}", account,
                               bot->GetGUID().GetCounter());

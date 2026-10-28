@@ -19,6 +19,8 @@ std::vector<NextAction> NewRpgStrategy::getDefaultActions()
 void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(
+        new TriggerNode("new rpg natural maintenance", {NextAction("new rpg natural maintenance", ACTION_NORMAL + 2)}));
+    triggers.push_back(
         new TriggerNode(
             "go grind status",
             {

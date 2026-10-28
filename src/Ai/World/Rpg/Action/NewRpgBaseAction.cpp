@@ -117,6 +117,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         // its RPG objective instead of oscillating indefinitely.
         botAI->rpgInfo.stuckTs = getMSTime();
         botAI->rpgInfo.stuckAttempts = 0;
+        if (sPlayerbotAIConfig.naturalProgression)
+            return false;
+
         AreaTableEntry const* entry = sAreaTableStore.LookupEntry(bot->GetZoneId());
         std::string zone_name = PlayerbotAI::GetLocalizedAreaName(entry);
         LOG_DEBUG(
@@ -601,6 +604,14 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     return true;
 }
 
+// Preserve earned class progression while making room for ordinary quests.
+static bool IsProtectedClassQuest(Player* bot, Quest const* quest)
+{
+    return sPlayerbotAIConfig.naturalProgression && bot->GetQuestStatus(quest->GetQuestId()) != QUEST_STATUS_FAILED &&
+           ((quest->GetRequiredClasses() & bot->getClassMask()) ||
+            (quest->GetZoneOrSort() < 0 && ClassByQuestSort(-quest->GetZoneOrSort()) == bot->getClass()));
+}
+
 bool NewRpgBaseAction::OrganizeQuestLog()
 {
     int32 freeSlotNum = 0;
@@ -625,6 +636,9 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest || IsProtectedClassQuest(bot, quest))
+            continue;
+
         bool const worthDoing = IsQuestWorthDoing(quest);
         bool const capableDoing = IsQuestCapableDoing(quest);
         bool const failed = bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED;
@@ -661,6 +675,9 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest || IsProtectedClassQuest(bot, quest))
+            continue;
+
         const int64_t botZoneId = this->bot->GetZoneId();
 
         int32 const zoneOrSort = quest->GetZoneOrSort();
@@ -695,6 +712,9 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest || IsProtectedClassQuest(bot, quest))
+            continue;
+
         LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)i;

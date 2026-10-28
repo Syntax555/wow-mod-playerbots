@@ -42,6 +42,15 @@ bool AvoidUnstableSphereAction::Execute(Event /*event*/)
 bool MountDrakeAction::isPossible() { return bot->GetMapId() == OCULUS_MAP_ID; }
 bool MountDrakeAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+    {
+        // Use only a drake essence already obtained from the actual NPC.
+        for (int64_t itemId : DRAKE_ITEMS)
+            if (Item* item = bot->GetItemByEntry(itemId))
+                return UseItemAuto(item);
+        return false;
+    }
+
     std::map<int32, int32> drakeAssignments;
     // Composition can be adjusted - both 3/1/1 and 2/2/1 are good default comps
     // {Amber, Emerald, Ruby}

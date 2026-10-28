@@ -146,6 +146,7 @@ public:
         creators["unending breath"] = &WarlockTriggerFactoryInternal::unending_breath;
         creators["unending breath on party"] = &WarlockTriggerFactoryInternal::unending_breath_on_party;
         creators["no soul shard"] = &WarlockTriggerFactoryInternal::no_soul_shard;
+        creators["target critical health and no soul shard"] = &WarlockTriggerFactoryInternal::drain_soul_for_shard;
         creators["too many soul shards"] = &WarlockTriggerFactoryInternal::too_many_soul_shards;
         creators["no healthstone"] = &WarlockTriggerFactoryInternal::HasHealthstone;
         creators["no firestone"] = &WarlockTriggerFactoryInternal::HasFirestone;
@@ -194,6 +195,7 @@ private:
     static Trigger* unending_breath(PlayerbotAI* botAI) { return new UnendingBreathTrigger(botAI); }
     static Trigger* unending_breath_on_party(PlayerbotAI* botAI) { return new UnendingBreathOnPartyTrigger(botAI); }
     static Trigger* no_soul_shard(PlayerbotAI* botAI) { return new OutOfSoulShardsTrigger(botAI); }
+    static Trigger* drain_soul_for_shard(PlayerbotAI* botAI) { return new DrainSoulForShardTrigger(botAI); }
     static Trigger* too_many_soul_shards(PlayerbotAI* botAI) { return new TooManySoulShardsTrigger(botAI); }
     static Trigger* HasHealthstone(PlayerbotAI* botAI) { return new HasHealthstoneTrigger(botAI); }
     static Trigger* HasFirestone(PlayerbotAI* botAI) { return new HasFirestoneTrigger(botAI); }

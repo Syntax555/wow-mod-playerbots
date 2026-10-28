@@ -489,7 +489,7 @@ bool IccSindragosaFrostBeaconAction::TryDropTombFlares(Unit const* boss)
     }
 
     uint32 const itemId = phase3 ? ITEM_BLUE_SMOKE_FLARE : ITEM_RED_SMOKE_FLARE;
-    if (bot->GetItemCount(itemId, false) == 0)
+    if (!sPlayerbotAIConfig.naturalProgression && bot->GetItemCount(itemId, false) == 0)
         bot->StoreNewItemInBestSlots(itemId, 10);
 
     Item* flare = bot->GetItemByEntry(itemId);

@@ -9,12 +9,30 @@
 #include "Event.h"
 #include "GameGraveyard.h"
 #include "Log.h"
+#include "MovementActions.h"
 #include "NearestNpcsValue.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
+
+namespace
+{
+class BattlegroundSpiritGuideApproach final : public MovementAction
+{
+public:
+    explicit BattlegroundSpiritGuideApproach(PlayerbotAI* botAI) : MovementAction(botAI, "auto release") {}
+
+    bool Approach(Unit* spiritGuide)
+    {
+        if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+            return true;
+
+        return MoveNear(spiritGuide, CONTACT_DISTANCE);
+    }
+};
+}  // namespace
 
 // ReleaseSpiritAction implementation
 bool ReleaseSpiritAction::Execute(Event event)
@@ -47,7 +65,8 @@ bool ReleaseSpiritAction::Execute(Event event)
     botAI->TellMasterNoFacing(message);
 
     IncrementDeathCount();
-    bot->DurabilityRepairAll(false, 1.0f, false);
+    if (!sPlayerbotAIConfig.naturalProgression)
+        bot->DurabilityRepairAll(false, 1.0f, false);
     LogRelease("released");
 
     WorldPacket releasePacket(CMSG_REPOP_REQUEST);
@@ -87,8 +106,19 @@ void ReleaseSpiritAction::LogRelease(std::string const& releaseMsg) const
 // AutoReleaseSpiritAction implementation
 bool AutoReleaseSpiritAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression && bot->InBattleground())
+    {
+        if (bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+            return HandleBattlegroundSpiritHealer();
+
+        _bgSpiritGuideGuid.Clear();
+        _bgSpiritGuideRejectedGuid.Clear();
+        _bgSpiritGuideSearchTime = 0;
+    }
+
     IncrementDeathCount();
-    bot->DurabilityRepairAll(false, 1.0f, false);
+    if (!sPlayerbotAIConfig.naturalProgression)
+        bot->DurabilityRepairAll(false, 1.0f, false);
     LogRelease("auto released");
 
     WorldPacket packet(CMSG_REPOP_REQUEST);
@@ -112,7 +142,12 @@ bool AutoReleaseSpiritAction::isUseful()
         return false;
 
     if (bot->InBattleground())
+    {
+        if (sPlayerbotAIConfig.naturalProgression && bot->HasAura(SPELL_WAITING_FOR_RESURRECT))
+            return false;
+
         return ShouldDelayBattlegroundRelease();
+    }
 
     if (bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
         return false;
@@ -122,6 +157,9 @@ bool AutoReleaseSpiritAction::isUseful()
 
 bool AutoReleaseSpiritAction::HandleBattlegroundSpiritHealer()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return HandleNaturalBattlegroundSpiritHealer();
+
     constexpr uint32_t RESURRECT_DELAY = 15;
     const time_t now = time(nullptr);
 
@@ -166,6 +204,86 @@ bool AutoReleaseSpiritAction::HandleBattlegroundSpiritHealer()
     }
 
     return true;
+}
+
+bool AutoReleaseSpiritAction::HandleNaturalBattlegroundSpiritHealer()
+{
+    if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) || bot->HasAura(SPELL_WAITING_FOR_RESURRECT) || IsSelfBot(bot))
+        return false;
+
+    if (_bgSpiritGuideInstanceId != bot->GetBattlegroundId())
+    {
+        _bgSpiritGuideGuid.Clear();
+        _bgSpiritGuideRejectedGuid.Clear();
+        _bgSpiritGuideSearchTime = 0;
+        _bgSpiritGuideInstanceId = bot->GetBattlegroundId();
+    }
+
+    Unit* spiritGuide = FindBattlegroundSpiritGuide(time(nullptr));
+    if (!spiritGuide)
+        return false;
+
+    if (!bot->GetNPCIfCanInteractWith(spiritGuide->GetGUID(), UNIT_NPC_FLAG_SPIRITGUIDE))
+    {
+        if (!botAI->CanMove())
+            return false;
+
+        BattlegroundSpiritGuideApproach movement(botAI);
+        if (movement.Approach(spiritGuide))
+            return true;
+
+        _bgSpiritGuideRejectedGuid = spiritGuide->GetGUID();
+        _bgSpiritGuideGuid.Clear();
+        return false;
+    }
+
+    WorldPacket packet(CMSG_GOSSIP_HELLO);
+    packet << spiritGuide->GetGUID();
+    bot->GetSession()->HandleGossipHelloOpcode(packet);
+    return bot->HasAura(SPELL_WAITING_FOR_RESURRECT);
+}
+
+Unit* AutoReleaseSpiritAction::FindBattlegroundSpiritGuide(time_t now)
+{
+    constexpr time_t SPIRIT_GUIDE_SEARCH_INTERVAL = 10;
+    constexpr float SPIRIT_GUIDE_SEARCH_RANGE = 2000.0f;
+
+    Unit* spiritGuide = botAI->GetUnit(_bgSpiritGuideGuid);
+    if (!spiritGuide || !spiritGuide->IsInWorld() || !spiritGuide->IsFriendlyTo(bot) || !spiritGuide->IsSpiritGuide())
+    {
+        spiritGuide = nullptr;
+        _bgSpiritGuideGuid.Clear();
+    }
+
+    if (_bgSpiritGuideSearchTime && now >= _bgSpiritGuideSearchTime &&
+        now - _bgSpiritGuideSearchTime < SPIRIT_GUIDE_SEARCH_INTERVAL)
+        return spiritGuide;
+
+    _bgSpiritGuideSearchTime = now;
+    _bgSpiritGuideGuid.Clear();
+    spiritGuide = nullptr;
+    float nearestDistance = SPIRIT_GUIDE_SEARCH_RANGE;
+    GuidVector npcs = NearestNpcsValue(botAI, SPIRIT_GUIDE_SEARCH_RANGE);
+    for (ObjectGuid const& guid : npcs)
+    {
+        if (guid == _bgSpiritGuideRejectedGuid)
+            continue;
+
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || !unit->IsInWorld() || !unit->IsFriendlyTo(bot) || !unit->IsSpiritGuide())
+            continue;
+
+        float distance = bot->GetDistance(unit);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            spiritGuide = unit;
+            _bgSpiritGuideGuid = guid;
+        }
+    }
+
+    _bgSpiritGuideRejectedGuid.Clear();
+    return spiritGuide;
 }
 
 bool AutoReleaseSpiritAction::ShouldAutoRelease() const
@@ -221,6 +339,10 @@ bool AutoReleaseSpiritAction::ShouldDelayBattlegroundRelease() const
 
 bool RepopAction::Execute(Event /*event*/)
 {
+    // Normal release/corpse recovery is allowed; this command teleports the ghost.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     GraveyardStruct const* graveyard = GetGrave(
         AI_VALUE(uint32, "death count") > 10 ||
         CalculateDeadTime() > 30 * MINUTE

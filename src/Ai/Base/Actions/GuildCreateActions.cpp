@@ -239,7 +239,7 @@ bool PetitionTurnInAction::Execute(Event /*event*/)
             // (EMBLEM_PRICE = 10 * GOLD in core)
             static constexpr uint32 REQUIRED = 10 * GOLD;
             uint32 have = bot->GetMoney();               // actual money earned by bot in copper
-            if (have < REQUIRED)
+            if (!sPlayerbotAIConfig.naturalProgression && have < REQUIRED)
             {
                 bot->ModifyMoney(int32(REQUIRED - have)); // add only the missing amount to bot to reach 10g
             }

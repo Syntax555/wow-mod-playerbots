@@ -118,6 +118,9 @@ bool CastSoulshatterAction::isUseful()
 // Checks if the bot has enough bag space to create a soul shard, then does so
 bool CreateSoulShardAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     Player* bot = botAI->GetBot();
     if (!bot)
         return false;
@@ -138,6 +141,9 @@ bool CreateSoulShardAction::Execute(Event /*event*/)
 // Checks if the bot has less than 6 soul shards, allowing the creation of a new one
 bool CreateSoulShardAction::isUseful()
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     Player* bot = botAI->GetBot();
     if (!bot)
         return false;

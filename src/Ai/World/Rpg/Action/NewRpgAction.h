@@ -100,6 +100,13 @@ public:
     const uint32 npcStayTime = 8 * IN_MILLISECONDS;
 };
 
+class NewRpgNaturalMaintenanceAction : public NewRpgBaseAction
+{
+public:
+    NewRpgNaturalMaintenanceAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg natural maintenance") {}
+    bool Execute(Event event) override;
+};
+
 class NewRpgDoQuestAction : public NewRpgBaseAction
 {
 public:

@@ -97,6 +97,10 @@ bool EquipGlyphsAction::CollectGlyphs(std::vector<uint32> const& itemIds,
 /// -----------------------------------------------------------------
 bool EquipGlyphsAction::Execute(Event event)
 {
+    // This helper applies glyph IDs without possessing and consuming the glyph item.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     // 1) parse IDs
     std::vector<uint32> itemIds;
     std::istringstream iss(event.getParam());

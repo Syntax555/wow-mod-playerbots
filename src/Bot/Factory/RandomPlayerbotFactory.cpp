@@ -5,6 +5,9 @@
  */
 
 #include "RandomPlayerbotFactory.h"
+
+#include <set>
+
 #include "PlayerbotsDatabase.h"
 #include "AccountMgr.h"
 #include "ArenaTeamMgr.h"
@@ -101,7 +104,8 @@ bool RandomPlayerbotFactory::IsValidRaceClassCombination(uint8 race, uint8 cls, 
         return false;
 
     // skip expansion classes if not playing with expansion
-    if (expansion < EXPANSION_WRATH_OF_THE_LICH_KING && cls == CLASS_DEATH_KNIGHT)
+    if ((sPlayerbotAIConfig.naturalProgression || expansion < EXPANSION_WRATH_OF_THE_LICH_KING) &&
+        cls == CLASS_DEATH_KNIGHT)
         return false;
 
     PlayerInfo const* info = sObjectMgr->GetPlayerInfo(race, cls);
@@ -111,6 +115,10 @@ bool RandomPlayerbotFactory::IsValidRaceClassCombination(uint8 race, uint8 cls, 
 Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls, std::unordered_map<NameRaceAndGender, std::vector<std::string>>& nameCache)
 {
     LOG_DEBUG("playerbots", "Creating a new random bot for class: {}", cls);
+
+    if (!session || !cls || cls >= MAX_CLASSES ||
+        ((1u << (cls - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_CLASSMASK)))
+        return nullptr;
 
     const bool alliance = static_cast<bool>(urand(0, 1));
 
@@ -123,9 +131,10 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
 
         // Try to get 50/50 faction distribution for random bot population balance.
         // Without this check, races from the faction with more class options would dominate.
-        if (alliance == IsAlliance(race))
+        if (sPlayerbotAIConfig.naturalProgression || alliance == IsAlliance(race))
         {
-            if (IsValidRaceClassCombination(race, cls, sWorld->getIntConfig(CONFIG_EXPANSION)))
+            if (IsValidRaceClassCombination(race, cls, sWorld->getIntConfig(CONFIG_EXPANSION)) &&
+                sScriptMgr->CanAccountCreateCharacter(session->GetAccountId(), race, cls))
                 raceOptions.push_back(race);
         }
     }
@@ -134,6 +143,18 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
     {
         LOG_ERROR("playerbots", "No races are available for class: {}", cls);
         return nullptr;
+    }
+
+    if (sPlayerbotAIConfig.naturalProgression)
+    {
+        // Vanilla paladins/shamans only have races in one faction. Fall back to
+        // available races rather than randomly failing half their creations.
+        std::vector<uint8> preferredFaction;
+        for (uint8 race : raceOptions)
+            if (alliance == IsAlliance(race))
+                preferredFaction.push_back(race);
+        if (!preferredFaction.empty())
+            raceOptions.swap(preferredFaction);
     }
 
     const uint8 race = raceOptions[urand(0, raceOptions.size() - 1)];
@@ -484,7 +505,8 @@ uint32 RandomPlayerbotFactory::CalculateTotalAccountCount()
 uint32 RandomPlayerbotFactory::CalculateAvailableCharsPerAccount()
 {
     // Death Knight availability according to their login eligibility, and if WotLK is enabled at all.
-    bool noDK = sPlayerbotAIConfig.DisableDeathKnightLogin || sWorld->getIntConfig(CONFIG_EXPANSION) != EXPANSION_WRATH_OF_THE_LICH_KING;
+    bool noDK = sPlayerbotAIConfig.naturalProgression || sPlayerbotAIConfig.DisableDeathKnightLogin ||
+                sWorld->getIntConfig(CONFIG_EXPANSION) != EXPANSION_WRATH_OF_THE_LICH_KING;
 
     uint32 availableChars = noDK ? 9 : 10;
 
@@ -725,7 +747,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         sPlayerbotAIConfig.RandomBotAccounts.push_back(accountId);
 
         uint32 count = AccountMgr::GetCharactersCount(accountId);
-        if (count >= 10)
+        if (count >= (sPlayerbotAIConfig.naturalProgression ? 9u : 10u))
         {
             continue;
         }
@@ -766,8 +788,24 @@ void RandomPlayerbotFactory::CreateRandomBots()
                                                 time_t(0), LOCALE_enUS, 0, false, false, 0);
         sessionBots.push_back(session);
 
-        for (uint8 cls = CLASS_WARRIOR; cls < MAX_CLASSES - count; ++cls)
+        std::set<uint8> existingClasses;
+        if (sPlayerbotAIConfig.naturalProgression)
         {
+            if (QueryResult characters =
+                    CharacterDatabase.Query("SELECT class FROM characters WHERE account = {}", accountId))
+            {
+                do
+                {
+                    existingClasses.insert(characters->Fetch()[0].Get<uint8>());
+                } while (characters->NextRow());
+            }
+        }
+
+        for (uint8 cls = CLASS_WARRIOR; cls < MAX_CLASSES - (sPlayerbotAIConfig.naturalProgression ? 0u : count); ++cls)
+        {
+            if (sPlayerbotAIConfig.naturalProgression && (cls == CLASS_DEATH_KNIGHT || existingClasses.count(cls)))
+                continue;
+
             // skip nonexistent classes
             if (!((1 << (cls - 1)) & CLASSMASK_ALL_PLAYABLE) || !sChrClassesStore.LookupEntry(cls))
                 continue;

@@ -9,6 +9,7 @@
 #include "AiFactory.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
+#include "BattlegroundQueuePolicy.h"
 #include "Cell.h"
 #include "CellImpl.h"
 #include "ChannelMgr.h"
@@ -172,6 +173,12 @@ double botPIDImpl::calculate(double setpoint, double pv)
 botPIDImpl::~botPIDImpl() {}
 
 uint32 RandomPlayerbotMgr::GetMaxAllowedBotCount() { return GetEventValue(0, "bot_count"); }
+
+bool RandomPlayerbotMgr::CanLogInRandomBots() const
+{
+    return !sPlayerbotAIConfig.naturalProgression || !sPlayerbotAIConfig.DisabledWithoutRealPlayer ||
+           sWorldSessionMgr->GetActiveAndQueuedSessionCount() > 0;
+}
 
 void RandomPlayerbotMgr::LogPlayerLocation()
 {
@@ -357,8 +364,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
                 DelayLoginBotsTimer = 0;
             }
 
-            if (RealPlayerLastTimeSeen != 0 && onlineBotCount > 0 &&
-                time(nullptr) > RealPlayerLastTimeSeen + sPlayerbotAIConfig.DisabledWithoutRealPlayerLogoutDelay)
+            if (onlineBotCount > 0 &&
+                ((sPlayerbotAIConfig.naturalProgression && RealPlayerLastTimeSeen == 0) ||
+                 (RealPlayerLastTimeSeen != 0 &&
+                  time(nullptr) > RealPlayerLastTimeSeen + sPlayerbotAIConfig.DisabledWithoutRealPlayerLogoutDelay)))
             {
                 LogoutAllBots();
                 LOG_INFO("playerbots", "Logout all bots due no real player session.");
@@ -456,7 +465,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
                     break;
             }
 
-            DelayLoginBotsTimer = 0;
+            // Natural bots wait once per real-player session, rather than once per login batch.
+            if (!sPlayerbotAIConfig.naturalProgression)
+                DelayLoginBotsTimer = 0;
         }
     }
 
@@ -989,9 +1000,16 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
+            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+                continue;
+
             // Check if real player is able to create/join this queue
             BattlegroundTypeId bgTypeId = sBattlegroundMgr->BGTemplateId(queueTypeId);
-            uint32 mapId = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId)->GetMapId();
+            Battleground* templateBg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+            if (!templateBg)
+                continue;
+
+            uint32 mapId = templateBg->GetMapId();
             PvPDifficultyEntry const* pvpDiff = getQueueBracket(player, bg, queueType, queueTypeId, mapId);
             if (!pvpDiff)
                 continue;
@@ -1086,8 +1104,15 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
+            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+                continue;
+
             BattlegroundTypeId bgTypeId = sBattlegroundMgr->BGTemplateId(queueTypeId);
-            uint32 mapId = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId)->GetMapId();
+            Battleground* templateBg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+            if (!templateBg)
+                continue;
+
+            uint32 mapId = templateBg->GetMapId();
             PvPDifficultyEntry const* pvpDiff = getQueueBracket(bot, bg, queueType, queueTypeId, mapId);
             if (!pvpDiff)
                 continue;
@@ -1196,6 +1221,10 @@ void RandomPlayerbotMgr::CheckBgQueue()
         // to help counter against potentional inconsistencies
         auto updateRatedArenaInstanceCount = [&](uint32 queueType, uint32 bracket, uint32 minCount)
         {
+            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     BattlegroundQueueTypeId(queueType)))
+                return;
+
             if (BattlegroundData[queueType][bracket].activeRatedArenaQueue == 0 &&
                 BattlegroundData[queueType][bracket].ratedArenaInstanceCount < minCount &&
                 BattlegroundData[queueType][bracket].ratedArenaInstances.size() < minCount)
@@ -1204,6 +1233,10 @@ void RandomPlayerbotMgr::CheckBgQueue()
 
         auto updateBGInstanceCount = [&](uint32 queueType, std::vector<uint32> brackets, uint32 minCount)
         {
+            if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly,
+                                                     BattlegroundQueueTypeId(queueType)))
+                return;
+
             for (uint32 bracket : brackets)
             {
                 BattlegroundData[queueType][bracket].bgAutoJoinTarget = minCount;
@@ -1425,6 +1458,9 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
     if (!player)
     {
         AddPlayerBot(botGUID, 0);
+        if (sPlayerbotAIConfig.naturalProgression)
+            return true;
+
         randomTime = urand(1, 2);
 
         uint32 randomBotUpdateInterval = _isBotInitializing ? 1 : sPlayerbotAIConfig.RandomBotUpdateInterval;
@@ -1448,7 +1484,7 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
         return true;
     }
 
-    if (!player->IsInWorld())
+    if (sPlayerbotAIConfig.naturalProgression || !player->IsInWorld())
         return false;
 
     if (player->GetGroup() || player->HasUnitState(UNIT_STATE_IN_FLIGHT))
@@ -1504,6 +1540,9 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
 
 bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 {
+    // The ordinary AI handles travel and deaths; no periodic rerolls or free recovery.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
@@ -1624,6 +1663,9 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 
 void RandomPlayerbotMgr::Revive(Player* player)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint32 bot = player->GetGUID().GetCounter();
 
     // LOG_INFO("playerbots", "Bot {} revived", player->GetName().c_str());
@@ -1636,6 +1678,9 @@ void RandomPlayerbotMgr::Revive(Player* player)
 
 void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     // ignore when alrdy teleported or not in the world yet.
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
@@ -2041,6 +2086,9 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot)
 
 void RandomPlayerbotMgr::Randomize(Player* bot)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (bot->InBattleground())
         return;
 
@@ -2063,6 +2111,9 @@ void RandomPlayerbotMgr::Randomize(Player* bot)
 
 void RandomPlayerbotMgr::IncreaseLevel(Player* bot)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     uint32 maxLevel = sPlayerbotAIConfig.RandomBotMaxLevel;
     if (maxLevel > sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
         maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
@@ -2086,6 +2137,9 @@ void RandomPlayerbotMgr::IncreaseLevel(Player* bot)
 
 void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return;
@@ -2181,6 +2235,9 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
 
 void RandomPlayerbotMgr::RandomizeMin(Player* bot)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return;
@@ -2255,6 +2312,9 @@ uint32 RandomPlayerbotMgr::GetZoneLevel(uint16 mapId, float teleX, float teleY, 
 
 void RandomPlayerbotMgr::Refresh(Player* bot)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return;

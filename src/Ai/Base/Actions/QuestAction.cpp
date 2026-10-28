@@ -74,6 +74,10 @@ bool QuestAction::Execute(Event event)
 
 bool QuestAction::CompleteQuest(Player* player, uint32 entry)
 {
+    // This helper fabricates quest objectives for synchronization; normal turn-in is separate.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     Quest const* pQuest = sObjectMgr->GetQuestTemplate(entry);
 
     // If player doesn't have the quest

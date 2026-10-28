@@ -365,7 +365,9 @@ PlayerbotAI::PlayerbotAI(Player* bot)
       chatFilter(this),
       security(bot)  // reorder args - whipowill
 {
-    if (!bot->isTaxiCheater() && HasCheat((BotCheatMask::taxi)))
+    if (sPlayerbotAIConfig.naturalProgression)
+        bot->SetTaxiCheater(false);
+    else if (!bot->isTaxiCheater() && HasCheat((BotCheatMask::taxi)))
         bot->SetTaxiCheater(true);
 
     for (uint8 i = 0; i < MAX_ACTIVITY_TYPE; i++)
@@ -1551,15 +1553,16 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 
                     auto itemIds = GetChatHelper()->ExtractAllItemIds(message);
                     if (message.starts_with(sPlayerbotAIConfig.ToxicLinksPrefix) &&
-                        (itemIds.size() > 0 || GetChatHelper()->ExtractAllQuestIds(message).size() > 0) &&
-                        sPlayerbotAIConfig.ToxicLinksRepliesChance)
+                        (itemIds.size() > 0 || GetChatHelper()->ExtractAllQuestIds(message).size() > 0))
                     {
-                        if (urand(0, 50) > 0 || urand(1, 100) > sPlayerbotAIConfig.ToxicLinksRepliesChance)
+                        if (!sPlayerbotAIConfig.ToxicLinksRepliesChance || urand(0, 50) > 0 ||
+                            urand(1, 100) > sPlayerbotAIConfig.ToxicLinksRepliesChance)
                             return;
                     }
-                    else if (itemIds.count(19019) && sPlayerbotAIConfig.ThunderfuryRepliesChance)
+                    else if (itemIds.count(19019))
                     {
-                        if (urand(0, 60) > 0 || urand(1, 100) > sPlayerbotAIConfig.ThunderfuryRepliesChance)
+                        if (!sPlayerbotAIConfig.ThunderfuryRepliesChance || urand(0, 60) > 0 ||
+                            urand(1, 100) > sPlayerbotAIConfig.ThunderfuryRepliesChance)
                             return;
                     }
                     else
@@ -4802,6 +4805,19 @@ bool IsSelfBot(Player* player)
     // SelfBot: "player" has PlayerbotAI attached, and it has a master who is itself (player).
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
     return botAI && botAI->GetMaster() == player;
+}
+
+bool CanUseTaxiNodes(Player* player, std::vector<uint32> const& nodes)
+{
+    // Natural progression follows the core taxi handlers: every node of a flight must already be discovered.
+    if (!sPlayerbotAIConfig.naturalProgression || player->isTaxiCheater())
+        return true;
+
+    for (uint32 node : nodes)
+        if (!node || node > TaxiMaskSize * 32 || !player->m_taxi.IsTaximaskNodeKnown(node))
+            return false;
+
+    return true;
 }
 
 // Same source as GetTeamId(true); TeamIdForRace() logs an error for non-playable races.

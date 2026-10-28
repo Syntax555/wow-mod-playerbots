@@ -11,6 +11,40 @@
 
 class PlayerbotAI;
 
+enum class NaturalMaintenanceType : uint8
+{
+    NONE,
+    SELL,
+    REPAIR,
+    TRAIN,
+    BUY
+};
+
+struct NaturalMaintenanceTask
+{
+    ObjectGuid target;
+    NaturalMaintenanceType type = NaturalMaintenanceType::NONE;
+    uint32 itemId = 0;
+    uint32 budgetType = 0;
+};
+
+// Natural upkeep runs only for a living, idle bot that may move and has no game-client master.
+bool CanRunNaturalMaintenance(PlayerbotAI* botAI);
+
+// Natural bots do not craft, so a spell on a profession skill line is no upkeep goal.
+bool IsProfessionSpell(uint32 spellId);
+
+class NaturalMaintenanceValue : public CalculatedValue<NaturalMaintenanceTask>
+{
+public:
+    NaturalMaintenanceValue(PlayerbotAI* botAI)
+        : CalculatedValue<NaturalMaintenanceTask>(botAI, "natural maintenance", 30 * IN_MILLISECONDS)
+    {
+    }
+
+    NaturalMaintenanceTask Calculate() override;
+};
+
 class CanMoveAroundValue : public BoolCalculatedValue
 {
 public:

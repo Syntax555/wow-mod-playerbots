@@ -383,7 +383,7 @@ bool EquipFishingPoleAction::isUseful()
         }
     }
 
-    if (sRandomPlayerbotMgr.IsRandomBot(bot))
+    if (!sPlayerbotAIConfig.naturalProgression && sRandomPlayerbotMgr.IsRandomBot(bot))
     {
         bot->StoreNewItemInBestSlots(FISHING_POLE, 1);  // Try to get a fishing pole
         return true;

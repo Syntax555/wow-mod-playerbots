@@ -23,4 +23,11 @@ protected:
     NewRpgStatus status;
 };
 
+class NewRpgNaturalMaintenanceTrigger : public Trigger
+{
+public:
+    NewRpgNaturalMaintenanceTrigger(PlayerbotAI* botAI) : Trigger(botAI, "new rpg natural maintenance") {}
+    bool IsActive() override;
+};
+
 #endif

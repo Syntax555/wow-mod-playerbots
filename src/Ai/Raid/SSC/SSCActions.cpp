@@ -2340,6 +2340,9 @@ bool LadyVashjCommandPetTargetAction::Execute(Event /*event*/)
 
 bool LadyVashjReturnToTheGroundAction::Execute(Event /*event*/)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     float const x = bot->GetPositionX();
     float const y = bot->GetPositionY();
 

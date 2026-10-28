@@ -8,6 +8,7 @@
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
 #include "BattlegroundMgr.h"
+#include "BattlegroundQueuePolicy.h"
 #include "Event.h"
 #include "GroupMgr.h"
 #include "PlayerbotAI.h"
@@ -26,6 +27,9 @@ bool BGJoinAction::Execute(Event /*event*/)
             return false;
 
         BattlegroundQueueTypeId queueTypeId = (BattlegroundQueueTypeId)bgList[urand(0, bgList.size() - 1)];
+        if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+            return false;
+
         BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
         bool isRated = false;
 
@@ -61,6 +65,9 @@ bool BGJoinAction::Execute(Event /*event*/)
 
 bool BGJoinAction::gatherArenaTeam(ArenaType type)
 {
+    if (sPlayerbotAIConfig.vanillaBattlegroundsOnly)
+        return false;
+
     ArenaTeam* arenateam = sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type);
 
     if (!arenateam)
@@ -202,6 +209,9 @@ bool BGJoinAction::gatherArenaTeam(ArenaType type)
 
 bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
+    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+        return false;
+
     // check if bot can join this bracket for the specific Battleground/Arena type
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
 
@@ -215,6 +225,9 @@ bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBr
 
     // check if the bracket exists for the bot's level for the specific Battleground/Arena type
     Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+    if (!bg)
+        return false;
+
     uint32 mapId = bg->GetMapId();
     PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
     if (!pvpDiff)
@@ -230,6 +243,9 @@ bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBr
 
 bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
+    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+        return false;
+
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
     Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
     if (!bg)
@@ -396,6 +412,13 @@ bool BGJoinAction::JoinQueue(uint32 type)
 
     // get BG TypeId
     BattlegroundQueueTypeId queueTypeId = BattlegroundQueueTypeId(type);
+    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    {
+        botAI->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
+        botAI->GetAiObjectContext()->GetValue<uint32>("arena type")->Set(0);
+        return false;
+    }
+
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
     BattlegroundBracketId bracketId;
 
@@ -560,6 +583,9 @@ bool BGJoinAction::JoinQueue(uint32 type)
 // Not sure if this has ever worked, but it should be similar to BGJoinAction::shouldJoinBg
 bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
+    if (!IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+        return false;
+
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
     Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
     if (!bg)
@@ -800,12 +826,30 @@ bool BGStatusAction::Execute(Event event)
     }
 
     bool IsRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
+    if (QueueSlot >= PLAYER_MAX_BATTLEGROUND_QUEUES)
+        return false;
+
     BattlegroundQueueTypeId queueTypeId = bot->GetBattlegroundQueueTypeId(QueueSlot);
     BattlegroundTypeId _bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
     if (!queueTypeId)
         return false;
 
+    if ((statusid == STATUS_WAIT_QUEUE || statusid == STATUS_WAIT_JOIN) &&
+        !IsPlayerbotBattlegroundQueueAllowed(sPlayerbotAIConfig.vanillaBattlegroundsOnly, queueTypeId))
+    {
+        WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
+        packet << uint8(BattlegroundMgr::BGArenaType(queueTypeId)) << uint8(0) << uint32(_bgTypeId) << uint16(0x1F90)
+               << uint8(0);
+        bot->GetSession()->QueuePacket(new WorldPacket(packet));
+        context->GetValue<uint32>("bg type")->Set(0);
+        context->GetValue<uint32>("arena type")->Set(0);
+        return true;
+    }
+
     Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(_bgTypeId);
+    if (!bg)
+        return false;
+
     mapId = bg->GetMapId();
     PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
     if (!pvpDiff)

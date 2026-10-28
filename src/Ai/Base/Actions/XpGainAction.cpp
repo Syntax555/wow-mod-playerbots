@@ -55,6 +55,9 @@ bool XpGainAction::Execute(Event event)
 
 void XpGainAction::GiveXP(uint32 xp, Unit* victim)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (xp < 1)
     {
         return;

@@ -37,6 +37,10 @@ void AutoMaintenanceOnLevelupAction::AutoTeleportForLevel()
 void AutoMaintenanceOnLevelupAction::AutoPickTalents()
 {
     bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
+    if (sPlayerbotAIConfig.naturalProgression &&
+        (!isRandomBot || !bot->GetSession()->IsHeadless() || botAI->HasGameClientMaster()))
+        return;
+
     if (!(isRandomBot ? sPlayerbotAIConfig.AutoPickTalents
                       : sPlayerbotAIConfig.AutoPickTalentsForPlayerControlledBots))
         return;
@@ -79,6 +83,10 @@ void AutoMaintenanceOnLevelupAction::LearnSpells(std::ostringstream* out)
 
 void AutoMaintenanceOnLevelupAction::LearnTrainerSpells(std::ostringstream* /*out*/)
 {
+    // Do not grant consumables, skills, spells or equipment on level-up.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     PlayerbotFactory factory(bot, bot->GetLevel());
     factory.InitSkills();
     factory.InitClassSpells();
@@ -88,6 +96,10 @@ void AutoMaintenanceOnLevelupAction::LearnTrainerSpells(std::ostringstream* /*ou
 
 void AutoMaintenanceOnLevelupAction::LearnQuestSpells(std::ostringstream* out)
 {
+    // Do not grant consumables, skills, spells or equipment on level-up.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     ObjectMgr::QuestMap const& questTemplates = sObjectMgr->GetQuestTemplates();
     for (ObjectMgr::QuestMap::const_iterator i = questTemplates.begin(); i != questTemplates.end(); ++i)
     {
@@ -162,6 +174,10 @@ std::string const AutoMaintenanceOnLevelupAction::FormatSpell(SpellInfo const* s
 
 void AutoMaintenanceOnLevelupAction::AutoUpgradeEquip()
 {
+    // Do not grant consumables, skills, spells or equipment on level-up.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return;
+
     if (!sRandomPlayerbotMgr.IsRandomBot(bot))
         return;
 

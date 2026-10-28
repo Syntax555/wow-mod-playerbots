@@ -16,6 +16,9 @@
 
 bool ChangeTalentsAction::Execute(Event event)
 {
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     auto* flag = botAI->GetAiObjectContext()->GetValue<bool>("custom_glyphs"); // Added for custom Glyphs
 
     if (flag->Get()) // Added for custom Glyphs
@@ -43,7 +46,8 @@ bool ChangeTalentsAction::Execute(Event event)
             }
             else if (param.find("switch 2") != std::string::npos)
             {
-                if (bot->GetSpecsCount() == 1 && bot->GetLevel() >= sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))
+                if (!sPlayerbotAIConfig.naturalProgression && bot->GetSpecsCount() == 1 &&
+                    bot->GetLevel() >= sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))
                 {
                     bot->CastSpell(bot, 63680, true, nullptr, nullptr, bot->GetGUID());
                     bot->CastSpell(bot, 63624, true, nullptr, nullptr, bot->GetGUID());
@@ -379,7 +383,7 @@ bool AutoSetTalentsAction::Execute(Event /*event*/)
         return false;
 
     PlayerbotFactory factory(bot, bot->GetLevel());
-    factory.InitTalentsTree(true, true, true);
+    factory.InitTalentsTree(true, true, !sPlayerbotAIConfig.naturalProgression);
     factory.InitPetTalents();
     botAI->TellMaster(out);
 

@@ -382,7 +382,7 @@ public:
     void OnPlayerGiveXP(Player* player, uint32& amount, Unit* /*victim*/, uint8 /*xpSource*/) override
     {
         // early return
-        if (sPlayerbotAIConfig.RandomBotXPRate == 1.0 || !player)
+        if (sPlayerbotAIConfig.naturalProgression || sPlayerbotAIConfig.RandomBotXPRate == 1.0 || !player)
             return;
 
         // no XP multiplier, when player is no bot.

@@ -288,6 +288,7 @@ public:
         creators["can move around"] = &ValueContext::can_move_around;
         creators["should home bind"] = &ValueContext::should_home_bind;
         creators["should repair"] = &ValueContext::should_repair;
+        creators["natural maintenance"] = &ValueContext::natural_maintenance;
         creators["can repair"] = &ValueContext::can_repair;
         creators["should sell"] = &ValueContext::should_sell;
         creators["can sell"] = &ValueContext::can_sell;
@@ -552,6 +553,7 @@ private:
     static UntypedValue* can_move_around(PlayerbotAI* botAI) { return new CanMoveAroundValue(botAI); }
     static UntypedValue* should_home_bind(PlayerbotAI* botAI) { return new ShouldHomeBindValue(botAI); }
     static UntypedValue* should_repair(PlayerbotAI* botAI) { return new ShouldRepairValue(botAI); }
+    static UntypedValue* natural_maintenance(PlayerbotAI* botAI) { return new NaturalMaintenanceValue(botAI); }
     static UntypedValue* can_repair(PlayerbotAI* botAI) { return new CanRepairValue(botAI); }
     static UntypedValue* should_sell(PlayerbotAI* botAI) { return new ShouldSellValue(botAI); }
     static UntypedValue* can_sell(PlayerbotAI* botAI) { return new CanSellValue(botAI); }

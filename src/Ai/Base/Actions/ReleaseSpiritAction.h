@@ -36,10 +36,16 @@ public:
 
 private:
     bool HandleBattlegroundSpiritHealer();
+    bool HandleNaturalBattlegroundSpiritHealer();
+    Unit* FindBattlegroundSpiritGuide(time_t now);
     bool ShouldAutoRelease() const;
     bool ShouldDelayBattlegroundRelease() const;
 
     time_t m_bgGossipTime = 0;
+    ObjectGuid _bgSpiritGuideGuid;
+    ObjectGuid _bgSpiritGuideRejectedGuid;
+    time_t _bgSpiritGuideSearchTime = 0;
+    uint32 _bgSpiritGuideInstanceId = 0;
 };
 
 class RepopAction : public SpiritHealerAction

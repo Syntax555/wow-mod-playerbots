@@ -4,7 +4,15 @@
  * or (at your option) any later version.
  */
 
+#include "MaintenanceValues.h"
 #include "NewRpgTriggers.h"
 #include "PlayerbotAI.h"
+#include "Playerbots.h"
 
 bool NewRpgStatusTrigger::IsActive() { return status == botAI->rpgInfo.GetStatus(); }
+
+bool NewRpgNaturalMaintenanceTrigger::IsActive()
+{
+    return sPlayerbotAIConfig.naturalProgression &&
+           !AI_VALUE(NaturalMaintenanceTask, "natural maintenance").target.IsEmpty();
+}

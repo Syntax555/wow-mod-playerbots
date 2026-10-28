@@ -29,6 +29,8 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
+#include "RaceMgr.h"
+#include "ScriptMgr.h"
 #include "SharedDefines.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
@@ -87,6 +89,9 @@ public:
 
 void PlayerbotHolder::AddPlayerBot(ObjectGuid playerGuid, uint32 masterAccountId)
 {
+    if (!sRandomPlayerbotMgr.CanLogInRandomBots())
+        return;
+
     if (botLoading.find(playerGuid) != botLoading.end())
         return;
 
@@ -217,6 +222,9 @@ void PlayerbotHolder::UpdatePendingLogins()
             continue;
 
         WorldSession* session = itr->second.session;
+        if (!sRandomPlayerbotMgr.CanLogInRandomBots())
+            itr->second.failed = true;
+
         if (!itr->second.failed)
             session->ProcessQueryCallbacks();  // may complete the login (entry erased) or flag it failed
 
@@ -253,6 +261,21 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(PlayerbotLoginQueryHolder con
 {
     uint32 botAccountId = holder.GetAccountId();
 
+    // Login callbacks run on the world thread before the character is loaded.
+    if (sPlayerbotAIConfig.naturalProgression)
+    {
+        CharacterCacheEntry const* character = sCharacterCache->GetCharacterCacheByGuid(holder.GetGuid());
+        if (!character || !character->Race || character->Race >= sRaceMgr->GetMaxRaces() ||
+            !character->Class || character->Class >= MAX_CLASSES || character->Class == CLASS_DEATH_KNIGHT ||
+            ((1u << (character->Race - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_RACEMASK)) ||
+            ((1u << (character->Class - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_CLASSMASK)) ||
+            !sScriptMgr->CanAccountCreateCharacter(botAccountId, character->Race, character->Class))
+        {
+            AbandonPendingLogin(holder.GetGuid());
+            return;
+        }
+    }
+
     botSession->HandlePlayerLoginFromDB(holder);  // will delete lqh
 
     Player* bot = botSession->GetPlayer();
@@ -278,7 +301,13 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(PlayerbotLoginQueryHolder con
 
     sRandomPlayerbotMgr.OnPlayerLogin(bot);
     auto op = std::make_unique<OnBotLoginOperation>(bot->GetGUID(), masterAccountId);
-    PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+    if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)) &&
+        sPlayerbotAIConfig.naturalProgression)
+    {
+        // Leave cleanup to the outer callback loop, after this session's callback processor returns.
+        AbandonPendingLogin(holder.GetGuid());
+        return;
+    }
 
     PlayerbotHolder::botLoading.erase(holder.GetGuid());
 }
@@ -513,6 +542,13 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
 
     PlayerbotsMgr::instance().AddPlayerbotData(bot, true);
     playerBots[bot->GetGUID()] = bot;
+
+    // A login operation can outlive the real session while waiting in the world-thread queue.
+    if (!sRandomPlayerbotMgr.CanLogInRandomBots())
+    {
+        LogoutPlayerBot(bot->GetGUID());
+        return;
+    }
 
     OnBotLoginInternal(bot);
 

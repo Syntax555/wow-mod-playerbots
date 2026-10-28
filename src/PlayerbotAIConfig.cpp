@@ -82,6 +82,8 @@ bool PlayerbotAIConfig::Initialize()
     LOG_INFO("server.loading", "Initializing mod-playerbots, based on AI Playerbots by ike3 and the original Playerbots by blueboy");
 
     Enabled = sConfigMgr->GetOption<bool>("Playerbots.Enabled", true);
+    naturalProgression = sConfigMgr->GetOption<bool>("Playerbots.NaturalProgression", false);
+    vanillaBattlegroundsOnly = sConfigMgr->GetOption<bool>("Playerbots.VanillaBattlegroundsOnly", false);
     if (!Enabled)
     {
         LOG_INFO("server.loading", "Playerbots Module is disabled in playerbots.conf");
@@ -640,6 +642,7 @@ bool PlayerbotAIConfig::Initialize()
 
     // SPP switches
     EnableGreet = sConfigMgr->GetOption<bool>("Playerbots.EnableGreet", true);
+    greetRealPlayersOnly = sConfigMgr->GetOption<bool>("Playerbots.GreetRealPlayersOnly", false);
     SummonWhenGroup = sConfigMgr->GetOption<bool>("Playerbots.SummonWhenGroup", true);
     RandomBotFixedLevel = sConfigMgr->GetOption<bool>("Playerbots.RandomBotFixedLevel", false);
     DisableRandomLevels = sConfigMgr->GetOption<bool>("Playerbots.DisableRandomLevels", false);
@@ -830,6 +833,13 @@ bool PlayerbotAIConfig::Initialize()
 // percentages at runtime.
 void PlayerbotAIConfig::LoadRandomBotLevelConfig()
 {
+    auto earnedPolicy = std::make_shared<EarnedLevelBracketPolicy>();
+    if (!earnedPolicy->Load(sConfigMgr->GetOption<std::string>("Playerbots.EarnedLevelBrackets", "")))
+        LOG_ERROR("playerbots",
+                  "Invalid Playerbots.EarnedLevelBrackets; earned caps disabled. "
+                  "Use unique level:percentage pairs, levels 1-80 and positive percentages totaling at most 100.");
+    earnedLevelBrackets.store(std::move(earnedPolicy));
+
     // ---- Level brackets ----
     LevelBracketsEnabled = sConfigMgr->GetOption<bool>("Playerbots.LevelBrackets.Enabled", false);
     LevelBracketsIgnoreGuildWithRealPlayers =

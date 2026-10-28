@@ -34,6 +34,10 @@ bool HasBeastMastery(Player* bot)
 
 bool TameAction::Execute(Event event)
 {
+    // This command creates a pet from a creature template instead of taming a wild beast.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     // Parse the user's input command into mode and value (e.g. "name wolf", "id 1234", etc.)
     std::string param = event.getParam();
     std::istringstream iss(param);

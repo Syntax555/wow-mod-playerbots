@@ -4471,17 +4471,19 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
         uint32 zoneIndex = urand(0, candidateZones.size() - 1);
         uint32 pickedZone = candidateZones[zoneIndex];
 
-        std::vector<uint32> usableNodes = GetFlightNodesInZone(pickedZone, bot->GetTeamId(), fromNode);
-
-        if (!usableNodes.empty())
+        std::vector<std::vector<uint32>> usablePaths;
+        for (uint32 node : GetFlightNodesInZone(pickedZone, bot->GetTeamId(), fromNode))
         {
-            uint32 pickedNode = usableNodes[urand(0, usableNodes.size() - 1)];
-            std::vector<uint32> path = sTravelNodeMap.FindTaxiPath(fromNode, pickedNode);
-            if (!path.empty())
-            {
-                validDestinations.push_back(std::move(path));
-                return validDestinations;
-            }
+            std::vector<uint32> path = sTravelNodeMap.FindTaxiPath(fromNode, node);
+            // The origin is learned at its flight master; every later node must already be discovered.
+            if (!path.empty() && CanUseTaxiNodes(bot, std::vector<uint32>(path.begin() + 1, path.end())))
+                usablePaths.push_back(std::move(path));
+        }
+
+        if (!usablePaths.empty())
+        {
+            validDestinations.push_back(std::move(usablePaths[urand(0, usablePaths.size() - 1)]));
+            return validDestinations;
         }
 
         candidateZones.erase(candidateZones.begin() + zoneIndex);

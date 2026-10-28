@@ -7,10 +7,12 @@
 #include "NewRpgAction.h"
 #include "AreaDefines.h"
 #include "BroadcastHelper.h"
+#include "BudgetValues.h"
 #include "ChatHelper.h"
 #include "DBCStores.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
+#include "MaintenanceValues.h"
 #include "MotionMaster.h"
 #include "MoveSpline.h"
 #include "NewRpgInfo.h"
@@ -34,6 +36,76 @@
 #include "G3D/Vector2.h"
 #include <cmath>
 #include <cstdlib>
+
+bool NewRpgNaturalMaintenanceAction::Execute(Event /*event*/)
+{
+    Value<NaturalMaintenanceTask>* value = context->GetValue<NaturalMaintenanceTask>("natural maintenance");
+    if (!CanRunNaturalMaintenance(botAI))
+    {
+        value->Set({});
+        return false;
+    }
+
+    NaturalMaintenanceTask const task = value->Get();
+    Creature* npc = botAI->GetCreature(task.target);
+    if (!npc || !npc->IsAlive() || !npc->IsFriendlyTo(bot))
+    {
+        value->Set({});
+        return false;
+    }
+
+    if (!bot->IsWithinDistInMap(npc, INTERACTION_DISTANCE))
+    {
+        if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+            return true;
+
+        if (MoveWorldObjectTo(task.target))
+            return true;
+
+        botAI->rpgInfo.naturalMaintenanceRejected = task.target;
+        value->Set({});
+        return false;
+    }
+
+    // Clear without Reset: a failed visit must not start another expensive search on the next AI tick.
+    value->Set({});
+    ObjectGuid const oldSelection = bot->GetTarget();
+    bot->SetSelection(task.target);
+    bool result = false;
+    switch (task.type)
+    {
+        case NaturalMaintenanceType::SELL:
+            if (bot->GetNPCIfCanInteractWith(task.target, UNIT_NPC_FLAG_VENDOR))
+                result = botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+            break;
+        case NaturalMaintenanceType::REPAIR:
+            if (bot->GetNPCIfCanInteractWith(task.target, UNIT_NPC_FLAG_REPAIR) && AI_VALUE(bool, "can repair"))
+                result = botAI->DoSpecificAction("repair", Event("rpg action"), true);
+            break;
+        case NaturalMaintenanceType::TRAIN:
+            if (bot->GetNPCIfCanInteractWith(task.target, UNIT_NPC_FLAG_TRAINER))
+                result = botAI->DoSpecificAction("trainer", Event("rpg action", "learn"), true);
+            break;
+        case NaturalMaintenanceType::BUY:
+            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(task.itemId))
+            {
+                uint32 const price = uint32(floor(proto->BuyPrice * bot->GetReputationPriceDiscount(npc)));
+                if (price > AI_VALUE2(uint32, "free money for", task.budgetType) || !bot->HasEnoughMoney(price))
+                    break;
+
+                if (bot->GetNPCIfCanInteractWith(task.target, UNIT_NPC_FLAG_VENDOR))
+                    result = botAI->DoSpecificAction("buy", Event("natural maintenance", ChatHelper::FormatItem(proto)),
+                                                     true);
+            }
+            break;
+        case NaturalMaintenanceType::NONE:
+            break;
+    }
+    bot->SetSelection(oldSelection);
+    if (!result)
+        botAI->rpgInfo.naturalMaintenanceRejected = task.target;
+    return result;
+}
 
 void TellRpgStatusAction::WhisperStatusChange(Player* owner, std::string const& statusName)
 {
@@ -713,7 +785,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
 
     bot->GetSession()->SendLearnNewTaxiNode(flightMaster);
 
-    if (!bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
+    if (!CanUseTaxiNodes(bot, nodes) || !bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
                   flightMaster->GetEntry(), nodes.empty() ? 0 : nodes.front(), nodes.empty() ? 0 : nodes.back());

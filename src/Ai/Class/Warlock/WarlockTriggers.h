@@ -56,6 +56,13 @@ public:
     bool IsActive() override;
 };
 
+// Soul Shards come from Drain Soul kills; the trigger checks target health before scanning bags.
+class DrainSoulForShardTrigger : public TwoTriggers
+{
+public:
+    DrainSoulForShardTrigger(PlayerbotAI* botAI) : TwoTriggers(botAI, "target critical health", "no soul shard") {}
+};
+
 class TooManySoulShardsTrigger : public Trigger
 {
 public:

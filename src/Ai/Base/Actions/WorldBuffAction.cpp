@@ -11,6 +11,10 @@
 
 bool WorldBuffAction::Execute(Event event)
 {
+    // Buffs must come from actual spells, items or world events.
+    if (sPlayerbotAIConfig.naturalProgression)
+        return false;
+
     std::string const text = event.getParam();
 
     std::vector<uint32> buffs = NeedWorldBuffs(bot);  // Get matching buffs
