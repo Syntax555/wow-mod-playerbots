@@ -6,9 +6,11 @@
 
 #include "LootRollAction.h"
 #include "Event.h"
+#include "GameObject.h"
 #include "Group.h"
 #include "ItemUsageValue.h"
 #include "LootAction.h"
+#include "LootMgr.h"
 #include "ObjectMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -93,6 +95,22 @@ bool LootRollAction::Execute(Event /*event*/)
         else if (vote == GREED && !sPlayerbotAIConfig.LootGreedRollLevel)
             vote = PASS;
 
+        uint8 voteMask = roll->rollVoteMask;
+        if (vote == NEED && group->GetLootMethod() == NEED_BEFORE_GREED)
+        {
+            Loot* loot = roll->getTarget();
+            WorldObject* source = loot ? botAI->GetWorldObject(loot->sourceWorldObjectGUID) : nullptr;
+            if (!source && loot)
+                source = loot->sourceGameObject;
+            if (!source || bot->CanRollForItemInLFG(proto, source) != EQUIP_ERR_OK)
+                voteMask &= ~ROLL_FLAG_TYPE_NEED;
+        }
+        if ((vote == NEED && !(voteMask & ROLL_FLAG_TYPE_NEED)) ||
+            (vote == DISENCHANT && !(voteMask & ROLL_FLAG_TYPE_DISENCHANT)))
+            vote = sPlayerbotAIConfig.LootGreedRollLevel ? GREED : PASS;
+        if (vote == GREED && !(voteMask & ROLL_FLAG_TYPE_GREED))
+            vote = PASS;
+
         switch (group->GetLootMethod())
         {
             case MASTER_LOOT:
@@ -145,43 +163,6 @@ RollVote LootRollAction::CalculateRollVote(ItemTemplate const* proto, ItemUsage 
 
 bool MasterLootRollAction::isUseful() { return !IsRealPlayer(botAI->GetMaster()); }
 
-bool MasterLootRollAction::Execute(Event event)
-{
-    Player* bot = QueryItemUsageAction::botAI->GetBot();
-
-    WorldPacket p(event.getPacket());  // WorldPacket packet for CMSG_LOOT_ROLL, (8+4+1)
-    ObjectGuid creatureGuid;
-    uint32 mapId;
-    uint32 itemSlot;
-    uint32 itemId;
-    uint32 randomSuffix;
-    uint32 randomPropertyId;
-    uint32 count;
-    uint32 timeout;
-
-    p.rpos(0);              // reset packet pointer
-    p >> creatureGuid;      // creature guid what we're looting
-    p >> mapId;             /// 3.3.3 mapid
-    p >> itemSlot;          // the itemEntryId for the item that shall be rolled for
-    p >> itemId;            // the itemEntryId for the item that shall be rolled for
-    p >> randomSuffix;      // randomSuffix
-    p >> randomPropertyId;  // item random property ID
-    p >> count;             // items in stack
-    p >> timeout;           // the countdown time to choose "need" or "greed"
-
-    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-    if (!proto)
-        return false;
-
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    group->CountRollVote(bot->GetGUID(), creatureGuid, CalculateRollVote(proto));
-
-    return true;
-}
-
 bool CanBotUseToken(ItemTemplate const* proto, Player* bot)
 {
     // Get the bitmask for the bot's class
@@ -196,19 +177,8 @@ bool CanBotUseToken(ItemTemplate const* proto, Player* bot)
 
 bool RollUniqueCheck(ItemTemplate const* proto, Player* bot)
 {
-    // Count the total number of the item (equipped + in bags)
-    uint32 totalItemCount = bot->GetItemCount(proto->ItemId, true);
-
-    // Count the number of the item in bags only
-    uint32 bagItemCount = bot->GetItemCount(proto->ItemId, false);
-
-    // Determine if the unique item is already equipped
-    bool isEquipped = (totalItemCount > bagItemCount);
-    if (isEquipped && proto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE))
-        return true;  // Unique Item is already equipped
-    else if (proto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE) && (bagItemCount > 1))
-        return true; // Unique item already in bag, don't roll for it
-    return false; // Item is not equipped or in bags, roll for it
+    return proto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE) &&
+           (bot->HasItemOrGemWithIdEquipped(proto->ItemId, 1) || bot->GetItemCount(proto->ItemId, false) > 1);
 }
 
 bool RollAction::Execute(Event event)

@@ -35,7 +35,6 @@ public:
     MasterLootRollAction(PlayerbotAI* botAI) : LootRollAction(botAI, "master loot roll") {}
 
     bool isUseful() override;
-    bool Execute(Event event) override;
 };
 
 class RollAction : public Action

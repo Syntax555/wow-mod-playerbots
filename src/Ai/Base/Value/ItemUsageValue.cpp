@@ -258,21 +258,8 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
     bool needToCheckUnique = result == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS ||
          itemProto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE);
 
-    if (needToCheckUnique)
-    {
-        // Count the total number of the item (equipped + in bags)
-        uint32 totalItemCount = bot->GetItemCount(itemProto->ItemId, true);
-
-        // Count the number of the item in bags only
-        uint32 bagItemCount = bot->GetItemCount(itemProto->ItemId, false);
-
-        // Determine if the unique item is already equipped
-        bool isEquipped = (totalItemCount > bagItemCount);
-
-        if (isEquipped)
-            return ITEM_USAGE_NONE;  // Item is already equipped
-        // If not equipped, continue processing
-    }
+    if (needToCheckUnique && bot->HasItemOrGemWithIdEquipped(itemProto->ItemId, 1))
+        return ITEM_USAGE_NONE;
 
     if (itemProto->Class == ITEM_CLASS_QUIVER && bot->getClass() != CLASS_HUNTER)
         return ITEM_USAGE_NONE;
@@ -418,7 +405,9 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         bool oldItemIsBroken =
             oldItem->GetUInt32Value(ITEM_FIELD_DURABILITY) == 0 && oldItem->GetUInt32Value(ITEM_FIELD_MAXDURABILITY) > 0;
 
-        if (itemProto->ItemId != oldItemProto->ItemId && (shouldEquipInSlot || !existingShouldEquip) && isBetter)
+        if ((itemProto->ItemId != oldItemProto->ItemId ||
+             randomPropertyId != oldItem->GetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID)) &&
+            (shouldEquipInSlot || !existingShouldEquip) && isBetter)
         {
             switch (itemProto->Class)
             {
