@@ -9,6 +9,8 @@
 #include "Event.h"
 #include "FleeManager.h"
 #include "GameGraveyard.h"
+#include "LastMovementValue.h"
+#include "Map.h"
 #include "MapMgr.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
@@ -17,6 +19,67 @@
 
 // Top of the default start-zone brackets (Playerbots.ZoneBracket.*).
 constexpr uint32 START_ZONE_GRAVEYARD_MAX_LEVEL = 12;
+
+namespace
+{
+bool HasRemoteInstanceCorpse(Player* bot)
+{
+    if (!sPlayerbotAIConfig.naturalProgression || !bot || IsSelfBot(bot) || bot->IsAlive() ||
+        bot->InBattleground() || bot->InArena() || !bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) || !bot->HasCorpse())
+        return false;
+
+    uint32 corpseMap = bot->GetCorpseLocation().GetMapId();
+    MapEntry const* entry = sMapStore.LookupEntry(corpseMap);
+    return corpseMap != bot->GetMapId() && entry && entry->IsDungeon();
+}
+
+AreaTrigger const* FindCorpseEntrance(Player* bot)
+{
+    WorldLocation const corpse = bot->GetCorpseLocation();
+    AreaTrigger const* entrance = nullptr;
+    float nearestDistance = 0.0f;
+    uint32 mapId = corpse.GetMapId();
+
+    // Parent instances can be traversed as ghosts on the way to the body's instance.
+    for (uint32 depth = 0; depth < sMapStore.GetNumRows(); ++depth)
+    {
+        MapEntry const* entry = sMapStore.LookupEntry(mapId);
+        if (!entry || !entry->IsDungeon() || mapId == bot->GetMapId())
+            break;
+
+        if (!entrance)
+        {
+            for (auto const& [triggerId, target] : sObjectMgr->GetAllAreaTriggerTeleports())
+            {
+                if (target.target_mapId != mapId)
+                    continue;
+
+                AreaTrigger const* candidate = sObjectMgr->GetAreaTrigger(triggerId);
+                if (!candidate || candidate->map != bot->GetMapId())
+                    continue;
+
+                float distance = mapId == corpse.GetMapId()
+                    ? corpse.GetExactDistSq(target.target_X, target.target_Y, target.target_Z)
+                    : bot->GetExactDistSq(candidate->x, candidate->y, candidate->z);
+                if (!entrance || distance < nearestDistance ||
+                    (distance == nearestDistance && candidate->entry < entrance->entry))
+                {
+                    entrance = candidate;
+                    nearestDistance = distance;
+                }
+            }
+        }
+
+        InstanceTemplate const* instance = sObjectMgr->GetInstanceTemplate(mapId);
+        if (!instance || instance->Parent == mapId)
+            break;
+
+        mapId = instance->Parent;
+    }
+
+    return entrance;
+}
+}  // namespace
 
 bool ReviveFromCorpseAction::Execute(Event event)
 {
@@ -58,7 +121,7 @@ bool ReviveFromCorpseAction::Execute(Event event)
             return false;
     }
 
-    if (!botAI->HasGameClientMaster())
+    if (!sPlayerbotAIConfig.naturalProgression && !botAI->HasGameClientMaster())
     {
         uint32 dCount = AI_VALUE(uint32, "death count");
 
@@ -87,7 +150,32 @@ bool FindCorpseAction::Execute(Event /*event*/)
     Player* groupLeader = botAI->GetGroupLeader();
     Corpse* corpse = bot->GetCorpse();
     if (!corpse)
-        return false;
+    {
+        if (!HasRemoteInstanceCorpse(bot))
+            return false;
+
+        if (bot->isMoving())
+            return true;
+
+        LastMovement& movement = AI_VALUE(LastMovement&, "last area trigger");
+        AreaTrigger const* entrance = FindCorpseEntrance(bot);
+        if (!entrance)
+            return false;
+
+        if (movement.lastAreaTrigger != entrance->entry)
+            movement.lastAreaTrigger = 0;
+
+        if (!bot->IsInAreaTriggerRadius(entrance))
+            return MoveTo(entrance->map, entrance->x, entrance->y, entrance->z, false, false);
+
+        // Let the existing within-trigger action submit only a physically reached portal.
+        if (movement.lastAreaTrigger == entrance->entry)
+            return false;
+
+        WorldPacket packet(CMSG_AREATRIGGER);
+        packet << entrance->entry;
+        return botAI->DoSpecificAction("reach area trigger", Event("find corpse", packet), true);
+    }
 
     // if (groupLeader)
     // {
@@ -186,7 +274,7 @@ bool FindCorpseAction::Execute(Event /*event*/)
             moved = true;
         else
         {
-            if (deadTime < 10 * MINUTE && dCount < 5)  // Look for corpse up to 30 minutes.
+            if (sPlayerbotAIConfig.naturalProgression || (deadTime < 10 * MINUTE && dCount < 5))
             {
                 moved =
                     MoveTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), false, false);
@@ -207,7 +295,7 @@ bool FindCorpseAction::isUseful()
     if (bot->InBattleground())
         return false;
 
-    return bot->GetCorpse();
+    return bot->GetCorpse() || HasRemoteInstanceCorpse(bot);
 }
 
 GraveyardStruct const* SpiritHealerAction::GetGrave(bool startZone)

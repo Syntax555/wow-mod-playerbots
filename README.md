@@ -30,6 +30,13 @@ owned items through ordinary auctions and mail. Grant, summon and recovery
 shortcuts guarded by natural progression are refused. Existing inventories and
 gold are preserved without checking their origin.
 
+Released bots return by ordinary movement and reclaim their own corpse through
+the core's distance and delay checks. Repeated deaths, long ghost runs and
+reduced AI activity do not disable this recovery; a usable route is still required.
+For an instance corpse on another map, bot ghosts walk to an entrance using the
+existing portal actions and normal core entry checks. SelfBots cross portals
+through their own client.
+
 Humans, SelfBots and controlled altbots retain human character rights; their
 talents remain manually controlled. Automatic talent spending applies to random
 bots' earned points. Combat profiles reuse native class strategies and score
