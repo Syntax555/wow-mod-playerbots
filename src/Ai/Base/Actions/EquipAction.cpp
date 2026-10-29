@@ -32,17 +32,20 @@ void EquipAction::EquipItems(ItemIds ids)
     }
 }
 
-// Return bagslot with smalest bag.
-uint8 EquipAction::GetSmallestBagSlot()
+// General bag upgrades preserve quivers, ammo pouches and profession bags.
+uint8 EquipAction::GetSmallestBagSlot(Player* bot)
 {
-    int8 curBag = 0;
+    uint8 curBag = NULL_SLOT;
     uint32 curSlots = 0;
     for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
     {
-        Bag const* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        Bag const* const pBag = bot->GetBagByPos(bag);
         if (pBag)
         {
-            if (curBag > 0 && curSlots < pBag->GetBagSize())
+            ItemTemplate const* proto = pBag->GetTemplate();
+            if (proto->Class != ITEM_CLASS_CONTAINER || proto->SubClass != ITEM_SUBCLASS_CONTAINER)
+                continue;
+            if (curBag != NULL_SLOT && curSlots < pBag->GetBagSize())
                 continue;
 
             curBag = bag;
@@ -86,15 +89,15 @@ void EquipAction::EquipItem(Item* item, uint8 forcedSlot)
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
         // Attempt to equip as a bag
-        uint8 newBagSlot = GetSmallestBagSlot();
+        uint8 newBagSlot = GetSmallestBagSlot(bot);
 
-        if (newBagSlot > 0)
-        {
-            uint16 src = ((bagIndex << 8) | slot);
-            uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
-            bot->SwapItem(src, dst);
-            equippedBag = true;
-        }
+        if (newBagSlot == NULL_SLOT)
+            return;
+
+        uint16 src = ((bagIndex << 8) | slot);
+        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
+        bot->SwapItem(src, dst);
+        equippedBag = true;
     }
 
     // If we didn't equip as a bag, try to equip as gear

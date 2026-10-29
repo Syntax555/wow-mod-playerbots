@@ -53,7 +53,6 @@ protected:
     ParsedItemUsage GetItemIdFromQualifier();
 
 private:
-    uint32 GetSmallestBagSize();
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
     bool IsStartQuestItemUsefulFor(Player* player, ItemTemplate const* proto);
     bool IsItemNeededForSkill(ItemTemplate const* proto);

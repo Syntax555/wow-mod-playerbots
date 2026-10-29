@@ -7,6 +7,7 @@
 #include "ItemUsageValue.h"
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "EquipAction.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "LootObjectStack.h"
@@ -269,7 +270,11 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         if (itemProto->SubClass != ITEM_SUBCLASS_CONTAINER)
             return ITEM_USAGE_NONE;  // Todo add logic for non-bag containers. We want to look at professions/class and
                                      // only replace if non-bag is larger than bag.
-        if (GetSmallestBagSize() >= itemProto->ContainerSlots)
+        uint8 const slot = EquipAction::GetSmallestBagSlot(bot);
+        if (slot == NULL_SLOT)
+            return ITEM_USAGE_NONE;
+        Bag const* bag = bot->GetBagByPos(slot);
+        if ((bag ? bag->GetBagSize() : 0) >= itemProto->ContainerSlots)
             return ITEM_USAGE_NONE;
 
         return ITEM_USAGE_EQUIP;
@@ -518,28 +523,6 @@ ParsedItemUsage ItemUsageValue::GetItemIdFromQualifier()
         parsed.itemId = atoi(qualifier.c_str());
     return parsed;
 }
-// Return smaltest bag size equipped
-uint32 ItemUsageValue::GetSmallestBagSize()
-{
-    int8 curSlot = 0;
-    uint32 curSlots = 0;
-    for (uint8 bag = INVENTORY_SLOT_BAG_START + 1; bag < INVENTORY_SLOT_BAG_END; ++bag)
-    {
-        if (Bag const* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
-        {
-            if (curSlot > 0 && curSlots < pBag->GetBagSize())
-                continue;
-
-            curSlot = pBag->GetSlot();
-            curSlots = pBag->GetBagSize();
-        }
-        else
-            return 0;
-    }
-
-    return curSlots;
-}
-
 bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* proto)
 {
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);

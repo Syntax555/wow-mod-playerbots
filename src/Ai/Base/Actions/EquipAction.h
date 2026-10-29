@@ -13,6 +13,7 @@
 
 class FindItemVisitor;
 class Item;
+class Player;
 class PlayerbotAI;
 
 class EquipAction : public InventoryAction
@@ -23,10 +24,10 @@ public:
     bool Execute(Event event) override;
     void EquipItems(ItemIds ids);
     bool EquipUpgrades();
+    static uint8 GetSmallestBagSlot(Player* bot);
 
 private:
     void EquipItem(FindItemVisitor* visitor);
-    uint8 GetSmallestBagSlot();
     void EquipItem(Item* item, uint8 forcedSlot = NULL_SLOT);
 };
 

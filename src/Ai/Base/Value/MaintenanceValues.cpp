@@ -12,6 +12,7 @@
 #include "BudgetValues.h"
 #include "EarnedAuction.h"
 #include "EarnedAuctionTravel.h"
+#include "EquipAction.h"
 #include "ItemUsageValue.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
@@ -40,27 +41,17 @@ bool IsGeneralBag(ItemTemplate const* proto)
     return proto->Class == ITEM_CLASS_CONTAINER && proto->SubClass == ITEM_SUBCLASS_CONTAINER;
 }
 
-// EquipAction puts a new bag into the first empty slot, else replaces the smallest
-// bag. A general bag must not displace a quiver, ammo pouch or profession bag. A
-// replacement needs a free backpack slot: a bag stored inside the bag it replaces
+// A replacement needs a free backpack slot: a bag stored inside the bag it replaces
 // cannot be equipped from there.
 bool ReplaceableBagSize(Player* bot, uint32& size)
 {
-    Bag const* smallest = nullptr;
-    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
-    {
-        Bag const* bag = bot->GetBagByPos(slot);
-        if (!bag)
-        {
-            size = 0;
-            return true;
-        }
-        if (!smallest || bag->GetBagSize() <= smallest->GetBagSize())
-            smallest = bag;
-    }
-    size = smallest->GetBagSize();
-    if (!IsGeneralBag(smallest->GetTemplate()))
+    uint8 const slot = EquipAction::GetSmallestBagSlot(bot);
+    if (slot == NULL_SLOT)
         return false;
+    Bag const* bag = bot->GetBagByPos(slot);
+    size = bag ? bag->GetBagSize() : 0;
+    if (!bag)
+        return true;
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
         if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
             return true;
