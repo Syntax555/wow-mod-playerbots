@@ -60,8 +60,11 @@ bool ReplaceableBagSize(Player* bot, uint32& size)
 
 // A carried bag upgrade is equipped by the ordinary upgrade action, or cannot be,
 // for example from inside the bag it would replace. Either way, buy no other.
+// An auction bag waiting in the mailbox counts as carried.
 bool CarriesBagUpgrade(PlayerbotAI* botAI, uint32 replaceable)
 {
+    if (EarnedAuction::PendingBagSlots(botAI) > replaceable)
+        return true;
     Player* bot = botAI->GetBot();
     auto const upgrade = [&](Item const* item)
     {

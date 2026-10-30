@@ -286,6 +286,46 @@ UnsoldStock& Unsold()
     return stock;
 }
 
+// The largest general bag each bot leads a bid on or has won, learned on the world
+// thread at its auctioneer and mailbox visits. Map-thread vendor purchases read it
+// because they may not inspect mail or auctions.
+class PendingBags
+{
+public:
+    void Record(ObjectGuid bot, uint32 slots)
+    {
+        std::unique_lock lock(_lock);
+        if (slots)
+            _slots[bot] = slots;
+        else
+            _slots.erase(bot);
+    }
+
+    uint32 Slots(ObjectGuid bot) const
+    {
+        std::shared_lock lock(_lock);
+        auto const found = _slots.find(bot);
+        return found == _slots.end() ? 0 : found->second;
+    }
+
+private:
+    mutable std::shared_mutex _lock;
+    std::map<ObjectGuid, uint32> _slots;
+};
+
+PendingBags& Pending()
+{
+    static PendingBags bags;
+    return bags;
+}
+
+uint32 GeneralBagSlots(Item const* item)
+{
+    ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+    return proto && proto->Class == ITEM_CLASS_CONTAINER && proto->SubClass == ITEM_SUBCLASS_CONTAINER ?
+               proto->ContainerSlots : 0;
+}
+
 UnsoldStock::Key StockKey(Player* bot, Item* item)
 {
     return {bot->GetGUID().GetCounter(), item->GetEntry(), item->GetItemRandomPropertyId()};
@@ -466,6 +506,7 @@ struct MarketState
     uint32 listings = 0;
     std::map<StockItem, uint32> listingsByItem;
     bool pendingPurchase = false;
+    uint32 pendingBagSlots = 0;
 };
 
 MarketState OwnMarketState(Player* bot)
@@ -488,9 +529,11 @@ MarketState OwnMarketState(Player* bot)
                     ++state.listingsByItem[Stock(listed)];
             }
             if (auction->bidder == bot->GetGUID())
+            {
                 state.pendingPurchase = true;
-            if (state.listings >= MaxListings && state.pendingPurchase)
-                return state;
+                state.pendingBagSlots =
+                    std::max(state.pendingBagSlots, GeneralBagSlots(sAuctionMgr->GetAItem(auction->item_guid)));
+            }
         }
     }
     time_t const now = GameTime::GetGameTime().count();
@@ -511,6 +554,7 @@ MarketState OwnMarketState(Player* bot)
                         state.pendingPurchase = true;
                         continue;
                     }
+                    state.pendingBagSlots = std::max(state.pendingBagSlots, GeneralBagSlots(item));
                     // An ownership limit is not cleared by making bag space. Keep the
                     // attachment for ordinary collection without blocking other buys.
                     InventoryResult const result = bot->CanTakeMoreSimilarItems(item);
@@ -782,7 +826,11 @@ public:
             return false;
         lastVisits[key] = now;
         if (isMailbox)
-            return CollectReceipts(bot, targetGuid);
+        {
+            bool const collected = CollectReceipts(bot, targetGuid);
+            Pending().Record(botGuid, OwnMarketState(bot).pendingBagSlots);
+            return collected;
+        }
         AuctionHouseObject* house = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
         if (!house)
             return false;
@@ -790,6 +838,7 @@ public:
         std::vector<uint32> const sample = SampleMarket(house, botGuid);
         bool const sold = SellSurplus(ai, auctioneer, house, state);
         bool const bought = !state.pendingPurchase && BuyUseful(ai, auctioneer, house, sample);
+        Pending().Record(botGuid, (bought ? OwnMarketState(bot) : state).pendingBagSlots);
         return sold || bought;
     }
 
@@ -891,4 +940,6 @@ bool QueueVisit(PlayerbotAI* ai, ObjectGuid target, bool mailbox)
     return PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::make_unique<EarnedAuctionVisit>(ai->GetBot()->GetGUID(), target, mailbox));
 }
+
+uint32 PendingBagSlots(PlayerbotAI* ai) { return IsEnabled(ai) ? Pending().Slots(ai->GetBot()->GetGUID()) : 0; }
 }  // namespace EarnedAuction

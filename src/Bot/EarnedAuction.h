@@ -17,6 +17,8 @@ namespace EarnedAuction
 {
 bool IsEnabled(PlayerbotAI* ai);
 bool MeetsAuctionLevel(Player* bot);
+// Container slots of a bag the bot won or leads a bid on and has not collected yet.
+uint32 PendingBagSlots(PlayerbotAI* ai);
 bool HasSurplus(PlayerbotAI* ai);
 bool HasVendorSurplus(PlayerbotAI* ai);
 bool SellsToVendor(PlayerbotAI* ai, Item* item, ItemUsage usage);
