@@ -283,22 +283,16 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
     if (itemProto->Class == ITEM_CLASS_WEAPON && itemProto->SubClass == ITEM_SUBCLASS_WEAPON_MISC)
         return ITEM_USAGE_NONE;
 
-    bool shouldEquip = false;
-    // uint32 statWeight = sRandomItemMgr.GetLiveStatWeight(bot, itemProto->ItemId);
+    // Set bonuses and stat caps are valued in the slot the item would take; weapons compare both hands.
     StatsWeightCalculator calculator(bot);
-    calculator.SetItemSetBonus(false);
-    calculator.SetOverflowPenalty(false);
+    calculator.SetWeaponPairs(true);
 
     // Apply PvP weights if the bot is specced for PvP
     bool isPvp = sRandomPlayerbotMgr.IsSpecPvp(bot->GetGUID().GetCounter(), bot->getClass());
     if (isPvp)
         calculator.SetPvpSpec(true);
 
-    float itemScore = calculator.CalculateItem(itemProto->ItemId, randomPropertyId);
-
-    if (itemScore)
-        shouldEquip = true;
-
+    bool shouldEquip = true;
     if (itemProto->Class == ITEM_CLASS_WEAPON && !sRandomItemMgr.CanEquipWeapon(itemProto, bot->getClass()))
         shouldEquip = false;
     if (itemProto->Class == ITEM_CLASS_ARMOR &&
@@ -351,14 +345,46 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         }
     }
 
+    bool const fillsBothHands = EquipAction::FillsBothHands(bot, itemProto);
     for (uint8 i = 0; i < possibleSlots; i++)
     {
-        bool shouldEquipInSlot = shouldEquip;
         Item* oldItem = bot->GetItemByPos(dest + i);
+
+        // Bigger quiver
+        if (itemProto->Class == ITEM_CLASS_QUIVER)
+        {
+            if (!oldItem || oldItem->GetTemplate()->ContainerSlots < itemProto->ContainerSlots)
+                return ITEM_USAGE_EQUIP;
+            else
+                return ITEM_USAGE_NONE;
+        }
+
+        uint8 const slot = uint8(dest + i);
+        float itemScore = calculator.CalculateItem(itemProto->ItemId, randomPropertyId, slot);
+        float oldScore = oldItem ? calculator.CalculateItem(oldItem->GetEntry(),
+            oldItem->GetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID), slot) : 0.0f;
+
+        // A two-hander also displaces the off hand; a one-hander replacing one can take the
+        // best owned off-hand item.
+        if (slot == EQUIPMENT_SLOT_MAINHAND)
+        {
+            Item* offhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+            if (fillsBothHands && offhand)
+                oldScore += calculator.CalculateItem(offhand->GetEntry(),
+                    offhand->GetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID), EQUIPMENT_SLOT_OFFHAND);
+            else if (!fillsBothHands && oldItem && EquipAction::FillsBothHands(bot, oldItem->GetTemplate()))
+                itemScore += EquipAction::BestOffhandScore(botAI, calculator, itemProto->ItemId);
+        }
+
+        // An empty slot scores zero, so an item must score above nothing to fill it.
+        bool const isBetter = itemScore > oldScore && itemScore > oldScore * sPlayerbotAIConfig.EquipUpgradeThreshold;
+        bool const shouldEquipInSlot = shouldEquip && isBetter;
 
         // No item equipped
         if (!oldItem)
         {
+            if (!isBetter)
+                return ITEM_USAGE_NONE;
             if (shouldEquipInSlot)
                 return ITEM_USAGE_EQUIP;
             else
@@ -366,22 +392,6 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         }
 
         ItemTemplate const* oldItemProto = oldItem->GetTemplate();
-        float oldScore = calculator.CalculateItem(oldItemProto->ItemId, oldItem->GetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID));
-        if (oldItem)
-        {
-            // uint32 oldStatWeight = sRandomItemMgr.GetLiveStatWeight(bot, oldItemProto->ItemId);
-            if (itemScore || oldScore)
-                shouldEquipInSlot = itemScore > oldScore * sPlayerbotAIConfig.EquipUpgradeThreshold;
-        }
-
-        // Bigger quiver
-        if (itemProto->Class == ITEM_CLASS_QUIVER)
-        {
-            if (!oldItem || oldItemProto->ContainerSlots < itemProto->ContainerSlots)
-                return ITEM_USAGE_EQUIP;
-            else
-                return ITEM_USAGE_NONE;
-        }
 
         bool existingShouldEquip = true;
         if (oldItemProto->Class == ITEM_CLASS_WEAPON && !sRandomItemMgr.CanEquipWeapon(oldItemProto, bot->getClass()))
@@ -390,19 +400,6 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         if (oldItemProto->Class == ITEM_CLASS_ARMOR &&
             !sRandomItemMgr.CanEquipArmor(oldItemProto, bot->getClass(), bot->GetLevel()))
             existingShouldEquip = false;
-
-        // uint32 oldItemPower = sRandomItemMgr.GetLiveStatWeight(bot, oldItemProto->ItemId);
-        // uint32 newItemPower = sRandomItemMgr.GetLiveStatWeight(bot, itemProto->ItemId);
-
-        // Compare items based on item level, quality or itemId.
-        bool isBetter = false;
-        if (itemScore > oldScore)
-            isBetter = true;
-        // else if (newItemPower == oldScore && itemProto->Quality > oldItemProto->Quality)
-        //     isBetter = true;
-        // else if (newItemPower == oldScore && itemProto->Quality == oldItemProto->Quality && itemProto->ItemId >
-        // oldItemProto->ItemId)
-        //     isBetter = true;
 
         Item* item = CurrentItem(itemProto);
         bool itemIsBroken =
@@ -443,7 +440,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         }
 
         // Item is not better but current item is broken and new one is not.
-        if (oldItemIsBroken && !itemIsBroken)
+        if (oldItemIsBroken && !itemIsBroken && itemScore > 0)
             return ITEM_USAGE_EQUIP;
     }
     return ITEM_USAGE_NONE;

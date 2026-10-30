@@ -37,6 +37,8 @@ public:
     void SetItemSetBonus(bool apply) { enable_item_set_bonus_ = apply; }
     void SetPvpSpec(bool isPvp) { pvpSpec_ = isPvp; }
     void SetExcludeResilience(bool exclude) { exclude_resilience_ = exclude; }
+    // Main and off hand are compared as a pair, so weapons are not normalized to one hand.
+    void SetWeaponPairs(bool apply) { weapon_pairs_ = apply; }
 
     // Read access for diagnostics (e.g. the `calc` chat command)
     StatsCollector const* GetCollector() const { return collector_.get(); }
@@ -48,6 +50,7 @@ public:
     void GenerateAdditionalWeights(Player* player);
 
     void CalculateRandomProperty(int32 randomPropertyId, uint32 itemId);
+    void CollectReplacedStats(int32 slot);
     void CalculateItemSetMod(Player* player, ItemTemplate const* proto);
     void CollectItemSetBonus(Player* player, ItemTemplate const* proto, int32 slot,
                              std::array<float, STATS_TYPE_MAX>& setBonusStats);
@@ -59,6 +62,7 @@ public:
     bool NotBestArmorType(uint32 item_subclass_armor);
 
     void ApplyOverflowPenalty(Player* player);
+    float TalentSpellHit(Player* player);
     void ApplyWeightFinetune(Player* player);
 
 private:
@@ -74,8 +78,10 @@ private:
 
     float weight_;
     float stats_weights_[STATS_TYPE_MAX];
+    std::array<float, STATS_TYPE_MAX> replaced_{};
     bool pvpSpec_ = false;
     bool exclude_resilience_ = false;
+    bool weapon_pairs_ = false;
 };
 
 #endif

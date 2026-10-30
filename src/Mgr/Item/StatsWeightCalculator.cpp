@@ -17,9 +17,11 @@
 #include "RandomItemMgr.h"
 #include "SharedDefines.h"
 #include "SpellAuraDefines.h"
+#include "SpellAuraEffects.h"
 #include "SpellMgr.h"
 #include "StatsCollector.h"
 #include "Unit.h"
+#include <algorithm>
 #include <memory>
 
 namespace
@@ -33,8 +35,13 @@ constexpr uint32 SPELL_MENTAL_DEXTERITY = 51885;
 constexpr uint32 SPELL_ROGUE_SWORD_SPECIALIZATION = 13964;
 constexpr uint32 SPELL_POLEAXE_SPECIALIZATION = 12785;
 constexpr uint32 SPELL_NERVES_OF_COLD_STEEL = 50138;
-constexpr uint32 SPELL_SHADOW_FOCUS = 15835;
-constexpr uint32 SPELL_ARCANE_FOCUS = 12840;
+// Rank 1 of each spec's main nuke; ranks share the family flags spell modifiers match.
+constexpr uint32 SPELL_MIND_BLAST = 8092;
+constexpr uint32 SPELL_ARCANE_MISSILE = 7268;  // the missile, which rolls the hit
+constexpr uint32 SPELL_FIREBALL = 133;
+constexpr uint32 SPELL_FROSTBOLT = 116;
+constexpr uint32 SPELL_CORRUPTION = 172;
+constexpr uint32 SPELL_SHADOW_BOLT = 686;
 }
 
 template <size_t Size>
@@ -87,6 +94,7 @@ void StatsWeightCalculator::Reset()
     {
         stats_weights_[i] = 0;
     }
+    replaced_.fill(0.0f);
 }
 
 float StatsWeightCalculator::CalculateItem(uint32 itemId, int32 randomPropertyIds, int32 slot)
@@ -97,6 +105,9 @@ float StatsWeightCalculator::CalculateItem(uint32 itemId, int32 randomPropertyId
         return 0.0f;
 
     Reset();
+
+    if (enable_overflow_penalty_)
+        CollectReplacedStats(slot);
 
     collector_->CollectItemStats(proto);
 
@@ -223,6 +234,32 @@ void StatsWeightCalculator::CalculateRandomProperty(int32 randomPropertyId, uint
                 collector_->CollectEnchantStats(enchant, enchant_amount);
         }
     }
+}
+
+// Caps are measured without the item a candidate would replace, so the candidate and the
+// equipped item are both valued on the headroom the swap actually leaves.
+void StatsWeightCalculator::CollectReplacedStats(int32 slot)
+{
+    if (slot < 0 || slot >= EQUIPMENT_SLOT_END)
+        return;
+
+    Item* item = player_->GetItemByPos(INVENTORY_SLOT_BAG_0, uint8(slot));
+    if (!item)
+        return;
+
+    collector_->CollectItemStats(item->GetTemplate());
+    if (int32 property = item->GetItemRandomPropertyId())
+        CalculateRandomProperty(property, item->GetEntry());
+
+    for (uint32 enchantSlot = PERM_ENCHANTMENT_SLOT; enchantSlot < MAX_INSPECTED_ENCHANTMENT_SLOT; ++enchantSlot)
+    {
+        uint32 enchantId = item->GetEnchantmentId(EnchantmentSlot(enchantSlot));
+        if (SpellItemEnchantmentEntry const* enchant = sSpellItemEnchantmentStore.LookupEntry(enchantId))
+            collector_->CollectEnchantStats(enchant);
+    }
+
+    std::copy(std::begin(collector_->stats), std::end(collector_->stats), replaced_.begin());
+    collector_->Reset();
 }
 
 int32 StatsWeightCalculator::PickBestRandomPropertyId(uint32 itemId)
@@ -546,7 +583,7 @@ void StatsWeightCalculator::GenerateAdditionalWeights(Player* player)
     // int tab = AiFactory::GetPlayerSpecTab(player);
     if (cls == CLASS_HUNTER)
     {
-        if (player->HasAura(SPELL_CAREFUL_AIM))
+        if (player->HasAura(EraKnown(player, SPELL_CAREFUL_AIM)))
             stats_weights_[STATS_TYPE_INTELLECT] += 1.1f;
         if (player->HasAura(SPELL_HUNTER_VS_WILD))
             stats_weights_[STATS_TYPE_STAMINA] += 0.3f;
@@ -715,7 +752,9 @@ void StatsWeightCalculator::CalculateItemTypePenalty(ItemTemplate const* proto)
 
         if (isDoubleHand)
         {
-            weight_ *= 0.5;
+            // Single-slot comparisons value a two-hander per hand; hand pairs count it whole.
+            if (!weapon_pairs_)
+                weight_ *= 0.5;
             // spec without double hand
             // enhancement, rogue, ice dk, unholy dk, shield tank, fury warrior without titan's grip but with duel wield
             if (((cls == CLASS_SHAMAN && tab == SHAMAN_TAB_ENHANCEMENT && player_->CanDualWield()) ||
@@ -743,13 +782,13 @@ void StatsWeightCalculator::CalculateItemTypePenalty(ItemTemplate const* proto)
                 weight_ *= 0.1;
             }
             // caster's main hand (cannot duel weapon but can equip two-hands stuff)
-            if ((cls == CLASS_MAGE || cls == CLASS_PRIEST || cls == CLASS_WARLOCK || cls == CLASS_DRUID ||
-                (cls == CLASS_SHAMAN && !player_->CanDualWield())) &&
+            if (!weapon_pairs_ && (cls == CLASS_MAGE || cls == CLASS_PRIEST || cls == CLASS_WARLOCK ||
+                cls == CLASS_DRUID || (cls == CLASS_SHAMAN && !player_->CanDualWield())) &&
                 !(cls == CLASS_PALADIN && tab == PALADIN_TAB_HOLY))
             {
                 weight_ *= 0.65;
             }
-            if (cls == CLASS_PALADIN && tab == PALADIN_TAB_HOLY)
+            if (!weapon_pairs_ && cls == CLASS_PALADIN && tab == PALADIN_TAB_HOLY)
             {
                 weight_ *= 0.8;
             }
@@ -813,103 +852,67 @@ bool StatsWeightCalculator::NotBestArmorType(uint32 item_subclass_armor)
 
 void StatsWeightCalculator::ApplyOverflowPenalty(Player* player)
 {
+    // Rating points still useful below a cap; the replaced item's own points free up again.
+    auto clamp = [&](StatsType stat, float overflow, float current, CombatRating rating)
     {
-        float hit_current, hit_overflow;
-        float validPoints;
-        if (hitOverflowType_ & CollectorType::SPELL)
-        {
-            hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_SPELL_HIT_CHANCE);
-            hit_current +=
-                player->GetTotalAuraModifier(SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT);  // suppression (18176)
-            hit_current += player->GetRatingBonusValue(CR_HIT_SPELL);
+        float validPoints = (overflow - current) / player->GetRatingMultiplier(rating) + replaced_[stat];
+        collector_->stats[stat] = std::min(collector_->stats[stat], std::max(0.0f, validPoints));
+    };
 
-            if (cls == CLASS_PRIEST && tab == PRIEST_TAB_SHADOW && player->HasAura(SPELL_SHADOW_FOCUS))
-                hit_current += 3;
-            if (cls == CLASS_MAGE && tab == MAGE_TAB_ARCANE && player->HasAura(SPELL_ARCANE_FOCUS))
-                hit_current += 3;
-
-            hit_overflow = SPELL_HIT_OVERFLOW;
-            if (hit_overflow > hit_current)
-                validPoints = (hit_overflow - hit_current) / player->GetRatingMultiplier(CR_HIT_SPELL);
-            else
-                validPoints = 0;
-        }
-        else if (hitOverflowType_ & CollectorType::MELEE)
-        {
-            hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_HIT_CHANCE);
-            hit_current += player->GetRatingBonusValue(CR_HIT_MELEE);
-            hit_overflow = MELEE_HIT_OVERFLOW;
-            if (hit_overflow > hit_current)
-                validPoints = (hit_overflow - hit_current) / player->GetRatingMultiplier(CR_HIT_MELEE);
-            else
-                validPoints = 0;
-        }
-        else
-        {
-            hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_HIT_CHANCE);
-            hit_current += player->GetRatingBonusValue(CR_HIT_RANGED);
-            hit_overflow = RANGED_HIT_OVERFLOW;
-            if (hit_overflow > hit_current)
-                validPoints = (hit_overflow - hit_current) / player->GetRatingMultiplier(CR_HIT_RANGED);
-            else
-                validPoints = 0;
-        }
-        collector_->stats[STATS_TYPE_HIT] = std::min(collector_->stats[STATS_TYPE_HIT], validPoints);
+    if (hitOverflowType_ & CollectorType::SPELL)
+    {
+        float hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_SPELL_HIT_CHANCE);
+        hit_current += player->GetTotalAuraModifier(SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT);  // suppression (18176)
+        hit_current += player->GetRatingBonusValue(CR_HIT_SPELL);
+        hit_current += TalentSpellHit(player);
+        clamp(STATS_TYPE_HIT, SPELL_HIT_OVERFLOW, hit_current, CR_HIT_SPELL);
+    }
+    else if (hitOverflowType_ & CollectorType::MELEE)
+    {
+        float hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_HIT_CHANCE);
+        hit_current += player->GetRatingBonusValue(CR_HIT_MELEE);
+        clamp(STATS_TYPE_HIT, MELEE_HIT_OVERFLOW, hit_current, CR_HIT_MELEE);
+    }
+    else
+    {
+        float hit_current = player->GetTotalAuraModifier(SPELL_AURA_MOD_HIT_CHANCE);
+        hit_current += player->GetRatingBonusValue(CR_HIT_RANGED);
+        clamp(STATS_TYPE_HIT, RANGED_HIT_OVERFLOW, hit_current, CR_HIT_RANGED);
     }
 
+    if (type_ & CollectorType::MELEE)
     {
-        if (type_ & CollectorType::MELEE)
-        {
-            float expertise_current, expertise_overflow;
-            expertise_current = player->GetUInt32Value(PLAYER_EXPERTISE);
-            expertise_current += player->GetRatingBonusValue(CR_EXPERTISE);
-            expertise_overflow = EXPERTISE_OVERFLOW;
-
-            float validPoints;
-            if (expertise_overflow > expertise_current)
-                validPoints = (expertise_overflow - expertise_current) / player->GetRatingMultiplier(CR_EXPERTISE);
-            else
-                validPoints = 0;
-
-            collector_->stats[STATS_TYPE_EXPERTISE] = std::min(collector_->stats[STATS_TYPE_EXPERTISE], validPoints);
-        }
+        float expertise_current = player->GetUInt32Value(PLAYER_EXPERTISE);
+        expertise_current += player->GetRatingBonusValue(CR_EXPERTISE);
+        clamp(STATS_TYPE_EXPERTISE, EXPERTISE_OVERFLOW, expertise_current, CR_EXPERTISE);
+        clamp(STATS_TYPE_DEFENSE, DEFENSE_OVERFLOW, player->GetRatingBonusValue(CR_DEFENSE_SKILL), CR_DEFENSE_SKILL);
     }
 
+    if (type_ & (CollectorType::MELEE | CollectorType::RANGED))
+        clamp(STATS_TYPE_ARMOR_PENETRATION, ARMOR_PENETRATION_OVERFLOW,
+              player->GetRatingBonusValue(CR_ARMOR_PENETRATION), CR_ARMOR_PENETRATION);
+}
+
+// Spell hit talents of every era (Shadow Focus, Arcane Focus, Elemental Precision, Suppression)
+// that are miss-chance spell modifiers rather than hit auras, as applied to the spec's nuke.
+float StatsWeightCalculator::TalentSpellHit(Player* player)
+{
+    uint32 spellId = 0;
+    if (cls == CLASS_PRIEST)
+        spellId = SPELL_MIND_BLAST;
+    else if (cls == CLASS_MAGE)
+        spellId = tab == MAGE_TAB_ARCANE ? SPELL_ARCANE_MISSILE : tab == MAGE_TAB_FIRE ? SPELL_FIREBALL : SPELL_FROSTBOLT;
+    else if (cls == CLASS_WARLOCK)
+        spellId = tab == WARLOCK_TAB_AFFLICTION ? SPELL_CORRUPTION : SPELL_SHADOW_BOLT;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return 0.0f;
+
+    return player->GetTotalAuraModifier(SPELL_AURA_ADD_FLAT_MODIFIER, [spellInfo](AuraEffect const* effect)
     {
-        if (type_ & CollectorType::MELEE)
-        {
-            float defense_current, defense_overflow;
-            defense_current = player->GetRatingBonusValue(CR_DEFENSE_SKILL);
-            defense_overflow = DEFENSE_OVERFLOW;
-
-            float validPoints;
-            if (defense_overflow > defense_current)
-                validPoints = (defense_overflow - defense_current) / player->GetRatingMultiplier(CR_DEFENSE_SKILL);
-            else
-                validPoints = 0;
-
-            collector_->stats[STATS_TYPE_DEFENSE] = std::min(collector_->stats[STATS_TYPE_DEFENSE], validPoints);
-        }
-    }
-
-    {
-        if (type_ & (CollectorType::MELEE | CollectorType::RANGED))
-        {
-            float armor_penetration_current, armor_penetration_overflow;
-            armor_penetration_current = player->GetRatingBonusValue(CR_ARMOR_PENETRATION);
-            armor_penetration_overflow = ARMOR_PENETRATION_OVERFLOW;
-
-            float validPoints;
-            if (armor_penetration_overflow > armor_penetration_current)
-                validPoints = (armor_penetration_overflow - armor_penetration_current) /
-                              player->GetRatingMultiplier(CR_ARMOR_PENETRATION);
-            else
-                validPoints = 0;
-
-            collector_->stats[STATS_TYPE_ARMOR_PENETRATION] =
-                std::min(collector_->stats[STATS_TYPE_ARMOR_PENETRATION], validPoints);
-        }
-    }
+        return effect->GetMiscValue() == SPELLMOD_RESIST_MISS_CHANCE && effect->IsAffectedOnSpell(spellInfo);
+    });
 }
 
 void StatsWeightCalculator::ApplyWeightFinetune(Player* player)

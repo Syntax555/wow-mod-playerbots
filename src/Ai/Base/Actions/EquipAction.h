@@ -15,6 +15,7 @@ class FindItemVisitor;
 class Item;
 class Player;
 class PlayerbotAI;
+class StatsWeightCalculator;
 
 class EquipAction : public InventoryAction
 {
@@ -25,6 +26,8 @@ public:
     void EquipItems(ItemIds ids);
     bool EquipUpgrades();
     static uint8 GetSmallestBagSlot(Player* bot);
+    static bool FillsBothHands(Player* bot, ItemTemplate const* proto);
+    static float BestOffhandScore(PlayerbotAI* botAI, StatsWeightCalculator& calculator, uint32 candidateId);
 
 private:
     void EquipItem(FindItemVisitor* visitor);
