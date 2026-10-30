@@ -7,10 +7,12 @@
 #include "RandomPlayerbotFactory.h"
 
 #include <set>
+#include <unordered_set>
 
 #include "PlayerbotsDatabase.h"
 #include "AccountMgr.h"
 #include "ArenaTeamMgr.h"
+#include "AuctionHouseMgr.h"
 #include "CharacterCache.h"
 #include "DBCStores.h"
 #include "ObjectAccessor.h"
@@ -526,6 +528,41 @@ uint32 RandomPlayerbotFactory::CalculateAvailableCharsPerAccount()
     return availableChars;
 }
 
+// The core drops an auction whose item no longer exists at the next startup and
+// keeps the high bid, so the bots' listings are settled while their characters
+// still exist: a player's bid comes back by the native cancellation mail, as when
+// a seller cancels, and the listing and its item are removed with the bot.
+static void SettleDeletedBotAuctions(std::unordered_set<uint32> const& botAccounts)
+{
+    uint32 removed = 0;
+    uint32 refunded = 0;
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+    for (AuctionHouseId houseId : {AuctionHouseId::Alliance, AuctionHouseId::Horde, AuctionHouseId::Neutral})
+    {
+        AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMapByHouseId(houseId);
+        for (auto itr = auctionHouse->GetAuctionsBegin(); itr != auctionHouse->GetAuctionsEnd();)
+        {
+            AuctionEntry* auction = (itr++)->second;
+            if (!botAccounts.count(sCharacterCache->GetCharacterAccountIdByGuid(auction->owner)))
+                continue;
+
+            uint32 bidderAccount = auction->bidder ? sCharacterCache->GetCharacterAccountIdByGuid(auction->bidder) : 0;
+            if (bidderAccount && !botAccounts.count(bidderAccount))
+            {
+                sAuctionMgr->SendAuctionCancelledToBidderMail(auction, trans);
+                ++refunded;
+            }
+
+            auction->DeleteFromDB(trans);
+            sAuctionMgr->RemoveAItem(auction->item_guid, true, &trans);
+            auctionHouse->RemoveAuction(auction);
+            ++removed;
+        }
+    }
+    CharacterDatabase.DirectCommitTransaction(trans);
+    LOG_INFO("playerbots", "Removed {} bot auctions and refunded {} player bids", removed, refunded);
+}
+
 void RandomPlayerbotFactory::CreateRandomBots()
 {
     /* multi-thread here is meaningless? since the async db operations */
@@ -557,6 +594,8 @@ void RandomPlayerbotFactory::CreateRandomBots()
             botAccountIds = "0";    // account ids start at 1, so this matches nothing
 
         LOG_INFO("playerbots", "Deleting all random bot characters and accounts ({} bot accounts found)...", botAccounts.size());
+
+        SettleDeletedBotAuctions(std::unordered_set<uint32>(botAccounts.begin(), botAccounts.end()));
 
         // First execute all the cleanup SQL commands
         // Clear playerbots_random_bots and playerbots_account_type
