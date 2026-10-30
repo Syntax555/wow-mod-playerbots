@@ -45,10 +45,10 @@ bool IsGeneralBag(ItemTemplate const* proto)
 // cannot be equipped from there.
 bool ReplaceableBagSize(Player* bot, uint32& size)
 {
-    uint8 const slot = EquipAction::GetSmallestBagSlot(bot);
-    if (slot == NULL_SLOT)
+    uint8 const bagSlot = EquipAction::GetSmallestBagSlot(bot);
+    if (bagSlot == NULL_SLOT)
         return false;
-    Bag const* bag = bot->GetBagByPos(slot);
+    Bag const* bag = bot->GetBagByPos(bagSlot);
     size = bag ? bag->GetBagSize() : 0;
     if (!bag)
         return true;
