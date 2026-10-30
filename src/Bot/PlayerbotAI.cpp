@@ -6037,8 +6037,9 @@ Item* PlayerbotAI::FindStoneFor(Item* weapon) const
     if (!weapon)
         return nullptr;
 
+    // Shields share subclass 6 with polearms, and the stone cast on one fails.
     ItemTemplate const* item_template = weapon->GetTemplate();
-    if (!item_template)
+    if (!item_template || item_template->Class != ITEM_CLASS_WEAPON)
         return nullptr;
 
     static const std::vector<uint32_t> uPrioritizedSharpStoneIds = {
