@@ -12,6 +12,7 @@
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "MapMgr.h"
+#include "PathGenerator.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
@@ -20,8 +21,48 @@
 // Top of the default start-zone brackets (Playerbots.ZoneBracket.*).
 constexpr uint32 START_ZONE_GRAVEYARD_MAX_LEVEL = 12;
 
+// A leg far shorter than the smooth path's point limit (MAX_POINT_PATH_LENGTH steps of 4 yards).
+constexpr float GHOST_WALK_LEG = 70.0f;
+
 namespace
 {
+// The end of a navmesh walk that brings the ghost closer to `destination`. The core answers a
+// player with a straight line through walls and floors when either end lies off the mesh or the
+// route needs more points than a path holds; a ghost stopped on that line revives inside the
+// geometry. Long routes are walked in legs towards the destination, turning aside at obstacles.
+bool FindGhostWalk(Player* bot, WorldPosition destination, G3D::Vector3& walkEnd)
+{
+    constexpr uint32 NOT_A_WALK =
+        PATHFIND_NOPATH | PATHFIND_SHORTCUT | PATHFIND_NOT_USING_PATH | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_START;
+    float const remaining = destination.distance(WorldPosition(bot));
+    float const toward = bot->GetAngle(&destination);
+    std::vector<G3D::Vector3> targets = {
+        {destination.GetPositionX(), destination.GetPositionY(), destination.GetPositionZ()}};
+    for (float turn : {0.0f, 1.0f, -1.0f, 2.0f, -2.0f})
+    {
+        float const angle = toward + turn * static_cast<float>(M_PI) / 4.0f;
+        targets.emplace_back(bot->GetPositionX() + std::cos(angle) * GHOST_WALK_LEG,
+                             bot->GetPositionY() + std::sin(angle) * GHOST_WALK_LEG, bot->GetPositionZ());
+    }
+
+    for (G3D::Vector3 const& target : targets)
+    {
+        PathGenerator path(bot);
+        if (!path.CalculatePath(target.x, target.y, target.z) ||
+            !(path.GetPathType() & (PATHFIND_NORMAL | PATHFIND_INCOMPLETE)) || (path.GetPathType() & NOT_A_WALK))
+            continue;
+
+        G3D::Vector3 const& end = path.GetActualEndPosition();
+        if (destination.distance(WorldPosition(destination.GetMapId(), end.x, end.y, end.z)) + 1.0f < remaining)
+        {
+            walkEnd = end;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool HasRemoteInstanceCorpse(Player* bot)
 {
     if (!sPlayerbotAIConfig.naturalProgression || !bot || IsSelfBot(bot) || bot->IsAlive() ||
@@ -276,8 +317,10 @@ bool FindCorpseAction::Execute(Event /*event*/)
         {
             if (sPlayerbotAIConfig.naturalProgression || (deadTime < 10 * MINUTE && dCount < 5))
             {
-                moved =
-                    MoveTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), false, false);
+                // The exact waypoint skips the height search, which accepts the core's straight lines.
+                G3D::Vector3 walkEnd;
+                moved = FindGhostWalk(bot, moveToPos, walkEnd) &&
+                        MoveTo(moveToPos.GetMapId(), walkEnd.x, walkEnd.y, walkEnd.z, false, false, false, true);
             }
 
             if (!moved)
