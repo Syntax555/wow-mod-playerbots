@@ -877,6 +877,9 @@ public:
 
     FlightMasterInfo const* GetNearestFlightMasterInfo(Player* bot) const;
     std::vector<std::vector<uint32>> GetOptimalFlightDestinations(Player* bot);
+    // The nearest flight master of the bot's zone and island whose node it has not discovered.
+    FlightMasterInfo const* FindUndiscoveredFlightMaster(Player* bot,
+                                                         std::unordered_map<uint32, uint32> const& rejectedAt) const;
     // Discovered flight from the nearest flight master that lands closest to target on its map.
     bool FindFlightTowards(Player* bot, WorldPosition const& target, FlightMasterInfo const*& origin,
                            std::vector<uint32>& path, WorldPosition& landing) const;

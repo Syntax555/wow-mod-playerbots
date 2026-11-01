@@ -235,6 +235,7 @@ public:
         creators["rpg trade useful"] = &TriggerContext::rpg_trade_useful;
         creators["rpg duel"] = &TriggerContext::rpg_duel;
         creators["new rpg natural maintenance"] = &TriggerContext::natural_maintenance;
+        creators["new rpg discover flight"] = &TriggerContext::discover_flight;
         creators["go grind status"] = &TriggerContext::go_grind_status;
         creators["go camp status"] = &TriggerContext::go_camp_status;
         creators["wander random status"] = &TriggerContext::wander_random_status;
@@ -451,6 +452,7 @@ private:
     static Trigger* rpg_trade_useful(PlayerbotAI* botAI) { return new RpgTradeUsefulTrigger(botAI); }
     static Trigger* rpg_duel(PlayerbotAI* botAI) { return new RpgDuelTrigger(botAI); }
     static Trigger* natural_maintenance(PlayerbotAI* botAI) { return new NewRpgNaturalMaintenanceTrigger(botAI); }
+    static Trigger* discover_flight(PlayerbotAI* botAI) { return new NewRpgDiscoverFlightTrigger(botAI); }
     static Trigger* go_grind_status(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, RPG_GO_GRIND); }
     static Trigger* go_camp_status(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, RPG_GO_CAMP); }
     static Trigger* wander_random_status(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, RPG_WANDER_RANDOM); }

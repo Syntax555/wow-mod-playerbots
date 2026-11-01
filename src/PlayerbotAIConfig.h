@@ -113,6 +113,7 @@ public:
     bool naturalProgression = false;
     bool earnedAuctions = false;
     bool continentTravel = false;
+    bool discoverFlightMasters = false;
     uint32 earnedAuctionInterval = 300;
     std::atomic<std::shared_ptr<EarnedLevelBracketPolicy const>> earnedLevelBrackets{
         std::make_shared<EarnedLevelBracketPolicy>()};

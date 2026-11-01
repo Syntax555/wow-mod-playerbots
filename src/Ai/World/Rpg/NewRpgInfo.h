@@ -119,6 +119,11 @@ struct NewRpgInfo
     // Natural maintenance skips an NPC for one search after failing to reach or use it.
     ObjectGuid naturalMaintenanceRejected;
 
+    // Flight master being visited to discover its flight point, and masters given up on.
+    uint32 discoverFlightMaster{0};
+    uint32 discoverFlightMasterSince{0};
+    std::unordered_map<uint32, uint32> flightMasterRejectedAt;
+
     using RpgData = std::variant<
         Idle,
         GoGrind,

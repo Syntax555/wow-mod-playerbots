@@ -572,6 +572,40 @@ bool NewRpgStatusUpdateAction::StartContinentTravel()
     return true;
 }
 
+bool NewRpgDiscoverFlightAction::Execute(Event /*event*/)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    TravelMgr::FlightMasterInfo const* master =
+        sTravelMgr.FindUndiscoveredFlightMaster(bot, info.flightMasterRejectedAt);
+    if (!master)
+        return false;
+
+    if (info.discoverFlightMaster != master->dbGuid)
+    {
+        info.discoverFlightMaster = master->dbGuid;
+        info.discoverFlightMasterSince = getMSTime();
+    }
+    else if (GetMSTimeDiffToNow(info.discoverFlightMasterSince) >= ContinentTravel::DiscoveryTimeoutMs)
+    {
+        info.flightMasterRejectedAt[master->dbGuid] = getMSTime();
+        info.discoverFlightMaster = 0;
+        return false;
+    }
+
+    if (bot->GetDistance(master->pos) > INTERACTION_DISTANCE)
+        return MoveFarTo(master->pos);
+
+    // A player discovers the flight point by speaking to its master in normal interaction range.
+    Creature* flightMaster = bot->FindNearestCreature(master->templateEntry, INTERACTION_DISTANCE * 3);
+    if (flightMaster && bot->GetNPCIfCanInteractWith(flightMaster->GetGUID(), UNIT_NPC_FLAG_FLIGHTMASTER))
+        bot->GetSession()->SendLearnNewTaxiNode(flightMaster);
+
+    if (!bot->m_taxi.IsTaximaskNodeKnown(master->taxiNodeId))
+        info.flightMasterRejectedAt[master->dbGuid] = getMSTime();
+    info.discoverFlightMaster = 0;
+    return true;
+}
+
 bool NewRpgTravelRouteAction::Execute(Event /*event*/)
 {
     ContinentRouteState& route = botAI->continentRoute;

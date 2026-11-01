@@ -4392,6 +4392,41 @@ void TravelMgr::Init()
     }
 }
 
+TravelMgr::FlightMasterInfo const* TravelMgr::FindUndiscoveredFlightMaster(
+    Player* bot, std::unordered_map<uint32, uint32> const& rejectedAt) const
+{
+    if (bot->isTaxiCheater())
+        return nullptr;
+
+    auto const& flightMasterCache =
+        (bot->GetTeamId() == TEAM_ALLIANCE) ? allianceFlightMasterCache : hordeFlightMasterCache;
+    uint32 const island =
+        sContinentRoutes.IslandAt(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+
+    FlightMasterInfo const* nearest = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
+    for (auto const& [dbGuid, info] : flightMasterCache)
+    {
+        if (info.pos.GetMapId() != bot->GetMapId() || info.zoneId != bot->GetZoneId() || !info.taxiNodeId ||
+            info.taxiNodeId > TaxiMaskSize * 32 || bot->m_taxi.IsTaximaskNodeKnown(info.taxiNodeId) ||
+            (island && info.island && info.island != island))
+            continue;
+
+        auto const rejected = rejectedAt.find(dbGuid);
+        if (rejected != rejectedAt.end() && GetMSTimeDiffToNow(rejected->second) < ContinentTravel::FlightMasterRetryMs)
+            continue;
+
+        float const distance = bot->GetExactDist2dSq(info.pos);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            nearest = &info;
+        }
+    }
+
+    return nearest;
+}
+
 bool TravelMgr::FindFlightTowards(Player* bot, WorldPosition const& target, FlightMasterInfo const*& origin,
                                   std::vector<uint32>& path, WorldPosition& landing) const
 {

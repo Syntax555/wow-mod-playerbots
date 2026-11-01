@@ -125,6 +125,13 @@ protected:
     const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
 };
 
+class NewRpgDiscoverFlightAction : public NewRpgBaseAction
+{
+public:
+    NewRpgDiscoverFlightAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg discover flight") {}
+    bool Execute(Event event) override;
+};
+
 class NewRpgTravelRouteAction : public NewRpgBaseAction
 {
 public:

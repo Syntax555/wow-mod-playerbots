@@ -8,6 +8,7 @@
 #include "NewRpgTriggers.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "TravelMgr.h"
 
 bool NewRpgStatusTrigger::IsActive() { return status == botAI->rpgInfo.GetStatus(); }
 
@@ -17,4 +18,18 @@ bool NewRpgNaturalMaintenanceTrigger::IsActive()
         return false;
     NaturalMaintenanceTask const task = AI_VALUE(NaturalMaintenanceTask, "natural maintenance");
     return !task.target.IsEmpty() || task.type == NaturalMaintenanceType::AUCTION_TRAVEL;
+}
+
+bool NewRpgDiscoverFlightTrigger::IsActive()
+{
+    if (!sPlayerbotAIConfig.discoverFlightMasters || !bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() ||
+        bot->GetTransport())
+        return false;
+
+    // Not while boarding or using a link of a route.
+    ContinentRouteState const& route = botAI->continentRoute;
+    if (route.hasLink && route.usedAt)
+        return false;
+
+    return sTravelMgr.FindUndiscoveredFlightMaster(bot, botAI->rpgInfo.flightMasterRejectedAt) != nullptr;
 }

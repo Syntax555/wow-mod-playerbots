@@ -30,4 +30,12 @@ public:
     bool IsActive() override;
 };
 
+// The bot's zone has a friendly flight master on its island whose flight point it has not discovered.
+class NewRpgDiscoverFlightTrigger : public Trigger
+{
+public:
+    NewRpgDiscoverFlightTrigger(PlayerbotAI* botAI) : Trigger(botAI, "new rpg discover flight", 10) {}
+    bool IsActive() override;
+};
+
 #endif
