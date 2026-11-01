@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_NEWRPGBASEACTION_H
 #define PLAYERBOTS_NEWRPGBASEACTION_H
 
+#include "ContinentRoutes.h"
 #include "LastMovementValue.h"
 #include "MovementActions.h"
 #include "NewRpgInfo.h"
@@ -38,6 +39,8 @@ protected:
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    // One step towards dest on any map by the shortest earned route; false when none is open.
+    bool MoveToMap(WorldPosition const& dest, bool master = false);
 
     /* QUEST RELATED CHECK */
     ObjectGuid ChooseNpcOrGameObjectToInteract(bool questgiverOnly = false, float distanceLimit = 0.0f);
@@ -62,6 +65,18 @@ protected:
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    // An inn or camp for the bot's level on another map, among those with the shortest routes.
+    WorldPosition SelectContinentDestination();
+    bool HasTravelHubOnMap();
+
+private:
+    bool MoveOverland(WorldPosition const& target);
+    bool TakeLink(ContinentRouteState& route);
+    bool UseLinkObject(ContinentRouteState& route);
+    bool BoardTransport(ContinentRouteState& route);
+    bool RideTransport(ContinentRouteState& route, Transport* transport);
+    bool MoveStraightTo(WorldPosition const& point);
+    void FailLink(ContinentRouteState& route);
 
 protected:
     /* FOR MOVE FAR */

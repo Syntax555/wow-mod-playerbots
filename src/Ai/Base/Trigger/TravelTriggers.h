@@ -27,4 +27,13 @@ public:
     bool IsActive() override;
 };
 
+// The master is on another map the bot can reach, or so far away that a flight may be shorter.
+class MasterFarAwayTrigger : public Trigger
+{
+public:
+    MasterFarAwayTrigger(PlayerbotAI* botAI) : Trigger(botAI, "master far away", 2) {}
+
+    bool IsActive() override;
+};
+
 #endif

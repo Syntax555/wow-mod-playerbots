@@ -5,10 +5,14 @@
  */
 
 #include "TravelMgr.h"
-#include "QuestLevelRules.h"
+
+#include <iomanip>
+#include <numeric>
+
 #include "AreaDefines.h"
 #include "CellImpl.h"
 #include "ChatHelper.h"
+#include "ContinentRoutes.h"
 #include "Corpse.h"
 #include "Creature.h"
 #include "GameEventMgr.h"
@@ -19,14 +23,13 @@
 #include "ObjectAccessor.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"
+#include "QuestLevelRules.h"
 #include "RaceMgr.h"
 #include "Talentspec.h"
 #include "TransportMgr.h"
 #include "TravelNode.h"
 #include "VMapFactory.h"
 #include "VMapMgr2.h"
-#include <iomanip>
-#include <numeric>
 
 // Navigation data
 
@@ -4375,6 +4378,46 @@ void TravelMgr::Init()
     }
     sTravelNodeMap.InitTaxiGraph();
     LOG_INFO("playerbots", "Playerbots Taxi graph and destination cache built.");
+
+    // Map threads read the catalog without a lock, so a configuration reload keeps the first build.
+    static bool continentRoutesBuilt = false;
+    if (sPlayerbotAIConfig.Enabled && sPlayerbotAIConfig.continentTravel && !continentRoutesBuilt)
+    {
+        sContinentRoutes.Build();
+        continentRoutesBuilt = true;
+    }
+}
+
+bool TravelMgr::FindFlightTowards(Player* bot, WorldPosition const& target, FlightMasterInfo const*& origin,
+                                  std::vector<uint32>& path, WorldPosition& landing) const
+{
+    origin = GetNearestFlightMasterInfo(bot);
+    if (!origin || !origin->taxiNodeId)
+        return false;
+
+    auto const& flightMasterCache =
+        (bot->GetTeamId() == TEAM_ALLIANCE) ? allianceFlightMasterCache : hordeFlightMasterCache;
+    std::vector<FlightMasterInfo const*> landings;
+    for (auto const& [dbGuid, info] : flightMasterCache)
+        if (info.pos.GetMapId() == target.GetMapId() && info.taxiNodeId && info.taxiNodeId != origin->taxiNodeId)
+            landings.push_back(&info);
+
+    std::sort(landings.begin(), landings.end(), [&target](FlightMasterInfo const* a, FlightMasterInfo const* b)
+              { return a->pos.GetExactDist2dSq(target) < b->pos.GetExactDist2dSq(target); });
+
+    for (FlightMasterInfo const* info : landings)
+    {
+        std::vector<uint32> nodes = sTravelNodeMap.FindTaxiPath(origin->taxiNodeId, info->taxiNodeId);
+        // The origin is learned at its flight master; every later node must already be discovered.
+        if (nodes.empty() || !CanUseTaxiNodes(bot, std::vector<uint32>(nodes.begin() + 1, nodes.end())))
+            continue;
+
+        path = std::move(nodes);
+        landing = info->pos;
+        return true;
+    }
+
+    return false;
 }
 
 TravelMgr::FlightMasterInfo const* TravelMgr::GetNearestFlightMasterInfo(Player* bot) const

@@ -13,6 +13,7 @@ std::vector<NextAction> FollowMasterStrategy::getDefaultActions()
     };
 }
 
-void FollowMasterStrategy::InitTriggers(std::vector<TriggerNode*>& /*triggers*/)
+void FollowMasterStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
+    triggers.push_back(new TriggerNode("master far away", {NextAction("travel to master", ACTION_NORMAL)}));
 }

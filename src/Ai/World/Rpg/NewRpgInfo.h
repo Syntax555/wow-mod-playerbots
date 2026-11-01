@@ -86,6 +86,10 @@ struct NewRpgInfo
         uint32 lastPassiveCheck{0};
         ObjectGuid::LowType lastSwitchedFrom{0};
     };
+    // RPG_TRAVEL_ROUTE: the destination lives in PlayerbotAI::continentRoute.
+    struct TravelRoute
+    {
+    };
     struct Idle
     {
     };
@@ -125,7 +129,8 @@ struct NewRpgInfo
         Rest,
         TravelFlight,
         OutdoorPvP,
-        DoGather
+        DoGather,
+        TravelRoute
     >;
     RpgData data;
 
@@ -141,6 +146,7 @@ struct NewRpgInfo
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToDoGather();
     void ChangeToRest();
+    void ChangeToTravelRoute();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);
     void Reset();

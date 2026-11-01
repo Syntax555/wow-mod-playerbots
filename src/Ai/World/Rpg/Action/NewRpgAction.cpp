@@ -404,8 +404,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     switch (status)
     {
         case RPG_IDLE:
+            if (StartContinentTravel())
+                return true;
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP, RPG_DO_GATHER});
+                                       RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP, RPG_DO_GATHER, RPG_TRAVEL_ROUTE});
 
         case RPG_GO_GRIND:
         {
@@ -502,10 +504,91 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
+        case RPG_TRAVEL_ROUTE:
+        {
+            ContinentRouteState& route = botAI->continentRoute;
+            if (!route.Active() || route.forMaster ||
+                GetMSTimeDiffToNow(route.startedAt) >= ContinentTravel::RouteTimeoutMs)
+            {
+                route.Finish();
+                info.ChangeToIdle();
+                return true;
+            }
+            // TRAVEL_ROUTE -> GO_CAMP once ashore on the destination's map
+            if (bot->GetMapId() == route.destination.GetMapId() && !bot->GetTransport() && !bot->IsInFlight())
+            {
+                WorldPosition const destination = route.destination;
+                route.Finish();
+                info.ChangeToGoCamp(destination);
+                return true;
+            }
+            break;
+        }
         default:
             break;
     }
     return false;
+}
+
+bool NewRpgStatusUpdateAction::StartContinentTravel()
+{
+    if (!sPlayerbotAIConfig.continentTravel)
+        return false;
+
+    // A far teleport resets the RPG status to idle; the route itself continues.
+    ContinentRouteState& route = botAI->continentRoute;
+    if (route.forMaster)
+    {
+        if (botAI->GetMaster())
+            return false;
+        route.Finish();
+    }
+
+    if (route.Active())
+    {
+        if (bot->GetMapId() != route.destination.GetMapId() &&
+            GetMSTimeDiffToNow(route.startedAt) < ContinentTravel::RouteTimeoutMs)
+        {
+            botAI->rpgInfo.ChangeToTravelRoute();
+            return true;
+        }
+        route.Finish();
+    }
+
+    // A map without an inn or camp for the bot's level, such as Outland at 71, is left for one with them.
+    if (HasTravelHubOnMap())
+        return false;
+
+    WorldPosition const destination = SelectContinentDestination();
+    if (destination == WorldPosition())
+        return false;
+
+    route.Start(destination, false);
+    botAI->rpgInfo.ChangeToTravelRoute();
+    return true;
+}
+
+bool NewRpgTravelRouteAction::Execute(Event /*event*/)
+{
+    ContinentRouteState& route = botAI->continentRoute;
+    if (!route.Active() || route.forMaster)
+        return false;
+
+    if (MoveToMap(route.destination))
+        return true;
+
+    route.Finish();
+    botAI->rpgInfo.ChangeToIdle();
+    return true;
+}
+
+bool TravelToMasterAction::Execute(Event /*event*/)
+{
+    Player* master = botAI->GetMaster();
+    if (!master)
+        return false;
+
+    return MoveToMap(WorldPosition(master), true);
 }
 
 bool NewRpgGoGrindAction::Execute(Event /*event*/)

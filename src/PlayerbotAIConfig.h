@@ -76,7 +76,9 @@ enum NewRpgStatus : int
     RPG_OUTDOOR_PVP = 8,
     // Roam the current zone harvesting herb/ore nodes
     RPG_DO_GATHER = 9,
-    RPG_STATUS_END = 10
+    // Travel to another map by ship, zeppelin, portal or the bot's own teleport
+    RPG_TRAVEL_ROUTE = 10,
+    RPG_STATUS_END = 11
 };
 
 #define MAX_SPECNO 20
@@ -110,6 +112,7 @@ public:
     bool Enabled;
     bool naturalProgression = false;
     bool earnedAuctions = false;
+    bool continentTravel = false;
     uint32 earnedAuctionInterval = 300;
     std::atomic<std::shared_ptr<EarnedLevelBracketPolicy const>> earnedLevelBrackets{
         std::make_shared<EarnedLevelBracketPolicy>()};

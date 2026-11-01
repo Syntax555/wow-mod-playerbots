@@ -98,6 +98,13 @@ Playerbots.EarnedAuctions = 0
 # Base seconds between visits, plus per-bot staggering; clamped to 60..3600.
 Playerbots.EarnedAuctionInterval = 300
 
+# Optional travel between maps on ships, zeppelins, portals, teleporting area triggers and the
+# bot's own teleport spells or hearthstone, using only links open to its faction and earned era.
+# Random bots leave a map that has no inn or camp for their level; companions follow their
+# master to another continent or over long distances, with discovered flights where shorter.
+# Default: 0 (disabled)
+Playerbots.ContinentTravel = 0
+
 # Optional earned caps in natural mode: level:percentage pairs, unique levels 1-80,
 # positive percentages totaling at most 100. Example: 19:5,29:5,39:5,49:5,59:5.
 # Unassigned bots progress normally. Bots earn every level; no level/gear grants,
@@ -1500,6 +1507,7 @@ Playerbots.CollectDetailedQuestStats = 0
 # Rest          (Default: 5   Take a break for a while and do nothing)
 # OutdoorPvp    (Default: 10  Participate in outdoor PvP capture points if already in an outdoor PvP zone)
 # DoGather      (Default: 15  Roam the current zone harvesting herb/ore nodes; requires Herbalism or Mining)
+# TravelRoute   (Default: 0   Level on another map that also suits the bot; requires Playerbots.ContinentTravel)
 Playerbots.RpgStatusProbWeight.WanderRandom = 15
 Playerbots.RpgStatusProbWeight.WanderNpc = 20
 Playerbots.RpgStatusProbWeight.GoGrind = 15
@@ -1509,6 +1517,7 @@ Playerbots.RpgStatusProbWeight.TravelFlight = 15
 Playerbots.RpgStatusProbWeight.Rest = 5
 Playerbots.RpgStatusProbWeight.OutdoorPvp = 10
 Playerbots.RpgStatusProbWeight.DoGather = 15
+Playerbots.RpgStatusProbWeight.TravelRoute = 0
 
 # Bots' minimum and maximum level when teleporting in and out of a zone, according to the new RPG strategy
 # Format: Playerbots.ZoneBracket.zoneID = minLevel,maxLevel

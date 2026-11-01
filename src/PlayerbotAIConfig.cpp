@@ -84,6 +84,7 @@ bool PlayerbotAIConfig::Initialize()
     Enabled = sConfigMgr->GetOption<bool>("Playerbots.Enabled", true);
     naturalProgression = sConfigMgr->GetOption<bool>("Playerbots.NaturalProgression", false);
     earnedAuctions = sConfigMgr->GetOption<bool>("Playerbots.EarnedAuctions", false);
+    continentTravel = sConfigMgr->GetOption<bool>("Playerbots.ContinentTravel", false);
     earnedAuctionInterval =
         std::clamp(sConfigMgr->GetOption<uint32>("Playerbots.EarnedAuctionInterval", 300), uint32(60), uint32(3600));
     vanillaBattlegroundsOnly = sConfigMgr->GetOption<bool>("Playerbots.VanillaBattlegroundsOnly", false);
@@ -776,6 +777,8 @@ bool PlayerbotAIConfig::Initialize()
     RpgStatusProbWeight[RPG_REST] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.Rest", 5);
     RpgStatusProbWeight[RPG_OUTDOOR_PVP] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.OutdoorPvp", 10);
     RpgStatusProbWeight[RPG_DO_GATHER] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.DoGather", 15);
+    RpgStatusProbWeight[RPG_TRAVEL_ROUTE] =
+        sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.TravelRoute", 0);
 
     SyncLevelWithPlayers = sConfigMgr->GetOption<bool>("Playerbots.SyncLevelWithPlayers", false);
     RandomBotConcentrateInPlayerZone =

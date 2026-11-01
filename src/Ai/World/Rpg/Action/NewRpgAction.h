@@ -61,6 +61,8 @@ public:
     bool Execute(Event event) override;
 
 protected:
+    bool StartContinentTravel();
+
     // static NewRpgStatusTransitionProb transitionMat;
     const int32 statusWanderNpcDuration = 5 * MINUTE  * IN_MILLISECONDS ;
     const int32 statusWanderRandomDuration = 5 * MINUTE  * IN_MILLISECONDS ;
@@ -121,6 +123,21 @@ protected:
     bool DoCompletedQuest(NewRpgInfo::DoQuest& data);
 
     const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
+};
+
+class NewRpgTravelRouteAction : public NewRpgBaseAction
+{
+public:
+    NewRpgTravelRouteAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg travel route") {}
+    bool Execute(Event event) override;
+};
+
+// A companion whose master is on another map, or far away, travels there by the same routes.
+class TravelToMasterAction : public NewRpgBaseAction
+{
+public:
+    TravelToMasterAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "travel to master") {}
+    bool Execute(Event event) override;
 };
 
 class NewRpgTravelFlightAction : public NewRpgBaseAction

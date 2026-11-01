@@ -14,6 +14,7 @@
 #include "Chat.h"
 #include "ChatFilter.h"
 #include "ChatHelper.h"
+#include "ContinentRoutes.h"
 #include "CreatureData.h"
 #include "Event.h"
 #include "ForceRebuff.h"
@@ -640,6 +641,7 @@ public:
     static bool IsHealingSpell(uint32 spellFamilyName, flag96 spellFamilyFlags);
     static SpellFamilyNames Class2SpellFamilyName(uint8 cls);
     NewRpgInfo rpgInfo;
+    ContinentRouteState continentRoute;
     NewRpgStatistic rpgStatistic;
     std::unordered_set<uint32> countedQuestCompletions;
     void RecordQuestAccepted(uint32 questId);
