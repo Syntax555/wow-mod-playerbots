@@ -47,6 +47,8 @@ their own quest rods, then acquire a wild companion using learned Tame Beast,
 Feed Pet and Revive Pet. Travel, item use, channels, quest rewards and saved pets
 use the core's ordinary handlers. Existing, dismissed and stabled companions
 are retained; historical pet-ability acquisition remains separate.
+Temporary lesson charms expire normally, and quest travel uses spawns on the
+current map; missing navigation can stop acquisition.
 
 General-purpose bag upgrades use the same slot selection for equipment,
 vendors and auctions. All four slots are checked; quivers, ammo pouches and
