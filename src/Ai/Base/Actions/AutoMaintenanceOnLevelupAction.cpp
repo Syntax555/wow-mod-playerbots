@@ -37,19 +37,17 @@ void AutoMaintenanceOnLevelupAction::AutoTeleportForLevel()
 void AutoMaintenanceOnLevelupAction::AutoPickTalents()
 {
     bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
-    if (sPlayerbotAIConfig.naturalProgression &&
-        (!isRandomBot || !bot->GetSession()->IsHeadless() || botAI->HasGameClientMaster()))
+    if (!isRandomBot || !bot->GetSession() || !bot->GetSession()->IsHeadless() || botAI->HasGameClientMaster())
         return;
 
-    if (!(isRandomBot ? sPlayerbotAIConfig.AutoPickTalents
-                      : sPlayerbotAIConfig.AutoPickTalentsForPlayerControlledBots))
+    if (!sPlayerbotAIConfig.AutoPickTalents)
         return;
 
     if (bot->GetFreeTalentPoints() <= 0)
         return;
 
     PlayerbotFactory factory(bot, bot->GetLevel());
-    factory.InitTalentsTree(true, true, isRandomBot);
+    factory.InitTalentsTree(true, true, true);
     factory.InitPetTalents();
 }
 

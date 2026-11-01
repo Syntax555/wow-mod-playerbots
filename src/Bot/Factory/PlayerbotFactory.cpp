@@ -167,6 +167,16 @@ static bool GearFitsSpecRole(Player* bot)
     return PlayerbotAI::IsCaster(bot, true) ? casterStats >= meleeStats : meleeStats >= casterStats;
 }
 
+static bool IsAutonomousRandomBot(Player* bot)
+{
+    if (!bot || !bot->GetSession() || !bot->GetSession()->IsHeadless() ||
+        !sRandomPlayerbotMgr.IsRandomBot(bot))
+        return false;
+
+    PlayerbotAI* ai = GET_PLAYERBOT_AI(bot);
+    return !ai || !ai->HasGameClientMaster();
+}
+
 const uint64 diveMask = (1LL << 7) | (1LL << 44) | (1LL << 37) | (1LL << 38) | (1LL << 26) | (1LL << 30) | (1LL << 27) |
                         (1LL << 33) | (1LL << 24) | (1LL << 34);
 
@@ -1177,7 +1187,7 @@ void PlayerbotFactory::Randomize(bool incremental)
 void PlayerbotFactory::Refresh()
 {
     // Natural bots retain their starter kit, earned items, money, skills and quests.
-    if (sPlayerbotAIConfig.naturalProgression)
+    if (sPlayerbotAIConfig.naturalProgression || !IsAutonomousRandomBot(bot))
         return;
 
     // Prepare();
@@ -1202,7 +1212,6 @@ void PlayerbotFactory::Refresh()
     InitSpecialSpells();
     InitMounts();
     InitKeyring();
-    bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
     if (!sPlayerbotAIConfig.EquipAndSpecPersistence ||
         bot->GetLevel() < sPlayerbotAIConfig.EquipAndSpecPersistenceLevel)
     {
@@ -1211,26 +1220,21 @@ void PlayerbotFactory::Refresh()
     // Spec persistence keeps a bot's talents, but not when the core took them: a lower talent count
     // (a module or config change) resets every talent at login, and a bot at the top level never
     // levels up to pick them again. Spend free points as AutoMaintenanceOnLevelupAction does.
-    else if (bot->GetFreeTalentPoints() > 0 &&
-             (isRandomBot ? sPlayerbotAIConfig.AutoPickTalents
-                          : sPlayerbotAIConfig.AutoPickTalentsForPlayerControlledBots))
+    else if (bot->GetFreeTalentPoints() > 0 && sPlayerbotAIConfig.AutoPickTalents)
     {
-        InitTalentsTree(true, true, isRandomBot);
+        InitTalentsTree(true, true, true);
     }
     // Talents picked from nothing get a random spec, which can leave a hybrid in the other role's gear. Random
     // bots only: a player-controlled bot's gear is its owner's choice. Incremental keeps on-role pieces it looted.
     // Once per spec: when the new gear still leans the other way (a prot paladin's stamina pieces can carry more
     // int than str), keep it rather than re-gear on every Refresh.
-    if (isRandomBot)
+    uint32 const specMark = AiFactory::GetPlayerSpecTab(bot) + 1;
+    if (sRandomPlayerbotMgr.GetValue(bot, "gearRoleSpec") != specMark && !GearFitsSpecRole(bot))
     {
-        uint32 const specMark = AiFactory::GetPlayerSpecTab(bot) + 1;
-        if (sRandomPlayerbotMgr.GetValue(bot, "gearRoleSpec") != specMark && !GearFitsSpecRole(bot))
-        {
-            LOG_INFO("playerbots", "Bot {} <{}> wears gear of another role than its spec, re-gearing",
-                     bot->GetGUID().ToString().c_str(), bot->GetName().c_str());
-            InitEquipment(true);
-            sRandomPlayerbotMgr.SetValue(bot, "gearRoleSpec", specMark);
-        }
+        LOG_INFO("playerbots", "Bot {} <{}> wears gear of another role than its spec, re-gearing",
+                 bot->GetGUID().ToString().c_str(), bot->GetName().c_str());
+        InitEquipment(true);
+        sRandomPlayerbotMgr.SetValue(bot, "gearRoleSpec", specMark);
     }
     if (bot->GetLevel() >= sPlayerbotAIConfig.MinEnchantingBotLevel)
         ApplyEnchantAndGemsNew();
@@ -1462,6 +1466,9 @@ void PlayerbotFactory::InitConsumables()
 
 void PlayerbotFactory::InitPetTalents()
 {
+    if (!IsAutonomousRandomBot(bot))
+        return;
+
     if (bot->GetLevel() <= 70 && sPlayerbotAIConfig.LimitTalentsExpansion)
         return;
 
@@ -1832,6 +1839,9 @@ void PlayerbotFactory::ResetQuests()
 
 uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_template /*true*/, bool reset /*false*/)
 {
+    if (!IsAutonomousRandomBot(bot))
+        return 0;
+
     uint32 specTab;
     uint8 cls = bot->getClass();
     std::map<uint8, uint32> tabs = AiFactory::GetPlayerSpecTabs(bot);
