@@ -15,6 +15,8 @@
 #include "SharedDefines.h"
 #include "TargetValue.h"
 
+bool HunterNeedsPetTrigger::IsActive() { return TameBeastAction::IsNeeded(botAI); }
+
 bool KillCommandTrigger::IsActive()
 {
     return !botAI->HasAura("kill command", GetTarget());

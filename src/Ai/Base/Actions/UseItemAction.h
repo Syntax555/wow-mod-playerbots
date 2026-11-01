@@ -25,6 +25,7 @@ public:
     bool Execute(Event event) override;
     bool isPossible() override;
     bool UseItemOnGameObject(Item* item, ObjectGuid go);
+    bool UseItemOnUnit(Item* item, Unit* target);
 
 protected:
     bool UseItemAuto(Item* item);

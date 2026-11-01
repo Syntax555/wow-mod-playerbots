@@ -5,11 +5,13 @@
  */
 
 #include "HunterAiObjectContext.h"
+
 #include "BeastMasteryHunterStrategy.h"
 #include "GenericHunterNonCombatStrategy.h"
 #include "GenericHunterStrategy.h"
 #include "HunterActions.h"
 #include "HunterBuffStrategies.h"
+#include "HunterTamingLessons.h"
 #include "HunterTriggers.h"
 #include "MarksmanshipHunterStrategy.h"
 #include "NamedObjectContext.h"
@@ -63,6 +65,8 @@ class HunterTriggerFactoryInternal : public NamedObjectContext<Trigger>
 public:
     HunterTriggerFactoryInternal()
     {
+        creators["hunter needs pet"] = &HunterTriggerFactoryInternal::hunter_needs_pet;
+        creators["hunter taming lesson"] = &HunterTriggerFactoryInternal::hunter_taming_lesson;
         creators["black arrow"] = &HunterTriggerFactoryInternal::black_arrow;
         creators["no stings"] = &HunterTriggerFactoryInternal::NoStings;
         creators["hunters pet dead"] = &HunterTriggerFactoryInternal::hunters_pet_dead;
@@ -97,6 +101,8 @@ public:
     }
 
 private:
+    static Trigger* hunter_needs_pet(PlayerbotAI* botAI) { return new HunterNeedsPetTrigger(botAI); }
+    static Trigger* hunter_taming_lesson(PlayerbotAI* botAI) { return new HunterTamingLessonTrigger(botAI); }
     static Trigger* auto_shot(PlayerbotAI* botAI) { return new AutoShotTrigger(botAI); }
     static Trigger* scare_beast(PlayerbotAI* botAI) { return new ScareBeastTrigger(botAI); }
     static Trigger* concussive_shot_on_snare_target(PlayerbotAI* botAI) {
@@ -137,6 +143,8 @@ class HunterAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     HunterAiObjectContextInternal()
     {
+        creators["tame beast"] = &HunterAiObjectContextInternal::tame_beast;
+        creators["hunter taming lesson"] = &HunterAiObjectContextInternal::hunter_taming_lesson;
         creators["auto shot"] = &HunterAiObjectContextInternal::auto_shot;
         creators["aimed shot"] = &HunterAiObjectContextInternal::aimed_shot;
         creators["chimera shot"] = &HunterAiObjectContextInternal::chimera_shot;
@@ -202,6 +210,8 @@ private:
     static Action* feign_death(PlayerbotAI* botAI) { return new CastFeignDeathAction(botAI); }
     static Action* trueshot_aura(PlayerbotAI* botAI) { return new CastTrueshotAuraAction(botAI); }
     static Action* track_humanoids(PlayerbotAI* botAI) { return new CastBuffSpellAction(botAI, "track humanoids"); }
+    static Action* tame_beast(PlayerbotAI* botAI) { return new TameBeastAction(botAI); }
+    static Action* hunter_taming_lesson(PlayerbotAI* botAI) { return new HunterTamingLessonAction(botAI); }
     static Action* auto_shot(PlayerbotAI* botAI) { return new CastAutoShotAction(botAI); }
     static Action* aimed_shot(PlayerbotAI* botAI) { return new CastAimedShotAction(botAI); }
     static Action* chimera_shot(PlayerbotAI* botAI) { return new CastChimeraShotAction(botAI); }
@@ -251,6 +261,18 @@ private:
     static Action* intimidation(PlayerbotAI* botAI) { return new CastIntimidationAction(botAI); }
 };
 
+class HunterValueFactoryInternal : public NamedObjectContext<UntypedValue>
+{
+public:
+    HunterValueFactoryInternal()
+    {
+        creators["hunter taming lesson"] = &HunterValueFactoryInternal::hunter_taming_lesson;
+    }
+
+private:
+    static UntypedValue* hunter_taming_lesson(PlayerbotAI* botAI) { return new HunterTamingLessonValue(botAI); }
+};
+
 SharedNamedObjectContextList<Strategy> HunterAiObjectContext::sharedStrategyContexts;
 SharedNamedObjectContextList<Action> HunterAiObjectContext::sharedActionContexts;
 SharedNamedObjectContextList<Trigger> HunterAiObjectContext::sharedTriggerContexts;
@@ -291,4 +313,5 @@ void HunterAiObjectContext::BuildSharedTriggerContexts(SharedNamedObjectContextL
 void HunterAiObjectContext::BuildSharedValueContexts(SharedNamedObjectContextList<UntypedValue>& valueContexts)
 {
     AiObjectContext::BuildSharedValueContexts(valueContexts);
+    valueContexts.Add(new HunterValueFactoryInternal());
 }

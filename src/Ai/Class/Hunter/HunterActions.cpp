@@ -5,10 +5,109 @@
  */
 
 #include "HunterActions.h"
+
 #include "Event.h"
 #include "GenericSpellActions.h"
+#include "Map.h"
+#include "PathGenerator.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "RandomPlayerbotMgr.h"
+#include "SpellMgr.h"
+
+namespace
+{
+constexpr uint32 SPELL_TAME_BEAST = 1515;
+constexpr uint32 SPELL_FEED_PET = 6991;
+constexpr uint32 SPELL_REVIVE_PET = 982;
+}  // namespace
+
+bool TameBeastAction::CanAcquirePet(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    if (!sPlayerbotAIConfig.naturalProgression || !bot || bot->getClass() != CLASS_HUNTER || !bot->GetSession() ||
+        !bot->GetSession()->IsHeadless() || !sRandomPlayerbotMgr.IsRandomBot(bot) || botAI->GetMaster() ||
+        bot->GetGroup() || !bot->IsAlive() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
+        bot->GetMap()->IsDungeon() || bot->InBattleground() || bot->InArena() || bot->IsInCombat() ||
+        bot->IsMounted() || bot->IsInFlight() || bot->IsFlying() || bot->GetTransport() || bot->GetVehicle() ||
+        bot->HasUnitState(UNIT_STATE_LOST_CONTROL) || bot->IsNonMeleeSpellCast(true) || bot->GetPet() ||
+        bot->GetPetGUID() || bot->GetCharmGUID() || bot->GetTemporaryUnsummonedPetNumber())
+        return false;
+
+    // A dismissed, dead or stabled companion is still owned; never replace it with a new beast.
+    if (PetStable const* stable = bot->GetPetStable())
+    {
+        if (stable->CurrentPet || !stable->UnslottedPets.empty())
+            return false;
+        for (auto const& pet : stable->StabledPets)
+            if (pet)
+                return false;
+    }
+
+    return true;
+}
+
+bool TameBeastAction::IsNeeded(PlayerbotAI* botAI)
+{
+    return CanAcquirePet(botAI) && botAI->GetBot()->HasSpell(SPELL_TAME_BEAST) &&
+           botAI->GetBot()->HasSpell(SPELL_FEED_PET) && botAI->GetBot()->HasSpell(SPELL_REVIVE_PET);
+}
+
+bool TameBeastAction::Execute(Event /*event*/)
+{
+    if (!isUseful())
+        return false;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_TAME_BEAST);
+    if (!spellInfo)
+        return false;
+
+    float const range = spellInfo->GetMaxRange(false, bot);
+    Creature* target = nullptr;
+    float nearestDistance = sPlayerbotAIConfig.SightDistance;
+    for (ObjectGuid guid : AI_VALUE(GuidVector, "nearest npcs"))
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        Creature* creature = unit ? unit->ToCreature() : nullptr;
+        if (!creature || !creature->IsInWorld() || creature->IsDuringRemoveFromWorld() || !creature->IsAlive() ||
+            !bot->IsInMap(creature) || !bot->InSamePhase(creature) || creature->IsPet() || creature->IsSummon() ||
+            creature->GetOwnerGUID() || creature->GetCharmerGUID() || creature->IsInCombat() ||
+            creature->hasLootRecipient() || creature->GetLevel() > bot->GetLevel() ||
+            !creature->GetCreatureTemplate()->IsTameable(bot->CanTameExoticPets()) ||
+            !bot->IsValidAttackTarget(creature) || !bot->CanSeeOrDetect(creature) || !bot->IsWithinLOSInMap(creature))
+            continue;
+
+        float const distance = bot->GetDistance(creature);
+        if (distance >= nearestDistance)
+            continue;
+
+        if (!bot->IsWithinDistInMap(creature, range))
+        {
+            PathGenerator path(bot);
+            if (!path.CalculatePath(creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ(),
+                                    false) ||
+                path.GetPathType() != PATHFIND_NORMAL)
+                continue;
+        }
+
+        target = creature;
+        nearestDistance = distance;
+    }
+
+    if (!target)
+        return false;
+
+    if (!bot->IsWithinDistInMap(target, range))
+        return MoveTo(target, range * 0.8f);
+
+    bot->StopMoving();
+    if (!botAI->CastSpell(SPELL_TAME_BEAST, target))
+        return false;
+
+    // Keep ordinary combat and travel actions from interrupting the taming channel.
+    botAI->WaitForSpellCast(bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL));
+    return true;
+}
 
 bool CastViperStingAction::isUseful()
 {

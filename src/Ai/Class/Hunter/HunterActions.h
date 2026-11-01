@@ -10,6 +10,7 @@
 #include "AiObject.h"
 #include "Event.h"
 #include "GenericSpellActions.h"
+#include "MovementActions.h"
 #include "Unit.h"
 
 class PlayerbotAI;
@@ -187,6 +188,16 @@ public:
 };
 
 // Pet Spells
+
+class TameBeastAction : public MovementAction
+{
+public:
+    TameBeastAction(PlayerbotAI* botAI) : MovementAction(botAI, "tame beast") {}
+    static bool CanAcquirePet(PlayerbotAI* botAI);
+    static bool IsNeeded(PlayerbotAI* botAI);
+    bool isUseful() override { return IsNeeded(botAI); }
+    bool Execute(Event event) override;
+};
 
 class FeedPetAction : public Action
 {

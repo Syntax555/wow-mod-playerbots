@@ -26,6 +26,9 @@ void GenericHunterNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& tri
 
 void HunterPetStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
+    triggers.push_back(
+        new TriggerNode("hunter taming lesson", {NextAction("hunter taming lesson", ACTION_NORMAL + 2)}));
+    triggers.push_back(new TriggerNode("hunter needs pet", {NextAction("tame beast", ACTION_NORMAL + 1)}));
     triggers.push_back(new TriggerNode("no pet", { NextAction("call pet", 60.0f) }));
     triggers.push_back(new TriggerNode("has pet", { NextAction("toggle pet spell", 60.0f) }));
     triggers.push_back(new TriggerNode("new pet", { NextAction("set pet stance", 60.0f) }));

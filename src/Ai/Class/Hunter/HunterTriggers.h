@@ -17,6 +17,13 @@ class PlayerbotAI;
 
 // Buff and Out of Combat Triggers
 
+class HunterNeedsPetTrigger : public Trigger
+{
+public:
+    HunterNeedsPetTrigger(PlayerbotAI* botAI) : Trigger(botAI, "hunter needs pet", 5) {}
+    bool IsActive() override;
+};
+
 class HunterAspectOfTheDragonhawkTrigger : public BuffTrigger
 {
 public:
