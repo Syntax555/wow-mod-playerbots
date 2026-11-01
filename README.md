@@ -70,8 +70,8 @@ Read [AGENTS.md](AGENTS.md) and the assembly's
 Make validated changes on `evermore`, then pin the commit in the assembly.
 Preserve earned-play gates, user data, configuration and pinned history.
 
-Imported from [buildthehomelab/wow-mod-playerbots at `5283a13e0a5d`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/5283a13e0a5d873350fdaef777b95d553d354bee).
-The [original README](https://github.com/buildthehomelab/wow-mod-playerbots/blob/5283a13e0a5d873350fdaef777b95d553d354bee/README.md)
+Imported from [buildthehomelab/wow-mod-playerbots at `08e5a03f99b6`](https://github.com/buildthehomelab/wow-mod-playerbots/commit/08e5a03f99b648745b840707327f7c803ed51aa1).
+The [original README](https://github.com/buildthehomelab/wow-mod-playerbots/blob/08e5a03f99b648745b840707327f7c803ed51aa1/README.md)
 and [Playerbots command wiki](https://github.com/mod-playerbots/mod-playerbots/wiki/Playerbot-Commands)
 provide general references; some documented shortcuts are intentionally refused
 in this assembly.

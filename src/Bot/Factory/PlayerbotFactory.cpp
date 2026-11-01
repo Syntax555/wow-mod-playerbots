@@ -45,9 +45,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include <array>
-#include <utility>
-
 namespace
 {
     // WotLK Eternal Belt Buckle mechanics
@@ -84,6 +81,90 @@ static bool TryApplyBeltBuckle(Player* bot, Item* waist)
         bot->DestroyItemCount(ITEM_ETERNAL_BELT_BUCKLE, 1, true);
 
     return true;
+}
+
+// Add an item's caster (int, spirit, spell power, mp5) and melee (str, agi, attack power) stats, counting its
+// random property or suffix too: much bot gear gets its stats only from "of the Owl" style suffixes.
+static void AddRoleStats(Item* item, int32& casterStats, int32& meleeStats)
+{
+    auto add = [&](uint32 statType, int32 value)
+    {
+        switch (statType)
+        {
+            case ITEM_MOD_INTELLECT:
+            case ITEM_MOD_SPIRIT:
+            case ITEM_MOD_SPELL_POWER:
+            case ITEM_MOD_MANA_REGENERATION:
+                casterStats += value;
+                break;
+            case ITEM_MOD_STRENGTH:
+            case ITEM_MOD_AGILITY:
+            case ITEM_MOD_ATTACK_POWER:
+                meleeStats += value;
+                break;
+        }
+    };
+
+    ItemTemplate const* proto = item->GetTemplate();
+    for (uint32 i = 0; i < proto->StatsCount && i < MAX_ITEM_PROTO_STATS; ++i)
+        add(proto->ItemStat[i].ItemStatType, proto->ItemStat[i].ItemStatValue);
+
+    for (uint32 slot = PROP_ENCHANTMENT_SLOT_0; slot <= PROP_ENCHANTMENT_SLOT_4; ++slot)
+    {
+        uint32 const enchantId = item->GetEnchantmentId(EnchantmentSlot(slot));
+        SpellItemEnchantmentEntry const* enchant = sSpellItemEnchantmentStore.LookupEntry(enchantId);
+        if (!enchant)
+            continue;
+
+        for (uint8 s = 0; s < MAX_SPELL_ITEM_ENCHANTMENT_EFFECTS; ++s)
+        {
+            if (enchant->type[s] != ITEM_ENCHANTMENT_TYPE_STAT)
+                continue;
+
+            int32 amount = enchant->amount[s];
+            // A random suffix leaves the amount to the item's suffix factor, as in Player::ApplyEnchantment.
+            if (!amount)
+            {
+                if (ItemRandomSuffixEntry const* suffix =
+                        sItemRandomSuffixStore.LookupEntry(std::abs(item->GetItemRandomPropertyId())))
+                {
+                    for (uint8 k = 0; k < MAX_ITEM_ENCHANTMENT_EFFECTS; ++k)
+                    {
+                        if (suffix->Enchantment[k] == enchantId)
+                        {
+                            amount = int32((suffix->AllocationPct[k] * item->GetItemSuffixFactor()) / 10000);
+                            break;
+                        }
+                    }
+                }
+            }
+            add(enchant->spellid[s], amount);
+        }
+    }
+}
+
+// A hybrid whose talents are picked again (after the core reset them) can get a spec of another role than the
+// gear spec persistence kept, e.g. a feral druid in caster cloth. False when the equipped stats lean to the other
+// role; a tie, or a bot without talents, counts as fitting.
+static bool GearFitsSpecRole(Player* bot)
+{
+    uint8 const cls = bot->getClass();
+    if (cls != CLASS_DRUID && cls != CLASS_PALADIN && cls != CLASS_SHAMAN)
+        return true;
+
+    std::map<uint8, uint32> tabs = AiFactory::GetPlayerSpecTabs(bot);
+    if (bot->GetLevel() < 10 || tabs[0] + tabs[1] + tabs[2] == 0)
+        return true;
+
+    int32 casterStats = 0;
+    int32 meleeStats = 0;
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            AddRoleStats(item, casterStats, meleeStats);
+    }
+
+    return PlayerbotAI::IsCaster(bot, true) ? casterStats >= meleeStats : meleeStats >= casterStats;
 }
 
 const uint64 diveMask = (1LL << 7) | (1LL << 44) | (1LL << 37) | (1LL << 38) | (1LL << 26) | (1LL << 30) | (1LL << 27) |
@@ -1121,10 +1202,35 @@ void PlayerbotFactory::Refresh()
     InitSpecialSpells();
     InitMounts();
     InitKeyring();
+    bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
     if (!sPlayerbotAIConfig.EquipAndSpecPersistence ||
         bot->GetLevel() < sPlayerbotAIConfig.EquipAndSpecPersistenceLevel)
     {
         InitTalentsTree(true, true, true);
+    }
+    // Spec persistence keeps a bot's talents, but not when the core took them: a lower talent count
+    // (a module or config change) resets every talent at login, and a bot at the top level never
+    // levels up to pick them again. Spend free points as AutoMaintenanceOnLevelupAction does.
+    else if (bot->GetFreeTalentPoints() > 0 &&
+             (isRandomBot ? sPlayerbotAIConfig.AutoPickTalents
+                          : sPlayerbotAIConfig.AutoPickTalentsForPlayerControlledBots))
+    {
+        InitTalentsTree(true, true, isRandomBot);
+    }
+    // Talents picked from nothing get a random spec, which can leave a hybrid in the other role's gear. Random
+    // bots only: a player-controlled bot's gear is its owner's choice. Incremental keeps on-role pieces it looted.
+    // Once per spec: when the new gear still leans the other way (a prot paladin's stamina pieces can carry more
+    // int than str), keep it rather than re-gear on every Refresh.
+    if (isRandomBot)
+    {
+        uint32 const specMark = AiFactory::GetPlayerSpecTab(bot) + 1;
+        if (sRandomPlayerbotMgr.GetValue(bot, "gearRoleSpec") != specMark && !GearFitsSpecRole(bot))
+        {
+            LOG_INFO("playerbots", "Bot {} <{}> wears gear of another role than its spec, re-gearing",
+                     bot->GetGUID().ToString().c_str(), bot->GetName().c_str());
+            InitEquipment(true);
+            sRandomPlayerbotMgr.SetValue(bot, "gearRoleSpec", specMark);
+        }
     }
     if (bot->GetLevel() >= sPlayerbotAIConfig.MinEnchantingBotLevel)
         ApplyEnchantAndGemsNew();
