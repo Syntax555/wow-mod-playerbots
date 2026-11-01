@@ -12,6 +12,9 @@
 
 bool CombatStartTrigger::IsActive()
 {
+    if (bot->IsNonMeleeSpellCast(true, false, true))
+        return false;
+
     // "attackers" covers the bot's own attackers and those of nearby group members, so it
     // also catches the master pulling while the bot itself is still out of combat.
     // Edge-triggered: fire once when attackers first appear, not on every tick they persist,

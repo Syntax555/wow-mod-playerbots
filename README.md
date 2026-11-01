@@ -42,6 +42,12 @@ talents remain manually controlled. Automatic talent spending applies to random
 bots' earned points. Combat profiles reuse native class strategies and score
 usable equipment already in the character's bags.
 
+Solo random hunters without an owned pet follow the native taming lessons with
+their own quest rods, then acquire a wild companion using learned Tame Beast,
+Feed Pet and Revive Pet. Travel, item use, channels, quest rewards and saved pets
+use the core's ordinary handlers. Existing, dismissed and stabled companions
+are retained; historical pet-ability acquisition remains separate.
+
 General-purpose bag upgrades use the same slot selection for equipment,
 vendors and auctions. All four slots are checked; quivers, ammo pouches and
 profession bags remain equipped. Native inventory checks still govern swaps.

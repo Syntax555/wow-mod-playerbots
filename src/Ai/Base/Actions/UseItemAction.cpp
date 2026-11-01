@@ -149,6 +149,11 @@ bool UseItemAction::UseItemAuto(Item* item) { return UseItem(item, ObjectGuid::E
 
 bool UseItemAction::UseItemOnGameObject(Item* item, ObjectGuid go) { return UseItem(item, go, nullptr); }
 
+bool UseItemAction::UseItemOnUnit(Item* item, Unit* target)
+{
+    return item && target && UseItem(item, ObjectGuid::Empty, nullptr, target);
+}
+
 bool UseItemAction::UseItemOnItem(Item* item, Item* itemTarget) { return UseItem(item, ObjectGuid::Empty, itemTarget); }
 
 bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Unit* unitTarget)
@@ -214,8 +219,9 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
         if (itemProto->Spells[i].SpellId > 0)
         {
             spellId = itemProto->Spells[i].SpellId;
-            bool canCast = goTarget ? botAI->CanCastSpell(spellId, goTarget, false, item)
-                                    : botAI->CanCastSpell(spellId, bot, false, itemTarget, item);
+            bool canCast = goTarget
+                               ? botAI->CanCastSpell(spellId, goTarget, false, item)
+                               : botAI->CanCastSpell(spellId, unitTarget ? unitTarget : bot, false, itemTarget, item);
             if (!canCast)
                 return false;
         }

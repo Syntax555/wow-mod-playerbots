@@ -11,6 +11,9 @@
 
 bool WakeOnCombatStartAction::Execute(Event /*event*/)
 {
+    if (!isUseful())
+        return false;
+
     // Do not switch engines here. The combat engine entered without a current target fires
     // "invalid target" -> "drop target" on its first tick and drops back to non-combat.
     // Clearing the main AI delay lets the non-combat engine run now; its "dps assist" /
@@ -21,5 +24,6 @@ bool WakeOnCombatStartAction::Execute(Event /*event*/)
 
 bool WakeOnCombatStartAction::isUseful()
 {
-    return botAI->GetState() != BOT_STATE_COMBAT && botAI->IsActionDurationActive();
+    return !bot->IsNonMeleeSpellCast(true, false, true) && botAI->GetState() != BOT_STATE_COMBAT &&
+           botAI->IsActionDurationActive();
 }
