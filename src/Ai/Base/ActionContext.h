@@ -185,9 +185,6 @@ public:
         creators["invite nearby"] = &ActionContext::invite_nearby;
         creators["invite guild"] = &ActionContext::invite_guild;
         creators["leave far away"] = &ActionContext::leave_far_away;
-        creators["move to dark portal"] = &ActionContext::move_to_dark_portal;
-        creators["move from dark portal"] = &ActionContext::move_from_dark_portal;
-        creators["use dark portal azeroth"] = &ActionContext::use_dark_portal_azeroth;
         creators["world buff"] = &ActionContext::world_buff;
         creators["hearthstone"] = &ActionContext::hearthstone;
         creators["cast random spell"] = &ActionContext::cast_random_spell;
@@ -398,9 +395,6 @@ private:
     static Action* invite_nearby(PlayerbotAI* botAI) { return new InviteNearbyToGroupAction(botAI); }
     static Action* invite_guild(PlayerbotAI* botAI) { return new InviteGuildToGroupAction(botAI); }
     static Action* leave_far_away(PlayerbotAI* botAI) { return new LeaveFarAwayAction(botAI); }
-    static Action* move_to_dark_portal(PlayerbotAI* botAI) { return new MoveToDarkPortalAction(botAI); }
-    static Action* use_dark_portal_azeroth(PlayerbotAI* botAI) { return new DarkPortalAzerothAction(botAI); }
-    static Action* move_from_dark_portal(PlayerbotAI* botAI) { return new MoveFromDarkPortalAction(botAI); }
     static Action* world_buff(PlayerbotAI* botAI) { return new WorldBuffAction(botAI); }
     static Action* hearthstone(PlayerbotAI* botAI) { return new UseHearthStone(botAI); }
     static Action* cast_random_spell(PlayerbotAI* botAI) { return new CastRandomSpellAction(botAI); }

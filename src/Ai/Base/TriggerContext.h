@@ -201,11 +201,6 @@ public:
 
         creators["mounted"] = &TriggerContext::mounted;
 
-        // move to/enter dark portal if near
-        creators["near dark portal"] = &TriggerContext::near_dark_portal;
-        creators["at dark portal azeroth"] = &TriggerContext::at_dark_portal_azeroth;
-        creators["at dark portal outland"] = &TriggerContext::at_dark_portal_outland;
-
         creators["vehicle near"] = &TriggerContext::vehicle_near;
         creators["in vehicle"] = &TriggerContext::in_vehicle;
 
@@ -422,11 +417,8 @@ private:
     static Trigger* player_is_in_BATTLEGROUND(PlayerbotAI* botAI) { return new PlayerIsInBattleground(botAI); }
     static Trigger* player_is_in_BATTLEGROUND_no_flag(PlayerbotAI* botAI) { return new PlayerIsInBattlegroundWithoutFlag(botAI); }
     static Trigger* mounted(PlayerbotAI* botAI) { return new IsMountedTrigger(botAI); }
-    static Trigger* at_dark_portal_outland(PlayerbotAI* botAI) { return new AtDarkPortalOutlandTrigger(botAI); }
-    static Trigger* at_dark_portal_azeroth(PlayerbotAI* botAI) { return new AtDarkPortalAzerothTrigger(botAI); }
     static Trigger* in_vehicle(PlayerbotAI* botAI) { return new InVehicleTrigger(botAI); }
     static Trigger* vehicle_near(PlayerbotAI* botAI) { return new VehicleNearTrigger(botAI); }
-    static Trigger* near_dark_portal(PlayerbotAI* botAI) { return new NearDarkPortalTrigger(botAI); }
     static Trigger* need_world_buff(PlayerbotAI* botAI) { return new NeedWorldBuffTrigger(botAI); }
     static Trigger* falling(PlayerbotAI* botAI) { return new IsFallingTrigger(botAI); }
     static Trigger* falling_far(PlayerbotAI* botAI) { return new IsFallingFarTrigger(botAI); }

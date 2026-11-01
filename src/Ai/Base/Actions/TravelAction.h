@@ -20,30 +20,4 @@ public:
     bool isUseful() override;
 };
 
-class MoveToDarkPortalAction : public MovementAction
-{
-public:
-    MoveToDarkPortalAction(PlayerbotAI* botAI) : MovementAction(botAI, "move to dark portal") {}
-
-    bool Execute(Event event) override;
-    bool isUseful() override;
-};
-
-class DarkPortalAzerothAction : public MovementAction
-{
-public:
-    DarkPortalAzerothAction(PlayerbotAI* botAI) : MovementAction(botAI, "dark portal azeroth") {}
-
-    bool Execute(Event event) override;
-    bool isUseful() override;
-};
-
-class MoveFromDarkPortalAction : public MovementAction
-{
-public:
-    MoveFromDarkPortalAction(PlayerbotAI* botAI) : MovementAction(botAI, "move from dark portal") {}
-
-    bool Execute(Event event) override;
-};
-
 #endif

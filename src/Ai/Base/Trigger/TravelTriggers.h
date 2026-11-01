@@ -27,28 +27,4 @@ public:
     bool IsActive() override;
 };
 
-class NearDarkPortalTrigger : public Trigger
-{
-public:
-    NearDarkPortalTrigger(PlayerbotAI* botAI) : Trigger(botAI, "near dark portal", 10) {}
-
-    virtual bool IsActive();
-};
-
-class AtDarkPortalAzerothTrigger : public Trigger
-{
-public:
-    AtDarkPortalAzerothTrigger(PlayerbotAI* botAI) : Trigger(botAI, "at dark portal azeroth", 10) {}
-
-    bool IsActive() override;
-};
-
-class AtDarkPortalOutlandTrigger : public Trigger
-{
-public:
-    AtDarkPortalOutlandTrigger(PlayerbotAI* botAI) : Trigger(botAI, "at dark portal outland", 10) {}
-
-    bool IsActive() override;
-};
-
 #endif
