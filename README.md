@@ -50,6 +50,12 @@ are retained; historical pet-ability acquisition remains separate.
 Temporary lesson charms expire normally, and quest travel uses spawns on the
 current map; missing navigation can stop acquisition.
 
+Solo random warlocks pursue missing basic demons through native quest chains,
+owned ritual items and ordinary combat and rewards. Quest travel uses the
+existing earned routes between continents when enabled. Later demons and class
+mounts remain incomplete. See
+[warlock quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-warlock-demon-quests).
+
 General-purpose bag upgrades use the same slot selection for equipment,
 vendors and auctions. All four slots are checked; quivers, ammo pouches and
 profession bags remain equipped. Native inventory checks still govern swaps.

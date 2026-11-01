@@ -548,8 +548,10 @@ bool NewRpgStatusUpdateAction::StartContinentTravel()
 
     if (route.Active())
     {
-        if (!ContinentRoutes::SameArea(sContinentRoutes.Locate(WorldPosition(bot)),
-                                       sContinentRoutes.Locate(route.destination)) &&
+        // Reaching the destination map or island aboard a ride still requires disembarking.
+        if ((bot->GetTransport() || bot->IsInFlight() ||
+             !ContinentRoutes::SameArea(sContinentRoutes.Locate(WorldPosition(bot)),
+                                        sContinentRoutes.Locate(route.destination))) &&
             GetMSTimeDiffToNow(route.startedAt) < ContinentTravel::RouteTimeoutMs)
         {
             botAI->rpgInfo.ChangeToTravelRoute();

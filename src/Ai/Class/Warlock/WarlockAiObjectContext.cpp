@@ -5,6 +5,7 @@
  */
 
 #include "WarlockAiObjectContext.h"
+
 #include "AfflictionWarlockStrategy.h"
 #include "DemonologyWarlockStrategy.h"
 #include "DestructionWarlockStrategy.h"
@@ -17,6 +18,7 @@
 #include "TankWarlockStrategy.h"
 #include "UseItemAction.h"
 #include "WarlockActions.h"
+#include "WarlockDemonQuests.h"
 #include "WarlockTriggers.h"
 
 class WarlockStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -140,6 +142,7 @@ class WarlockTriggerFactoryInternal : public NamedObjectContext<Trigger>
 public:
     WarlockTriggerFactoryInternal()
     {
+        creators["warlock demon quest"] = &WarlockTriggerFactoryInternal::demon_quest;
         creators["shadow trance"] = &WarlockTriggerFactoryInternal::shadow_trance;
         creators["demon armor"] = &WarlockTriggerFactoryInternal::demon_armor;
         creators["soul link"] = &WarlockTriggerFactoryInternal::soul_link;
@@ -189,6 +192,7 @@ public:
     }
 
 private:
+    static Trigger* demon_quest(PlayerbotAI* botAI) { return new WarlockDemonQuestTrigger(botAI); }
     static Trigger* shadow_trance(PlayerbotAI* botAI) { return new ShadowTranceTrigger(botAI); }
     static Trigger* demon_armor(PlayerbotAI* botAI) { return new DemonArmorTrigger(botAI); }
     static Trigger* soul_link(PlayerbotAI* botAI) { return new SoulLinkTrigger(botAI); }
@@ -242,6 +246,7 @@ class WarlockAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     WarlockAiObjectContextInternal()
     {
+        creators["warlock demon quest"] = &WarlockAiObjectContextInternal::demon_quest;
         creators["fel armor"] = &WarlockAiObjectContextInternal::fel_armor;
         creators["demon armor"] = &WarlockAiObjectContextInternal::demon_armor;
         creators["demon skin"] = &WarlockAiObjectContextInternal::demon_skin;
@@ -313,6 +318,7 @@ public:
     }
 
 private:
+    static Action* demon_quest(PlayerbotAI* botAI) { return new WarlockDemonQuestAction(botAI); }
     static Action* conflagrate(PlayerbotAI* botAI) { return new CastConflagrateAction(botAI); }
     static Action* incinerate(PlayerbotAI* botAI) { return new CastIncinerateAction(botAI); }
     static Action* immolate(PlayerbotAI* botAI) { return new CastImmolateAction(botAI); }
@@ -382,6 +388,15 @@ private:
     static Action* curse_of_weakness(PlayerbotAI* botAI) { return new CastCurseOfWeaknessAction(botAI); }
 };
 
+class WarlockValueFactoryInternal : public NamedObjectContext<UntypedValue>
+{
+public:
+    WarlockValueFactoryInternal() { creators["warlock demon quest"] = &WarlockValueFactoryInternal::demon_quest; }
+
+private:
+    static UntypedValue* demon_quest(PlayerbotAI* botAI) { return new WarlockDemonQuestValue(botAI); }
+};
+
 SharedNamedObjectContextList<Strategy> WarlockAiObjectContext::sharedStrategyContexts;
 SharedNamedObjectContextList<Action> WarlockAiObjectContext::sharedActionContexts;
 SharedNamedObjectContextList<Trigger> WarlockAiObjectContext::sharedTriggerContexts;
@@ -426,4 +441,5 @@ void WarlockAiObjectContext::BuildSharedTriggerContexts(SharedNamedObjectContext
 void WarlockAiObjectContext::BuildSharedValueContexts(SharedNamedObjectContextList<UntypedValue>& valueContexts)
 {
     AiObjectContext::BuildSharedValueContexts(valueContexts);
+    valueContexts.Add(new WarlockValueFactoryInternal());
 }

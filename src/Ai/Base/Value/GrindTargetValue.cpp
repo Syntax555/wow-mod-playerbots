@@ -71,7 +71,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         if (!bot->IsHostileTo(unit) && unit->GetNpcFlags() != UNIT_NPC_FLAG_NONE)
             continue;
 
-        if (!bot->isHonorOrXPTarget(unit))
+        if (!bot->isHonorOrXPTarget(unit) && (!sPlayerbotAIConfig.naturalProgression || !needForQuest(unit)))
             continue;
 
         if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > INTERACTION_DISTANCE)
