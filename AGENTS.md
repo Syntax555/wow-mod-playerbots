@@ -13,4 +13,12 @@ Keep original upstream history, licenses and file notices. Never rewrite a
 commit pinned by the assembly. Validate native changes with the assembly's
 prepared core and relevant production fixtures before committing.
 
+Use the authenticated GitHub account `Syntax555` and Verified commits only.
+Set the local Git identity to `Syntax555` with
+`2012378+Syntax555@users.noreply.github.com`, overriding environment defaults.
+Without a registered local signing key, use GitHub's signed
+`createCommitOnBranch` API and verify `author.user.login == Syntax555` and
+`signature.isValid`. GitHub is the signing committer; its author display name
+comes from the public profile. Never fall back to unsigned commits.
+
 Read relevant `.agents/docs/` guidance for Playerbots C++, AI and SQL style.
