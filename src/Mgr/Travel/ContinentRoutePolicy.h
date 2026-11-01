@@ -12,10 +12,13 @@
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
-// Routes between maps over links an ordinary player can take: ships, zeppelins, portals,
-// teleporting area triggers and the bot's own teleport spells or hearthstone.
+// Routes between maps and walk-separated islands over links an ordinary player can take: ships,
+// zeppelins, elevators, trams, portals, teleporting area triggers and the bot's own teleport
+// spells or hearthstone.
 namespace ContinentRoutes
 {
 constexpr float RunSpeed = 7.0f;
@@ -31,6 +34,10 @@ constexpr float SpellPenaltySeconds = 60.0f;
 constexpr float HearthstonePenaltySeconds = 180.0f;
 constexpr float NearBestFactor = 1.25f;
 constexpr float NearBestSeconds = 60.0f;
+// Walking between islands is priced, not forbidden: island data can split a walkable area.
+constexpr float IslandPenaltySeconds = 3600.0f;
+constexpr float LiftWaitSeconds = 30.0f;
+constexpr float MinimumLiftYards = 20.0f;
 
 // AreaTable team values (DBCEnums.h AreaTeams).
 constexpr std::uint32_t AreaTeamAlliance = 2;
@@ -42,7 +49,8 @@ enum class LinkKind : std::uint8_t
     Portal,
     AreaTrigger,
     Spell,
-    Hearthstone
+    Hearthstone,
+    Lift  // elevator or tram that runs back and forth on one map
 };
 
 struct Point
@@ -51,6 +59,7 @@ struct Point
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
+    std::uint32_t island = 0;  // 0: unknown
 };
 
 struct Link
@@ -71,9 +80,57 @@ inline float Distance(Point const& a, Point const& b)
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+inline bool SeparateIslands(Point const& a, Point const& b) { return a.island && b.island && a.island != b.island; }
+
+// Same map and not known to be separated by water or height.
+inline bool SameArea(Point const& a, Point const& b) { return a.map == b.map && !SeparateIslands(a, b); }
+
 inline float WalkSeconds(Point const& a, Point const& b)
 {
-    return a.map == b.map ? Distance(a, b) * WalkDetour / RunSpeed : std::numeric_limits<float>::infinity();
+    if (a.map != b.map)
+        return std::numeric_limits<float>::infinity();
+
+    return Distance(a, b) * WalkDetour / RunSpeed + (SeparateIslands(a, b) ? IslandPenaltySeconds : 0.0f);
+}
+
+struct TravelNode
+{
+    std::uint32_t id = 0;
+    Point at;
+};
+
+// Islands of travel nodes joined by walk links, as 1-based ids in node order.
+inline std::vector<std::uint32_t> Islands(std::span<TravelNode const> nodes,
+                                          std::span<std::pair<std::uint32_t, std::uint32_t> const> walks)
+{
+    std::unordered_map<std::uint32_t, std::size_t> index;
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+        index.emplace(nodes[i].id, i);
+
+    std::vector<std::size_t> parent(nodes.size());
+    for (std::size_t i = 0; i < parent.size(); ++i)
+        parent[i] = i;
+
+    auto root = [&parent](std::size_t node)
+    {
+        while (parent[node] != node)
+            node = parent[node] = parent[parent[node]];
+        return node;
+    };
+
+    for (auto const& [from, to] : walks)
+    {
+        auto const a = index.find(from);
+        auto const b = index.find(to);
+        if (a != index.end() && b != index.end() && nodes[a->second].at.map == nodes[b->second].at.map)
+            parent[root(a->second)] = root(b->second);
+    }
+
+    std::vector<std::uint32_t> islands(nodes.size());
+    std::unordered_map<std::size_t, std::uint32_t> ids;
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+        islands[i] = ids.emplace(root(i), std::uint32_t(ids.size() + 1)).first->second;
+    return islands;
 }
 
 // A transport waits half a cycle on average, then rides from its departure to the next stop.

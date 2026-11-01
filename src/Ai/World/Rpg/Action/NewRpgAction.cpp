@@ -514,8 +514,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
                 info.ChangeToIdle();
                 return true;
             }
-            // TRAVEL_ROUTE -> GO_CAMP once ashore on the destination's map
-            if (bot->GetMapId() == route.destination.GetMapId() && !bot->GetTransport() && !bot->IsInFlight())
+            // TRAVEL_ROUTE -> GO_CAMP once ashore where the destination can be walked to
+            if (!bot->GetTransport() && !bot->IsInFlight() &&
+                ContinentRoutes::SameArea(sContinentRoutes.Locate(WorldPosition(bot)),
+                                          sContinentRoutes.Locate(route.destination)))
             {
                 WorldPosition const destination = route.destination;
                 route.Finish();
@@ -546,7 +548,8 @@ bool NewRpgStatusUpdateAction::StartContinentTravel()
 
     if (route.Active())
     {
-        if (bot->GetMapId() != route.destination.GetMapId() &&
+        if (!ContinentRoutes::SameArea(sContinentRoutes.Locate(WorldPosition(bot)),
+                                       sContinentRoutes.Locate(route.destination)) &&
             GetMSTimeDiffToNow(route.startedAt) < ContinentTravel::RouteTimeoutMs)
         {
             botAI->rpgInfo.ChangeToTravelRoute();
@@ -555,8 +558,9 @@ bool NewRpgStatusUpdateAction::StartContinentTravel()
         route.Finish();
     }
 
-    // A map without an inn or camp for the bot's level, such as Outland at 71, is left for one with them.
-    if (HasTravelHubOnMap())
+    // A map or island without an inn or camp for the bot's level, such as Teldrassil after the
+    // first levels or Outland at 74, is left for one with them.
+    if (HasTravelHubHere())
         return false;
 
     WorldPosition const destination = SelectContinentDestination();

@@ -859,6 +859,7 @@ public:
         uint32        taxiNodeId;      // DBC taxi node nearest to this flight master
         uint32        templateEntry;   // creature template ID (for ObjectGuid construction)
         uint32        dbGuid;          // DB spawn GUID (for ObjectGuid construction)
+        uint32 island = 0;             // walk island once continent routes are built
     };
 
     static TravelMgr& instance()

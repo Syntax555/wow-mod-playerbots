@@ -67,7 +67,8 @@ protected:
     bool CheckRpgStatusAvailable(NewRpgStatus status);
     // An inn or camp for the bot's level on another map, among those with the shortest routes.
     WorldPosition SelectContinentDestination();
-    bool HasTravelHubOnMap();
+    // An inn or camp for the bot's level the bot can walk to.
+    bool HasTravelHubHere();
 
 private:
     bool MoveOverland(WorldPosition const& target);
@@ -75,6 +76,8 @@ private:
     bool UseLinkObject(ContinentRouteState& route);
     bool BoardTransport(ContinentRouteState& route);
     bool RideTransport(ContinentRouteState& route, Transport* transport);
+    bool BoardLift(ContinentRouteState& route);
+    bool RideLift(ContinentRouteState& route, Transport* lift);
     bool MoveStraightTo(WorldPosition const& point);
     void FailLink(ContinentRouteState& route);
 

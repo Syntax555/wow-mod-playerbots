@@ -4385,6 +4385,10 @@ void TravelMgr::Init()
     {
         sContinentRoutes.Build();
         continentRoutesBuilt = true;
+        for (auto* cache : {&allianceFlightMasterCache, &hordeFlightMasterCache})
+            for (auto& [dbGuid, info] : *cache)
+                info.island = sContinentRoutes.IslandAt(info.pos.GetMapId(), info.pos.GetPositionX(),
+                                                        info.pos.GetPositionY(), info.pos.GetPositionZ());
     }
 }
 
@@ -4397,9 +4401,12 @@ bool TravelMgr::FindFlightTowards(Player* bot, WorldPosition const& target, Flig
 
     auto const& flightMasterCache =
         (bot->GetTeamId() == TEAM_ALLIANCE) ? allianceFlightMasterCache : hordeFlightMasterCache;
+    uint32 const island = sContinentRoutes.IslandAt(target.GetMapId(), target.GetPositionX(), target.GetPositionY(),
+                                                    target.GetPositionZ());
     std::vector<FlightMasterInfo const*> landings;
     for (auto const& [dbGuid, info] : flightMasterCache)
-        if (info.pos.GetMapId() == target.GetMapId() && info.taxiNodeId && info.taxiNodeId != origin->taxiNodeId)
+        if (info.pos.GetMapId() == target.GetMapId() && info.taxiNodeId && info.taxiNodeId != origin->taxiNodeId &&
+            !(island && info.island && info.island != island))
             landings.push_back(&info);
 
     std::sort(landings.begin(), landings.end(), [&target](FlightMasterInfo const* a, FlightMasterInfo const* b)
@@ -4427,10 +4434,13 @@ TravelMgr::FlightMasterInfo const* TravelMgr::GetNearestFlightMasterInfo(Player*
 
     FlightMasterInfo const* nearest = nullptr;
     float nearestDistance = std::numeric_limits<float>::max();
+    // Rut'theran lies below Teldrassil's canopy: only a flight master the bot can walk to counts.
+    uint32 const island =
+        sContinentRoutes.IslandAt(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
 
     for (auto const& [dbGuid, info] : flightMasterCache)
     {
-        if (info.pos.GetMapId() != bot->GetMapId())
+        if (info.pos.GetMapId() != bot->GetMapId() || (island && info.island && info.island != island))
             continue;
 
         float distance = bot->GetExactDist2dSq(info.pos);
@@ -4814,10 +4824,12 @@ void TravelMgr::PrepareDestinationCache()
         }
         // FLIGHT MASTERS
         // Entry 29480 is Grimwing (Storm Peaks)
-        // Entry 3838 is Vesprystus in Rut'Theran. Need Travel Node system to resolve this one.
+        // Entry 3838 is Vesprystus in Rut'Theran, below Teldrassil's canopy; only continent travel
+        // knows the two apart and routes through the portal between them.
         else if ((creatureTemplate->npcflag & UNIT_NPC_FLAG_FLIGHTMASTER ||
                   creatureTemplate->npcflag & UNIT_NPC_FLAG_INNKEEPER) &&
-                creatureTemplate->Entry != 3838 && creatureTemplate->Entry != 29480)
+                 (creatureTemplate->Entry != 3838 || sPlayerbotAIConfig.continentTravel) &&
+                 creatureTemplate->Entry != 29480)
         {
             FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(creatureTemplate->faction);
             bool forHorde = !(factionEntry->hostileMask & 4);

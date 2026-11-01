@@ -30,5 +30,7 @@ bool MasterFarAwayTrigger::IsActive()
     if (master->GetMapId() != bot->GetMapId())
         return sContinentRoutes.Connects(master->GetMapId()) && sContinentRoutes.Connects(bot->GetMapId());
 
-    return bot->GetExactDist2d(master) > ContinentTravel::CompanionFarYards;
+    return bot->GetExactDist2d(master) > ContinentTravel::CompanionFarYards ||
+           !ContinentRoutes::SameArea(sContinentRoutes.Locate(WorldPosition(bot)),
+                                      sContinentRoutes.Locate(WorldPosition(master)));
 }

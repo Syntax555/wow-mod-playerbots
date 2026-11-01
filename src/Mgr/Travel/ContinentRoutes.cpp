@@ -14,16 +14,20 @@
 #include "ContinentRouteProgression.h"
 #include "DBCStores.h"
 #include "GameObject.h"
+#include "GameObjectModel.h"
 #include "Map.h"
 #include "MapMgr.h"
+#include "ModelIgnoreFlags.h"
 #include "ObjectMgr.h"
 #include "PathGenerator.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotsDatabase.h"
 #include "SpellMgr.h"
 #include "Timer.h"
 #include "Transport.h"
 #include "TransportMgr.h"
+#include "TravelNode.h"
 #include "WorldSession.h"
 
 using ContinentRoutes::Link;
@@ -62,10 +66,16 @@ uint32 AreaAt(Point const& point)
     return map ? map->GetAreaId(PHASEMASK_NORMAL, point.x, point.y, point.z) : 0;
 }
 
-bool IsContinent(uint32 mapId)
+// Continents and the other non-instanced maps between them, such as the Deeprun Tram.
+bool IsWorldMap(uint32 mapId)
 {
     MapEntry const* entry = sMapStore.LookupEntry(mapId);
-    return entry && entry->IsContinent();
+    return entry && entry->IsWorldMap();
+}
+
+uint64 IslandCell(uint32 mapId, int32 cellX, int32 cellY)
+{
+    return (uint64(mapId) << 32) | (uint64(uint16(int16(cellX))) << 16) | uint16(int16(cellY));
 }
 
 // A portal spell may teleport directly or through the spell it triggers.
@@ -164,8 +174,14 @@ uint64 ContinentRouteCatalog::Key(Link const& link)
     return (uint64(link.kind) << 56) | (uint64(link.anywhere ? 0 : link.from.map) << 32) | link.object;
 }
 
-void ContinentRouteCatalog::Add(Link const& link, bool alliance, bool horde)
+void ContinentRouteCatalog::Add(Link const& added, bool alliance, bool horde)
 {
+    Link link = added;
+    if (!link.anywhere && !link.from.island)
+        link.from.island = IslandAt(link.from.map, link.from.x, link.from.y, link.from.z);
+    if (!link.to.island)
+        link.to.island = IslandAt(link.to.map, link.to.x, link.to.y, link.to.z);
+
     uint32 const fromTeam = link.anywhere ? 0 : AreaTeam(AreaAt(link.from));
     uint32 const arrivalArea = AreaAt(link.to);
     uint32 const toTeam = AreaTeam(arrivalArea);
@@ -183,15 +199,64 @@ void ContinentRouteCatalog::Add(Link const& link, bool alliance, bool horde)
     _maps.insert(link.to.map);
 }
 
+void ContinentRouteCatalog::LoadTravelNodes(TravelNodeData& data)
+{
+    if (PreparedQueryResult result =
+            PlayerbotsDatabase.Query(PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_TRAVELNODE)))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 const mapId = fields[2].Get<uint32>();
+            if (IsWorldMap(mapId))
+                data.nodes.push_back({fields[0].Get<uint32>(),
+                                      {mapId, fields[3].Get<float>(), fields[4].Get<float>(), fields[5].Get<float>()}});
+        } while (result->NextRow());
+    }
+
+    if (PreparedQueryResult result =
+            PlayerbotsDatabase.Query(PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_TRAVELNODE_LINK)))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint8 const type = fields[2].Get<uint8>();
+            if (type == uint8(TravelNodePathType::walk))
+                data.walks.emplace_back(fields[0].Get<uint32>(), fields[1].Get<uint32>());
+            else if (type == uint8(TravelNodePathType::transport))
+                data.lifts.push_back({fields[0].Get<uint32>(), fields[1].Get<uint32>(), uint32(fields[3].Get<uint64>()),
+                                      fields[6].Get<float>()});
+        } while (result->NextRow());
+    }
+}
+
 void ContinentRouteCatalog::Build()
 {
     _entries.clear();
     _teleportSpells.clear();
     _maps.clear();
+    _islandCells.clear();
 
     uint32 transports = 0;
     uint32 portals = 0;
     uint32 triggers = 0;
+    uint32 lifts = 0;
+
+    // Islands are the areas the travel data joins by walking: Teldrassil above Rut'theran,
+    // Thunder Bluff's mesas above Mulgore, either end of the Deeprun Tram.
+    TravelNodeData data;
+    LoadTravelNodes(data);
+    std::vector<uint32> const islands = ContinentRoutes::Islands(data.nodes, data.walks);
+    std::unordered_map<uint32, Point> nodes;
+    for (std::size_t i = 0; i < data.nodes.size(); ++i)
+    {
+        Point at = data.nodes[i].at;
+        at.island = islands[i];
+        nodes[data.nodes[i].id] = at;
+        _islandCells[IslandCell(at.map, int32(std::floor(at.x / ContinentTravel::IslandCellSize)),
+                                int32(std::floor(at.y / ContinentTravel::IslandCellSize)))]
+            .push_back({at.x, at.y, at.z, at.island});
+    }
 
     for (auto const& [entry, goInfo] : *sObjectMgr->GetGameObjectTemplates())
     {
@@ -211,8 +276,7 @@ void ContinentRouteCatalog::Build()
         {
             KeyFrame const* departure = stops[i];
             KeyFrame const* arrival = stops[(i + 1) % stops.size()];
-            if (departure->Node->mapid == arrival->Node->mapid || !IsContinent(departure->Node->mapid) ||
-                !IsContinent(arrival->Node->mapid))
+            if (departure == arrival || !IsWorldMap(departure->Node->mapid) || !IsWorldMap(arrival->Node->mapid))
                 continue;
 
             Link link;
@@ -227,14 +291,18 @@ void ContinentRouteCatalog::Build()
         }
     }
 
-    for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+    std::unordered_map<uint32, std::vector<Point>> liftSpawns;
+    for (auto const& [spawnId, spawn] : sObjectMgr->GetAllGOData())
     {
-        if (!IsContinent(data.mapid) || !(data.phaseMask & PHASEMASK_NORMAL))
+        if (!IsWorldMap(spawn.mapid) || !(spawn.phaseMask & PHASEMASK_NORMAL))
             continue;
 
-        GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(data.id);
+        GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(spawn.id);
         if (!goInfo)
             continue;
+
+        if (goInfo->type == GAMEOBJECT_TYPE_TRANSPORT)
+            liftSpawns[spawn.id].push_back({spawn.mapid, spawn.posX, spawn.posY, spawn.posZ});
 
         uint32 const spellId = goInfo->type == GAMEOBJECT_TYPE_SPELLCASTER ? goInfo->spellcaster.spellId
                                : goInfo->type == GAMEOBJECT_TYPE_GOOBER    ? goInfo->goober.spellId
@@ -242,15 +310,15 @@ void ContinentRouteCatalog::Build()
         Link link;
         link.kind = LinkKind::Portal;
         link.object = spawnId;
-        link.from = {data.mapid, data.posX, data.posY, data.posZ};
+        link.from = {spawn.mapid, spawn.posX, spawn.posY, spawn.posZ};
         link.seconds = ContinentRoutes::PortalSeconds;
-        if (!spellId || !TeleportDestination(spellId, link.to) || !IsContinent(link.to.map) ||
+        if (!spellId || !TeleportDestination(spellId, link.to) || !IsWorldMap(link.to.map) ||
             (link.to.map == link.from.map && ContinentRoutes::Distance(link.from, link.to) < SameMapPortalMinimumYards))
             continue;
 
         bool alliance = true;
         bool horde = true;
-        if (GameObjectTemplateAddon const* addon = sObjectMgr->GetGameObjectTemplateAddon(data.id))
+        if (GameObjectTemplateAddon const* addon = sObjectMgr->GetGameObjectTemplateAddon(spawn.id))
             if (FactionTemplateEntry const* faction = sFactionTemplateStore.LookupEntry(addon->faction))
             {
                 alliance = !(faction->hostileMask & FACTION_MASK_ALLIANCE);
@@ -265,8 +333,8 @@ void ContinentRouteCatalog::Build()
     {
         AreaTriggerTeleport const* teleport = sObjectMgr->GetAreaTriggerTeleport(id);
         AreaTrigger const* trigger = teleport ? sObjectMgr->GetAreaTrigger(id) : nullptr;
-        if (!trigger || trigger->map == teleport->target_mapId || !IsContinent(trigger->map) ||
-            !IsContinent(teleport->target_mapId))
+        if (!trigger || trigger->map == teleport->target_mapId || !IsWorldMap(trigger->map) ||
+            !IsWorldMap(teleport->target_mapId))
             continue;
 
         Link link;
@@ -277,6 +345,36 @@ void ContinentRouteCatalog::Build()
         link.seconds = ContinentRoutes::PortalSeconds;
         Add(link, true, true);
         ++triggers;
+    }
+
+    // Elevators and trams run back and forth between two stops of the travel data; only static
+    // transports spawned at one of the stops count, as the travel data also lists ships.
+    for (LiftSource const& lift : data.lifts)
+    {
+        auto const from = nodes.find(lift.from);
+        auto const to = nodes.find(lift.to);
+        auto const spawns = liftSpawns.find(lift.entry);
+        if (from == nodes.end() || to == nodes.end() || spawns == liftSpawns.end() ||
+            from->second.map != to->second.map ||
+            ContinentRoutes::Distance(from->second, to->second) < ContinentRoutes::MinimumLiftYards)
+            continue;
+
+        bool spawned = false;
+        for (Point const& spawn : spawns->second)
+            for (Point const& stop : {from->second, to->second})
+                spawned = spawned || (spawn.map == stop.map && std::hypot(spawn.x - stop.x, spawn.y - stop.y) <=
+                                                                   ContinentTravel::LiftSpawnYards);
+        if (!spawned)
+            continue;
+
+        Link link;
+        link.kind = LinkKind::Lift;
+        link.object = lift.entry;
+        link.from = from->second;
+        link.to = to->second;
+        link.seconds = lift.seconds + ContinentRoutes::LiftWaitSeconds;
+        Add(link, true, true);
+        ++lifts;
     }
 
     // Trainer-taught teleports with a fixed destination, such as a mage's city teleports.
@@ -293,15 +391,53 @@ void ContinentRouteCatalog::Build()
         SkillLineAbilityMapBounds const abilities = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
         Point to;
         if (!teleports || abilities.first == abilities.second || !TeleportDestination(spellId, to) ||
-            !IsContinent(to.map))
+            !IsWorldMap(to.map))
             continue;
 
+        to.island = IslandAt(to.map, to.x, to.y, to.z);
         _teleportSpells.push_back({spellId, to, ZoneOf(AreaAt(to))});
     }
 
+    _built = true;
     LOG_INFO("playerbots",
-             ">> Continent routes: {} transport, {} portal and {} area trigger links, {} teleport spells.", transports,
-             portals, triggers, _teleportSpells.size());
+             ">> Continent routes: {} transport, {} portal, {} area trigger and {} lift links, {} teleport spells, "
+             "{} islands.",
+             transports, portals, triggers, lifts, _teleportSpells.size(),
+             islands.empty() ? 0 : *std::max_element(islands.begin(), islands.end()));
+}
+
+uint32 ContinentRouteCatalog::IslandAt(uint32 mapId, float x, float y, float z) const
+{
+    int32 const cellX = int32(std::floor(x / ContinentTravel::IslandCellSize));
+    int32 const cellY = int32(std::floor(y / ContinentTravel::IslandCellSize));
+    uint32 island = 0;
+    float nearest = ContinentTravel::IslandNodeRadius * ContinentTravel::IslandNodeRadius;
+    for (int32 dx = -1; dx <= 1; ++dx)
+        for (int32 dy = -1; dy <= 1; ++dy)
+        {
+            auto const cell = _islandCells.find(IslandCell(mapId, cellX + dx, cellY + dy));
+            if (cell == _islandCells.end())
+                continue;
+
+            for (IslandNode const& node : cell->second)
+            {
+                float const distance =
+                    (node.x - x) * (node.x - x) + (node.y - y) * (node.y - y) + (node.z - z) * (node.z - z);
+                if (distance <= nearest)
+                {
+                    nearest = distance;
+                    island = node.island;
+                }
+            }
+        }
+    return island;
+}
+
+Point ContinentRouteCatalog::Locate(WorldPosition const& position) const
+{
+    Point point = ContinentTravel::ToPoint(position);
+    point.island = IslandAt(point.map, point.x, point.y, point.z);
+    return point;
 }
 
 bool ContinentRouteCatalog::CanArrive(Player* bot, Point const& to, uint32 arrivalZone)
@@ -339,6 +475,7 @@ std::vector<Link> ContinentRouteCatalog::UsableLinks(Player* bot, ContinentRoute
         link.kind = LinkKind::Hearthstone;
         link.object = ITEM_HEARTHSTONE;
         link.to = {bot->m_homebindMapId, bot->m_homebindX, bot->m_homebindY, bot->m_homebindZ};
+        link.to.island = IslandAt(link.to.map, link.to.x, link.to.y, link.to.z);
         link.seconds = ContinentRoutes::CastSeconds + ContinentRoutes::HearthstonePenaltySeconds;
         link.anywhere = true;
         if (Open(state, link) && CanArrive(bot, link.to, ZoneOf(bot->m_homebindAreaId)))
@@ -357,27 +494,61 @@ Point ToPoint(WorldPosition const& position)
 
 WorldPosition ToPosition(Point const& point) { return WorldPosition(point.map, point.x, point.y, point.z); }
 
+bool OnTransport(GameObject const* transport, uint32 phaseMask, float x, float y, float z)
+{
+    if (!transport || !transport->m_model)
+        return false;
+
+    G3D::Ray const ray(G3D::Vector3(x, y, z + 2.0f), G3D::Vector3(0.0f, 0.0f, -1.0f));
+    float distance = 4.0f;
+    return transport->m_model->intersectRay(ray, distance, false, phaseMask, VMAP::ModelIgnoreFlags::Nothing);
+}
+
+GameObject* NearestTransport(Player* bot, uint32 entry, float range)
+{
+    // Ships and zeppelins move between grids and are kept apart from them.
+    GameObject* nearest = nullptr;
+    float distance = range;
+    for (Transport* transport : bot->GetMap()->GetAllTransports())
+        if (transport->GetEntry() == entry && bot->GetExactDist2d(transport) <= distance)
+        {
+            nearest = transport;
+            distance = bot->GetExactDist2d(transport);
+        }
+    return nearest ? nearest : bot->FindNearestGameObject(entry, range);
+}
+
+Transport* LiftUnder(Player* bot, uint32 entry)
+{
+    uint32 const phase = bot->GetPhaseMask();
+    if (Transport* current = bot->GetTransport())
+        if (!current->ToMotionTransport() &&
+            OnTransport(current, phase, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()))
+            return current;
+
+    if (!entry)
+        return nullptr;
+
+    GameObject* lift = bot->FindNearestGameObject(entry, NearStopRadius);
+    Transport* transport = lift ? lift->ToTransport() : nullptr;
+    return transport && OnTransport(transport, phase, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ())
+               ? transport
+               : nullptr;
+}
+
 namespace
 {
 constexpr float DeckProbeStep = 1.0f;
 constexpr float DeckHeightTolerance = 15.0f;
 constexpr uint32 DockPathChecks = 4;
 
-Transport* TransportAt(Player* bot, float x, float y, float z)
-{
-    for (float const probe : {z, z + 1.5f, z - 0.5f})
-        if (Transport* transport = bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), x, y, probe, bot))
-            return transport;
-    return nullptr;
-}
-
-// Dry ground within range of center at about height z, nearest to center first.
-std::vector<WorldPosition> DryGround(Player* bot, float centerX, float centerY, float z, float range,
-                                     Transport* exclude)
+// Dry ground within range of center at about height z and off the excluded transport, nearest first.
+std::vector<WorldPosition> DryGround(Player* bot, float centerX, float centerY, float z, float minimum, float range,
+                                     GameObject const* exclude)
 {
     Map* map = bot->GetMap();
     std::vector<WorldPosition> points;
-    for (float radius = 3.0f; radius <= range; radius += 3.0f)
+    for (float radius = minimum; radius <= range; radius += 3.0f)
     {
         for (uint32 step = 0; step < 24; ++step)
         {
@@ -387,7 +558,7 @@ std::vector<WorldPosition> DryGround(Player* bot, float centerX, float centerY, 
             float const ground = map->GetHeight(bot->GetPhaseMask(), x, y, z + 5.0f, true, DeckHeightTolerance + 5.0f);
             if (ground <= INVALID_HEIGHT || std::fabs(ground - z) > DeckHeightTolerance ||
                 map->IsInWater(bot->GetPhaseMask(), x, y, ground, bot->GetCollisionHeight()) ||
-                (exclude && TransportAt(bot, x, y, ground) == exclude))
+                OnTransport(exclude, bot->GetPhaseMask(), x, y, ground))
                 continue;
 
             points.push_back(WorldPosition(bot->GetMapId(), x, y, ground + 0.5f));
@@ -416,10 +587,11 @@ bool IsDocked(MotionTransport const* transport, Point const* stop)
     return false;
 }
 
-bool FindDock(Player* bot, Point const& stop, WorldPosition& dock)
+bool FindDock(Player* bot, Point const& stop, GameObject const* transport, WorldPosition& dock)
 {
     uint32 checks = 0;
-    for (WorldPosition const& point : DryGround(bot, stop.x, stop.y, stop.z, DockSearchRadius, nullptr))
+    for (WorldPosition const& point :
+         DryGround(bot, stop.x, stop.y, stop.z, DockMinimumYards, DockSearchRadius, transport))
     {
         if (checks++ >= DockPathChecks)
             break;
@@ -450,7 +622,7 @@ bool FindBoardingPoint(Player* bot, Transport* transport, WorldPosition& point)
     {
         float const x = transport->GetPositionX() + dx / distance * travelled;
         float const y = transport->GetPositionY() + dy / distance * travelled;
-        if (TransportAt(bot, x, y, bot->GetPositionZ()) != transport)
+        if (!OnTransport(transport, bot->GetPhaseMask(), x, y, bot->GetPositionZ()))
         {
             if (found)
                 break;
@@ -472,8 +644,8 @@ bool FindBoardingPoint(Player* bot, Transport* transport, WorldPosition& point)
 
 bool FindLandingPoint(Player* bot, Transport* transport, WorldPosition& point)
 {
-    std::vector<WorldPosition> const points =
-        DryGround(bot, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), DockSearchRadius, transport);
+    std::vector<WorldPosition> const points = DryGround(bot, bot->GetPositionX(), bot->GetPositionY(),
+                                                        bot->GetPositionZ(), 3.0f, DockSearchRadius, transport);
     if (points.empty())
         return false;
 

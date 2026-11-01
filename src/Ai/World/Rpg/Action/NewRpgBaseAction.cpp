@@ -1030,6 +1030,7 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
             inCity = true;
     }
 
+    ContinentRoutes::Point const here = sContinentRoutes.Locate(WorldPosition(bot));
     for (auto& loc : locs)
     {
         if (bot->GetMapId() != loc.GetMapId())
@@ -1040,6 +1041,10 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
                                                 loc.GetPositionZ()) != bot->GetZoneId())
+            continue;
+
+        // A spot across the water or up a lift needs a route, not a walk.
+        if (!ContinentRoutes::SameArea(here, sContinentRoutes.Locate(WorldPosition(loc))))
             continue;
 
         if (bot->GetExactDist(loc) < hiRange)
@@ -1082,6 +1087,7 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
     }
 
     std::vector<WorldLocation> prepared_locs;
+    ContinentRoutes::Point const here = sContinentRoutes.Locate(WorldPosition(bot));
     for (auto& loc : locs)
     {
         if (bot->GetMapId() != loc.GetMapId())
@@ -1096,6 +1102,9 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
 
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
                                                 loc.GetPositionZ()) != bot->GetZoneId())
+            continue;
+
+        if (!ContinentRoutes::SameArea(here, sContinentRoutes.Locate(WorldPosition(loc))))
             continue;
 
         prepared_locs.push_back(loc);
@@ -1360,31 +1369,34 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
     return false;
 }
 
-bool NewRpgBaseAction::HasTravelHubOnMap()
+bool NewRpgBaseAction::HasTravelHubHere()
 {
+    ContinentRoutes::Point const here = sContinentRoutes.Locate(WorldPosition(bot));
     for (WorldLocation const& hub : sTravelMgr.GetTravelHubs(bot))
-        if (hub.GetMapId() == bot->GetMapId())
+        if (ContinentRoutes::SameArea(here, sContinentRoutes.Locate(WorldPosition(hub))))
             return true;
     return false;
 }
 
 WorldPosition NewRpgBaseAction::SelectContinentDestination()
 {
+    ContinentRoutes::Point const here = sContinentRoutes.Locate(WorldPosition(bot));
     std::vector<WorldLocation> hubs;
     std::vector<ContinentRoutes::Point> goals;
     for (WorldLocation const& hub : sTravelMgr.GetTravelHubs(bot))
     {
-        if (hub.GetMapId() == bot->GetMapId() || !sContinentRoutes.Connects(hub.GetMapId()))
+        ContinentRoutes::Point const goal = sContinentRoutes.Locate(WorldPosition(hub));
+        if (ContinentRoutes::SameArea(here, goal) || !sContinentRoutes.Connects(hub.GetMapId()))
             continue;
         hubs.push_back(hub);
-        goals.push_back(ContinentTravel::ToPoint(WorldPosition(hub)));
+        goals.push_back(goal);
     }
     if (hubs.empty())
         return WorldPosition();
 
     std::vector<ContinentRoutes::Link> const links = sContinentRoutes.UsableLinks(bot, botAI->continentRoute);
-    ContinentRoutes::Search const search = ContinentRoutes::Explore(links, ContinentTravel::ToPoint(WorldPosition(bot)),
-                                                                    [](ContinentRoutes::Link const&) { return true; });
+    ContinentRoutes::Search const search =
+        ContinentRoutes::Explore(links, here, [](ContinentRoutes::Link const&) { return true; });
     std::vector<float> seconds;
     for (ContinentRoutes::Point const& goal : goals)
         seconds.push_back(ContinentRoutes::RouteTo(links, search, goal).seconds);
@@ -1407,10 +1419,15 @@ bool NewRpgBaseAction::MoveToMap(WorldPosition const& dest, bool master)
         return false;
 
     if (Transport* transport = bot->GetTransport())
+    {
         if (transport->ToMotionTransport())
             return RideTransport(route, transport);
+        if (route.hasLink && route.link.kind == ContinentRoutes::LinkKind::Lift)
+            return RideLift(route, transport);
+    }
 
-    if (route.hasLink && route.usedAt && route.link.kind != ContinentRoutes::LinkKind::Transport)
+    if (route.hasLink && route.usedAt && route.link.kind != ContinentRoutes::LinkKind::Transport &&
+        route.link.kind != ContinentRoutes::LinkKind::Lift)
     {
         if (bot->GetMapId() == route.link.to.map &&
             bot->GetExactDist(ContinentTravel::ToPosition(route.link.to)) < ContinentTravel::ArrivalRadius)
@@ -1432,8 +1449,8 @@ bool NewRpgBaseAction::MoveToMap(WorldPosition const& dest, bool master)
         route.ClearLink();
         std::vector<ContinentRoutes::Link> const links = sContinentRoutes.UsableLinks(bot, route);
         ContinentRoutes::Search const search = ContinentRoutes::Explore(
-            links, ContinentTravel::ToPoint(WorldPosition(bot)), [](ContinentRoutes::Link const&) { return true; });
-        ContinentRoutes::Route const path = ContinentRoutes::RouteTo(links, search, ContinentTravel::ToPoint(dest));
+            links, sContinentRoutes.Locate(WorldPosition(bot)), [](ContinentRoutes::Link const&) { return true; });
+        ContinentRoutes::Route const path = ContinentRoutes::RouteTo(links, search, sContinentRoutes.Locate(dest));
         if (!path.Found())
         {
             route.noRouteAt = getMSTime();
@@ -1515,6 +1532,8 @@ bool NewRpgBaseAction::TakeLink(ContinentRouteState& route)
     ContinentRoutes::Link const& link = route.link;
     if (link.kind == ContinentRoutes::LinkKind::Transport)
         return BoardTransport(route);
+    if (link.kind == ContinentRoutes::LinkKind::Lift)
+        return BoardLift(route);
 
     if (link.anywhere)
         return UseLinkObject(route);
@@ -1610,7 +1629,9 @@ bool NewRpgBaseAction::BoardTransport(ContinentRouteState& route)
             MoveOverland(stop);
             return true;
         }
-        if (!ContinentTravel::FindDock(bot, link.from, route.dock))
+        if (!ContinentTravel::FindDock(
+                bot, link.from, ContinentTravel::NearestTransport(bot, link.object, ContinentTravel::NearStopRadius),
+                route.dock))
         {
             FailLink(route);
             return true;
@@ -1673,6 +1694,70 @@ bool NewRpgBaseAction::RideTransport(ContinentRouteState& route, Transport* tran
         MoveStraightTo(landing);
         if (planned)
             route.ClearLink();
+    }
+    return true;
+}
+
+bool NewRpgBaseAction::BoardLift(ContinentRouteState& route)
+{
+    ContinentRoutes::Link const& link = route.link;
+    WorldPosition const from = ContinentTravel::ToPosition(link.from);
+    GameObject* lift = ContinentTravel::NearestTransport(bot, link.object, ContinentTravel::NearStopRadius);
+    if (route.dock == WorldPosition())
+    {
+        if (bot->GetExactDist(from) > ContinentTravel::NearStopRadius)
+        {
+            MoveOverland(from);
+            return true;
+        }
+        if (!lift || !ContinentTravel::FindDock(bot, link.from, lift, route.dock))
+        {
+            FailLink(route);
+            return true;
+        }
+    }
+
+    if (route.usedAt && GetMSTimeDiffToNow(route.usedAt) >= ContinentTravel::BoardingTimeoutMs)
+    {
+        route.usedAt = 0;
+        if (++route.attempts >= ContinentTravel::BoardingAttempts)
+        {
+            FailLink(route);
+            return true;
+        }
+    }
+
+    if (!route.usedAt && bot->GetExactDist(route.dock) > 4.0f)
+    {
+        MoveFarTo(route.dock);
+        return true;
+    }
+
+    // Step on only while the platform or car stands at this end.
+    if (!ContinentTravel::OnTransport(lift, bot->GetPhaseMask(), link.from.x, link.from.y, link.from.z))
+    {
+        route.usedAt = 0;
+        return true;
+    }
+
+    if (!route.usedAt)
+        route.usedAt = getMSTime();
+    MoveStraightTo(from);
+    return true;
+}
+
+bool NewRpgBaseAction::RideLift(ContinentRouteState& route, Transport* lift)
+{
+    ContinentRoutes::Point const& to = route.link.to;
+    if (std::fabs(bot->GetPositionZ() - to.z) > ContinentTravel::LiftArrivalHeight ||
+        bot->GetExactDist2d(to.x, to.y) > ContinentTravel::LiftArrivalYards)
+        return true;
+
+    WorldPosition landing;
+    if (ContinentTravel::FindLandingPoint(bot, lift, landing))
+    {
+        MoveStraightTo(landing);
+        route.ClearLink();
     }
     return true;
 }

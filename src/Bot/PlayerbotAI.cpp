@@ -655,6 +655,14 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         nextTransportCheck = 1000;
         Transport* newTransport = bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(),
                                                                     bot->GetPositionY(), bot->GetPositionZ(), bot);
+        if (sPlayerbotAIConfig.continentTravel && (!newTransport || !newTransport->ToMotionTransport()))
+        {
+            uint32 const lift = continentRoute.hasLink && continentRoute.link.kind == ContinentRoutes::LinkKind::Lift
+                                    ? continentRoute.link.object
+                                    : 0;
+            if (Transport* standing = ContinentTravel::LiftUnder(bot, lift))
+                newTransport = standing;
+        }
 
         if (newTransport != bot->GetTransport())
         {
