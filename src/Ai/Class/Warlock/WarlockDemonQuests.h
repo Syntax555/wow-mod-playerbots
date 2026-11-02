@@ -7,7 +7,7 @@
 #ifndef PLAYERBOTS_WARLOCKDEMONQUESTS_H
 #define PLAYERBOTS_WARLOCKDEMONQUESTS_H
 
-#include "NewRpgBaseAction.h"
+#include "ClassQuestAction.h"
 #include "Trigger.h"
 #include "Value.h"
 
@@ -36,26 +36,16 @@ public:
     bool IsActive() override;
 };
 
-class WarlockDemonQuestAction : public NewRpgBaseAction
+class WarlockDemonQuestAction : public ClassQuestAction
 {
 public:
-    WarlockDemonQuestAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "warlock demon quest") {}
+    WarlockDemonQuestAction(PlayerbotAI* botAI) : ClassQuestAction(botAI, "warlock demon quest") {}
     bool isUseful() override;
     bool Execute(Event event) override;
 
 private:
-    bool MoveToQuestLocation(Quest const* quest, bool reward);
-    bool MoveToQuestPosition(WorldPosition const& pos);
-    bool InteractWithQuestGiver(Quest const* quest, bool reward);
-    bool DoObjectives(Quest const* quest);
     bool UseRitual(WarlockDemonQuest const& data);
 
-    uint32 _objectiveQuest = 0;
-    uint32 _objectiveMap = 0;
-    uint32 _objectiveChecked = 0;
-    uint32 _objectiveIndex = 0;
-    bool _objectiveIsGameObject = false;
-    WorldPosition _objectivePos;
     uint32 _focusId = 0;
     uint32 _focusMap = 0;
     uint32 _focusChecked = 0;

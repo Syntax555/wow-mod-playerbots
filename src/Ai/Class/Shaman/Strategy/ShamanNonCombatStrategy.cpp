@@ -84,6 +84,8 @@ void ShamanNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
 
+    triggers.push_back(new TriggerNode("shaman totem quest", {NextAction("shaman totem quest", ACTION_NORMAL + 2)}));
+
     // Totemic Recall
     triggers.push_back(new TriggerNode("totemic recall", { NextAction("totemic recall", 60.0f) }));
 

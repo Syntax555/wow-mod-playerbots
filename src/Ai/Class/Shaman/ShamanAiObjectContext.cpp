@@ -5,6 +5,7 @@
  */
 
 #include "ShamanAiObjectContext.h"
+
 #include "ElementalShamanStrategy.h"
 #include "EnhancementShamanStrategy.h"
 #include "GenericShamanStrategy.h"
@@ -13,6 +14,7 @@
 #include "RestoShamanStrategy.h"
 #include "ShamanActions.h"
 #include "ShamanNonCombatStrategy.h"
+#include "ShamanTotemQuests.h"
 #include "ShamanTriggers.h"
 #include "TotemsShamanStrategy.h"
 
@@ -136,6 +138,7 @@ class ShamanATriggerFactoryInternal : public NamedObjectContext<Trigger>
 public:
     ShamanATriggerFactoryInternal()
     {
+        creators["shaman totem quest"] = &ShamanATriggerFactoryInternal::totem_quest;
         creators["wind shear"] = &ShamanATriggerFactoryInternal::wind_shear;
         creators["purge"] = &ShamanATriggerFactoryInternal::purge;
         creators["main hand weapon no imbue"] = &ShamanATriggerFactoryInternal::main_hand_weapon_no_imbue;
@@ -196,6 +199,7 @@ public:
     }
 
 private:
+    static Trigger* totem_quest(PlayerbotAI* botAI) { return new ShamanTotemQuestTrigger(botAI); }
     static Trigger* maelstrom_weapon_3(PlayerbotAI* botAI) { return new MaelstromWeaponTrigger(botAI, 3); }
     static Trigger* maelstrom_weapon_4(PlayerbotAI* botAI) { return new MaelstromWeaponTrigger(botAI, 4); }
     static Trigger* maelstrom_weapon_5(PlayerbotAI* botAI) { return new MaelstromWeaponTrigger(botAI, 5); }
@@ -260,6 +264,7 @@ class ShamanAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     ShamanAiObjectContextInternal()
     {
+        creators["shaman totem quest"] = &ShamanAiObjectContextInternal::totem_quest;
         creators["water shield"] = &ShamanAiObjectContextInternal::water_shield;
         creators["lightning shield"] = &ShamanAiObjectContextInternal::lightning_shield;
         creators["wind shear"] = &ShamanAiObjectContextInternal::wind_shear;
@@ -351,6 +356,7 @@ public:
     }
 
 private:
+    static Action* totem_quest(PlayerbotAI* botAI) { return new ShamanTotemQuestAction(botAI); }
     static Action* heroism(PlayerbotAI* botAI) { return new CastHeroismAction(botAI); }
     static Action* bloodlust(PlayerbotAI* botAI) { return new CastBloodlustAction(botAI); }
     static Action* elemental_mastery(PlayerbotAI* botAI) { return new CastElementalMasteryAction(botAI); }
@@ -441,6 +447,15 @@ private:
     static Action* set_grounding_totem(PlayerbotAI* botAI) { return new SetGroundingTotemAction(botAI); }
 };
 
+class ShamanValueFactoryInternal : public NamedObjectContext<UntypedValue>
+{
+public:
+    ShamanValueFactoryInternal() { creators["shaman totem quest"] = &ShamanValueFactoryInternal::totem_quest; }
+
+private:
+    static UntypedValue* totem_quest(PlayerbotAI* botAI) { return new ShamanTotemQuestValue(botAI); }
+};
+
 SharedNamedObjectContextList<Strategy> ShamanAiObjectContext::sharedStrategyContexts;
 SharedNamedObjectContextList<Action> ShamanAiObjectContext::sharedActionContexts;
 SharedNamedObjectContextList<Trigger> ShamanAiObjectContext::sharedTriggerContexts;
@@ -485,4 +500,5 @@ void ShamanAiObjectContext::BuildSharedTriggerContexts(SharedNamedObjectContextL
 void ShamanAiObjectContext::BuildSharedValueContexts(SharedNamedObjectContextList<UntypedValue>& valueContexts)
 {
     AiObjectContext::BuildSharedValueContexts(valueContexts);
+    valueContexts.Add(new ShamanValueFactoryInternal());
 }

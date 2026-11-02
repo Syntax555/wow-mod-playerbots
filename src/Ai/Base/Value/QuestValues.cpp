@@ -6,10 +6,11 @@
 
 #include "QuestValues.h"
 
+#include <array>
+
 #include "MapMgr.h"
 #include "Playerbots.h"
 #include "SharedValueContext.h"
-#include <array>
 
 // What kind of a relation does this entry have with this quest.
 entryQuestRelationMap EntryQuestRelationMapValue::Calculate()
@@ -26,7 +27,7 @@ entryQuestRelationMap EntryQuestRelationMapValue::Calculate()
         rMap[-(int32)relation.first][relation.second] |= (int)QuestRelationFlag::questGiver;
 
     for (auto relation : *sObjectMgr->GetGOQuestInvolvedRelationMap())
-        rMap[-(int32)relation.first][relation.second] |= (int)QuestRelationFlag::questGiver;
+        rMap[-(int32)relation.first][relation.second] |= (int)QuestRelationFlag::questTaker;
 
     // Quest objectives
     ObjectMgr::QuestMap const& questMap = sObjectMgr->GetQuestTemplates();
@@ -66,7 +67,7 @@ void FindQuestObjectData::GetObjectiveEntries()
 // `creature_multispawn` alternates rolled between on respawn. 0 = no alternate.
 static std::array<uint32, 3> SpawnEntries(CreatureData const& creData)
 {
-    return { creData.id, creData.id2, creData.id3 };
+    return {creData.id, creData.id2, creData.id3};
 }
 
 // Data worker. Checks for a specific creature what quest they are needed for and puts them in the proper place in the
@@ -148,29 +149,30 @@ std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
         if (q == questMap.end())
             continue;
 
-        auto qt = q->second.find((int)QuestRelationFlag::questTaker);
-
-        if (qt == q->second.end())
-            continue;
-
-        for (auto& entry : qt->second)
+        for (auto& relation : q->second)
         {
-            if (entry.first > 0)
+            if (!(relation.first & (uint32)QuestRelationFlag::questTaker))
+                continue;
+
+            for (auto& entry : relation.second)
             {
-                if (CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(entry.first))
+                if (entry.first > 0)
                 {
-                    if (bot->GetFactionReactionTo(bot->GetFactionTemplateEntry(),
-                                                  sFactionTemplateStore.LookupEntry(info->faction)) < REP_FRIENDLY)
-                        continue;
+                    if (CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(entry.first))
+                    {
+                        if (bot->GetFactionReactionTo(bot->GetFactionTemplateEntry(),
+                                                      sFactionTemplateStore.LookupEntry(info->faction)) < REP_FRIENDLY)
+                            continue;
+                    }
                 }
-            }
 
-            for (auto& guidp : entry.second)
-            {
-                if (!guidp.IsCreatureOrGOAccessible())
-                    continue;
+                for (auto& guidp : entry.second)
+                {
+                    if (!guidp.IsCreatureOrGOAccessible())
+                        continue;
 
-                retQuestTakers.push_back(guidp);
+                    retQuestTakers.push_back(guidp);
+                }
             }
         }
     }
@@ -225,19 +227,20 @@ std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
             if (q == questMap.end())
                 continue;
 
-            auto qt = q->second.find((int)QuestRelationFlag(1 << objective));
-
-            if (qt == q->second.end())
-                continue;
-
-            for (auto& entry : qt->second)
+            for (auto& relation : q->second)
             {
-                for (auto& guidp : entry.second)
-                {
-                    if (!guidp.IsCreatureOrGOAccessible())
-                        continue;
+                if (!(relation.first & (1u << objective)))
+                    continue;
 
-                    retQuestObjectives.push_back(guidp);
+                for (auto& entry : relation.second)
+                {
+                    for (auto& guidp : entry.second)
+                    {
+                        if (!guidp.IsCreatureOrGOAccessible())
+                            continue;
+
+                        retQuestObjectives.push_back(guidp);
+                    }
                 }
             }
         }
