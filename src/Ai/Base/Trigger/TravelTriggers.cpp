@@ -8,6 +8,7 @@
 
 #include "ContinentRoutes.h"
 #include "Playerbots.h"
+#include "Transport.h"
 
 bool NoTravelTargetTrigger::IsActive() { return !context->GetValue<TravelTarget*>("travel target")->Get()->isActive(); }
 
@@ -25,6 +26,12 @@ bool MasterFarAwayTrigger::IsActive()
     Player* master = botAI->GetMaster();
     if (!master || master == bot || !master->IsInWorld() || master->IsBeingTeleported() || master->IsInFlight() ||
         master->GetTransport() || master->GetMap()->Instanceable())
+        return false;
+
+    // A bot on a lift or tram car outside a route of its own steps off while following first.
+    ContinentRouteState const& route = botAI->continentRoute;
+    if (Transport* ride = bot->GetTransport();
+        ride && ride->IsStaticTransport() && !(route.hasLink && route.link.kind == ContinentRoutes::LinkKind::Lift))
         return false;
 
     if (master->GetMapId() != bot->GetMapId())

@@ -155,12 +155,28 @@ constexpr float IslandCellSize = 250.0f;
 constexpr float LiftSpawnYards = 40.0f;
 constexpr float LiftArrivalHeight = 3.0f;
 constexpr float LiftArrivalYards = 15.0f;
+constexpr float CompanionBoardingYards = 60.0f;  // as far as following helps a bot onto its master's ship
+constexpr float StepOnYards = 10.0f;
+constexpr uint32 BoardingMarginMs = 2 * IN_MILLISECONDS;  // the step on and the next transport check
+constexpr uint32 StepOffMs = 2 * IN_MILLISECONDS;
+constexpr uint32 HoldStepMs = 250;
+
+// What a companion does about the transport that carries its master or itself.
+enum class Ride : uint8
+{
+    Follow,  // follow as usual, which boards a docked ship with the master
+    Board,   // walk onto the master's lift or tram car at the point
+    Leave,   // step off the bot's lift or tram car at the point
+    Hold     // keep still: riding with the master, or waiting for its car or ship to come back
+};
 
 ContinentRoutes::Point ToPoint(WorldPosition const& position);
 WorldPosition ToPosition(ContinentRoutes::Point const& point);
 
 // Whether the transport waits at stop, or at any of its stops when stop is null.
 bool IsDocked(MotionTransport const* transport, ContinentRoutes::Point const* stop);
+// Whether a lift or tram car stays where it is for the next ms milliseconds.
+bool HoldsStill(Transport const* transport, uint32 ms);
 // Whether the transport's model lies under the point, within a step.
 bool OnTransport(GameObject const* transport, uint32 phaseMask, float x, float y, float z);
 // The nearest ship, zeppelin or lift of entry.
@@ -174,6 +190,8 @@ bool FindDock(Player* bot, ContinentRoutes::Point const& stop, GameObject const*
 bool FindBoardingPoint(Player* bot, Transport* transport, WorldPosition& point);
 // Dry ground off the transport close to the bot, at about deck height.
 bool FindLandingPoint(Player* bot, Transport* transport, WorldPosition& point);
+// A companion's step about the transport that carries its master (null when none) or itself.
+Ride CompanionRide(Player* bot, Transport* carrier, WorldPosition& point);
 }  // namespace ContinentTravel
 
 #endif

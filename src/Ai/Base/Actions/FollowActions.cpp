@@ -5,6 +5,7 @@
  */
 
 #include "FollowActions.h"
+#include "ContinentRoutes.h"
 #include "Event.h"
 #include "Formations.h"
 #include "LastMovementValue.h"
@@ -122,6 +123,31 @@ bool FollowAction::Execute(Event /*event*/)
             masterOnTransport = (transport != nullptr);
         }
 
+        // Lifts, trams and ships carry only the bots aboard. A bot boards while they wait, keeps still while
+        // riding and waits for a missed one; continent travel then brings it after its master.
+        if (sPlayerbotAIConfig.continentTravel && map && !map->Instanceable())
+        {
+            WorldPosition point;
+            switch (ContinentTravel::CompanionRide(bot, transport, point))
+            {
+                case ContinentTravel::Ride::Board:
+                    if (bot->GetExactDist(point) > ContinentTravel::StepOnYards)
+                        return MoveTo(point.GetMapId(), point.GetPositionX(), point.GetPositionY(),
+                                      point.GetPositionZ());
+                    StepOnto(point);
+                    return true;
+                case ContinentTravel::Ride::Leave:
+                    StepOnto(point);
+                    return true;
+                case ContinentTravel::Ride::Hold:
+                    if (bot->isMoving())
+                        bot->StopMovingOnCurrentPos();
+                    return true;
+                case ContinentTravel::Ride::Follow:
+                    break;
+            }
+        }
+
         // Ignore static transports (elevators/trams): only keep boats/zeppelins here.
         if (transport && transport->IsStaticTransport())
             transport = nullptr;
@@ -234,6 +260,26 @@ bool FollowAction::Execute(Event /*event*/)
     return moved;
 }
 
+bool FollowAction::StepOnto(WorldPosition const& point)
+{
+    MovementPriority const priority =
+        botAI->GetState() == BOT_STATE_COMBAT ? MovementPriority::MOVEMENT_COMBAT : MovementPriority::MOVEMENT_NORMAL;
+    float const x = point.GetPositionX(), y = point.GetPositionY(), z = point.GetPositionZ();
+    if (!IsMovingAllowed() || IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
+        return false;
+
+    if (bot->IsSitState())
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+
+    // Transport decks are not on the navigation mesh, so the step on or off is a straight line.
+    bot->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false, false);
+    float const delay = std::min(IN_MILLISECONDS * MoveDelay(bot->GetExactDist(x, y, z)),
+                                 float(sPlayerbotAIConfig.MaxWaitForMove));
+    AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
+    ClearIdleState();
+    return true;
+}
+
 bool FollowAction::isUseful()
 {
     // move from group takes priority over follow as it's added and removed automatically
@@ -269,6 +315,17 @@ bool FollowAction::isUseful()
 
         if (fTarget->GetGUID() == bot->GetGUID())
             return false;
+    }
+
+    // Boarding or leaving the master's lift or tram car does not wait for the formation distance.
+    Player* master = botAI->GetMaster();
+    if (sPlayerbotAIConfig.continentTravel && master && fTarget == master && master->IsInWorld() &&
+        master->GetMap() == bot->GetMap() && !bot->GetMap()->Instanceable())
+    {
+        Transport* const carrier = master->GetTransport();
+        Transport* const ride = bot->GetTransport();
+        if (carrier != ride && ((carrier && carrier->IsStaticTransport()) || (ride && ride->IsStaticTransport())))
+            return true;
     }
 
     float distance = 0.f;

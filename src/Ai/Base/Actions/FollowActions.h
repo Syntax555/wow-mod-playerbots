@@ -9,6 +9,8 @@
 
 #include "MovementActions.h"
 
+class WorldPosition;
+
 class PlayerbotAI;
 
 class FollowAction : public MovementAction
@@ -19,6 +21,9 @@ public:
     bool Execute(Event event) override;
     bool isUseful() override;
     bool CanDeadFollow(Unit* target);
+
+private:
+    bool StepOnto(WorldPosition const& point);
 };
 
 #endif

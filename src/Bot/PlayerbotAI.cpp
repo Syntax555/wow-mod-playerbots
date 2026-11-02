@@ -668,9 +668,14 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                                                                     bot->GetPositionY(), bot->GetPositionZ(), bot);
         if (sPlayerbotAIConfig.continentTravel && (!newTransport || !newTransport->ToMotionTransport()))
         {
-            uint32 const lift = continentRoute.hasLink && continentRoute.link.kind == ContinentRoutes::LinkKind::Lift
-                                    ? continentRoute.link.object
-                                    : 0;
+            uint32 lift = continentRoute.hasLink && continentRoute.link.kind == ContinentRoutes::LinkKind::Lift
+                              ? continentRoute.link.object
+                              : 0;
+            // A companion rides the lift or tram car its master stands on.
+            Player* master = GetMaster();
+            if (!lift && master && master != bot && master->IsInWorld() && master->GetMap() == bot->GetMap())
+                if (Transport* carrier = master->GetTransport(); carrier && carrier->IsStaticTransport())
+                    lift = carrier->GetEntry();
             if (Transport* standing = ContinentTravel::LiftUnder(bot, lift))
                 newTransport = standing;
         }

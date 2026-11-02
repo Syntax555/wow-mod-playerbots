@@ -98,10 +98,11 @@ Playerbots.EarnedAuctions = 0
 # Base seconds between visits, plus per-bot staggering; clamped to 60..3600.
 Playerbots.EarnedAuctionInterval = 300
 
-# Optional travel between maps on ships, zeppelins, portals, teleporting area triggers and the
-# bot's own teleport spells or hearthstone, using only links open to its faction and earned era.
-# Random bots leave a map that has no inn or camp for their level; companions follow their
-# master to another continent or over long distances, with discovered flights where shorter.
+# Optional travel between maps and walk-separated islands on ships, zeppelins, elevators, trams,
+# portals, teleporting area triggers and the bot's own teleport spells or hearthstone, using only
+# links open to its faction and earned era. Random bots leave a map or island that has no inn or
+# camp for their level; companions follow their master there or over long distances, with
+# discovered flights where shorter, and ride its elevator, tram car or ship with it.
 # Default: 0 (disabled)
 Playerbots.ContinentTravel = 0
 

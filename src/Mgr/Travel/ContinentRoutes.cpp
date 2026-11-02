@@ -587,6 +587,54 @@ bool IsDocked(MotionTransport const* transport, Point const* stop)
     return false;
 }
 
+bool HoldsStill(Transport const* transport, uint32 ms)
+{
+    StaticTransport const* car = transport ? transport->ToStaticTransport() : nullptr;
+    if (!car)
+        return false;
+
+    // StaticTransport::Update moves a car only along its animation: in a cycle, or between two ends
+    // where it waits for its state to change.
+    TransportAnimation const* animation = car->GetGOValue()->Transport.AnimationInfo;
+    if (!animation)
+        return true;
+
+    uint32 const progress = car->GetPathProgress();
+    if (uint32 const pause = car->GetPauseTime())
+        return progress == (car->GetGoState() == GO_STATE_READY ? 0 : pause);
+
+    uint32 const period = car->GetPeriod();
+    if (!period)
+        return true;
+
+    auto offset = [animation, period](uint32 time, G3D::Vector3& at)
+    {
+        TransportAnimationEntry const* curr = nullptr;
+        TransportAnimationEntry const* next = nullptr;
+        float part = 0.0f;
+        if (!animation->GetAnimNode(time % period, curr, next, part))
+            return false;
+
+        at = G3D::Vector3(curr->X + part * (next->X - curr->X), curr->Y + part * (next->Y - curr->Y),
+                          curr->Z + part * (next->Z - curr->Z));
+        return true;
+    };
+
+    G3D::Vector3 start;
+    if (!offset(progress, start))
+        return false;
+
+    uint32 ahead = 0;
+    do
+    {
+        ahead = std::min(ahead + HoldStepMs, ms);
+        G3D::Vector3 at;
+        if (!offset(progress + ahead, at) || (at - start).squaredLength() > 0.01f)
+            return false;
+    } while (ahead < ms);
+    return true;
+}
+
 bool FindDock(Player* bot, Point const& stop, GameObject const* transport, WorldPosition& dock)
 {
     uint32 checks = 0;
@@ -651,5 +699,26 @@ bool FindLandingPoint(Player* bot, Transport* transport, WorldPosition& point)
 
     point = points.front();
     return true;
+}
+
+Ride CompanionRide(Player* bot, Transport* carrier, WorldPosition& point)
+{
+    Transport* const ride = bot->GetTransport();
+    if (ride && ride->IsStaticTransport() && ride != carrier)
+        return HoldsStill(ride, StepOffMs) && FindLandingPoint(bot, ride, point) ? Ride::Leave : Ride::Hold;
+
+    if (!carrier)
+        return Ride::Follow;
+
+    if (MotionTransport const* ship = carrier->ToMotionTransport())
+        return ride == carrier || IsDocked(ship, nullptr) ? Ride::Follow : Ride::Hold;
+
+    if (ride == carrier || !FindBoardingPoint(bot, carrier, point))
+        return Ride::Hold;
+
+    // The car must wait until the bot stands on it and the transport check has taken it aboard.
+    float const distance = bot->GetExactDist(point);
+    uint32 const walk = uint32(distance / ContinentRoutes::RunSpeed * IN_MILLISECONDS) + BoardingMarginMs;
+    return distance <= CompanionBoardingYards && HoldsStill(carrier, walk) ? Ride::Board : Ride::Hold;
 }
 }  // namespace ContinentTravel
