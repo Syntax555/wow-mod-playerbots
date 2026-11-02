@@ -501,6 +501,7 @@ bool PlayerbotAIConfig::Initialize()
     UseFastFlyMountAtMinLevel = sConfigMgr->GetOption<int32>("Playerbots.UseFastFlyMountAtMinLevel", 70);
 
     LearnFlightPathsWithMaster = sConfigMgr->GetOption<bool>("Playerbots.LearnFlightPathsWithMaster", false);
+    BindHomeWithMaster = sConfigMgr->GetOption<bool>("Playerbots.BindHomeWithMaster", false);
 
     // stagger bot flightpath takeoff
     BotTaxiDelayMin = sConfigMgr->GetOption<uint32>("Playerbots.BotTaxiDelayMinMs", 350);

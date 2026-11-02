@@ -178,6 +178,16 @@ bool ComesWithPull(Player* bot, Unit* target, Creature* hit)
     return radius > 0.0f && !pulled->HasFlagsExtra(CREATURE_FLAG_EXTRA_DONT_CALL_ASSISTANCE) &&
            pulled->IsWithinDistInMap(hit, radius) && hit->CanAssistTo(pulled, bot) && pulled->IsWithinLOSInMap(hit);
 }
+
+// Master clicks on a flight master or an innkeeper that companions repeat for themselves.
+bool RepeatsMasterClick(uint16 opcode)
+{
+    if (opcode == CMSG_BINDER_ACTIVATE)
+        return sPlayerbotAIConfig.BindHomeWithMaster;
+
+    return sPlayerbotAIConfig.LearnFlightPathsWithMaster &&
+           (opcode == CMSG_GOSSIP_HELLO || opcode == CMSG_TAXIQUERYAVAILABLENODES);
+}
 }
 
 bool PlayerbotAI::AoeWouldPullIdleCreature(SpellInfo const* spellInfo, float x, float y, float z, Unit const* skip)
@@ -397,6 +407,7 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     // masterIncomingPacketHandlers.AddHandler(CMSG_LOOT_ROLL, "loot roll");
     _masterTaxiPacketHandlers.emplace(CMSG_GOSSIP_HELLO, "learn taxi");
     _masterTaxiPacketHandlers.emplace(CMSG_TAXIQUERYAVAILABLENODES, "learn taxi");
+    _masterTaxiPacketHandlers.emplace(CMSG_BINDER_ACTIVATE, "bind home");
     masterIncomingPacketHandlers.AddHandler(CMSG_GOSSIP_HELLO, "gossip hello");
     masterIncomingPacketHandlers.AddHandler(CMSG_QUESTGIVER_HELLO, "gossip hello");
     masterIncomingPacketHandlers.AddHandler(CMSG_ACTIVATETAXI, "activate taxi");
@@ -877,7 +888,7 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
             _pendingMasterTaxiPacket.reset();
             _masterTaxiPacketPending.store(false);
         }
-        if (taxiPacket && sPlayerbotAIConfig.LearnFlightPathsWithMaster)
+        if (taxiPacket && RepeatsMasterClick(taxiPacket->GetOpcode()))
             helper.HandlePacket(_masterTaxiPacketHandlers, *taxiPacket);
     }
     masterOutgoingPacketHandlers.Handle(helper);
@@ -1767,9 +1778,8 @@ int32 PlayerbotAI::CalculateGlobalCooldown(uint32 spellid)
 void PlayerbotAI::HandleMasterIncomingPacket(WorldPacket const& packet, Player* packetMaster)
 {
     masterIncomingPacketHandlers.AddPacket(packet);
-    if (!sPlayerbotAIConfig.LearnFlightPathsWithMaster || !HasGameClientMaster() || packetMaster != GetMaster() ||
-        packet.size() != sizeof(uint64) ||
-        (packet.GetOpcode() != CMSG_GOSSIP_HELLO && packet.GetOpcode() != CMSG_TAXIQUERYAVAILABLENODES))
+    if (!RepeatsMasterClick(packet.GetOpcode()) || !HasGameClientMaster() || packetMaster != GetMaster() ||
+        packet.size() != sizeof(uint64))
         return;
 
     // Retain the sender's GUID so a queued click cannot follow a change of master.

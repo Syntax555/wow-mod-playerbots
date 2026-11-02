@@ -31,6 +31,7 @@ public:
         creators["check mount state"] = &WorldPacketTriggerContext::check_mount_state;
         creators["activate taxi"] = &WorldPacketTriggerContext::taxi;
         creators["learn taxi"] = &WorldPacketTriggerContext::learn_taxi;
+        creators["bind home"] = &WorldPacketTriggerContext::bind_home;
         creators["trade status"] = &WorldPacketTriggerContext::trade_status;
         creators["trade status extended"] = &WorldPacketTriggerContext::trade_status_extended;
         creators["loot response"] = &WorldPacketTriggerContext::loot_response;
@@ -121,6 +122,7 @@ private:
     static Trigger* resurrect_request(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "resurrect request"); }
     static Trigger* gossip_hello(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "gossip hello"); }
     static Trigger* learn_taxi(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "learn taxi"); }
+    static Trigger* bind_home(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "bind home"); }
     static Trigger* group_invite(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "group invite"); }
     static Trigger* group_set_leader(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "group set leader"); }
     static Trigger* no_money(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "not enough money"); }

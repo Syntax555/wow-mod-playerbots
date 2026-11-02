@@ -660,6 +660,7 @@ private:
     std::atomic_bool combatProfileDirty = true;
     std::string combatProfileKey;
     uint32 combatProfileCheckDelay = 0;
+    // The master's latest flight master or innkeeper click, for companions to repeat.
     std::map<uint16, std::string> _masterTaxiPacketHandlers;
     std::optional<WorldPacket> _pendingMasterTaxiPacket;
     std::mutex _masterTaxiPacketMutex;

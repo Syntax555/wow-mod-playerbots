@@ -481,6 +481,7 @@ public:
     uint32 UseFastFlyMountAtMinLevel;
 
     bool LearnFlightPathsWithMaster = false;
+    bool BindHomeWithMaster = false;
 
     // stagger flightpath takeoff
     uint32 BotTaxiDelayMin;

@@ -737,6 +737,10 @@ Playerbots.AttunementQuests = 10279,10277,10282,10283,10284,10285,10296,10297,10
 # Does not unlock other routes or start a flight. Default: 0
 Playerbots.LearnFlightPathsWithMaster = 0
 
+# Bind at the innkeeper where a client-controlled master makes its home. Each bot must be alive
+# and able to interact with that same innkeeper normally. Default: 0
+Playerbots.BindHomeWithMaster = 0
+
 # Min random delay before the 1st follower bot clicks the flight-master (ms)
 Playerbots.BotTaxiDelayMinMs = 350
 
