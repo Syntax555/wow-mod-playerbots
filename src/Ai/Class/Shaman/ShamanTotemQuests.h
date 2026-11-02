@@ -43,6 +43,7 @@ public:
 
 private:
     bool UseFocusedQuestItem(Quest const* quest, uint32 itemId, uint32 creatureEntry);
+    bool UseDraeneiRitual(Quest const* quest, uint32 itemId, uint32 objectEntry, uint32 creatureEntry);
     bool WaitForWaterSpirit(Quest const* quest);
     bool RestartWaterQuest();
     void ResetWaterWait();
@@ -54,6 +55,12 @@ private:
     uint32 _focusChecked = 0;
     uint32 _focusEntry = 0;
     WorldPosition _focusPosition;
+    uint32 _ritualQuest = 0;
+    uint32 _ritualMap = 0;
+    uint32 _ritualChecked = 0;
+    uint32 _ritualUsed = 0;
+    uint32 _ritualWait = 0;
+    WorldPosition _ritualPosition;
     WorldPosition _waterBrazier;
     TaskScheduler _waterScheduler;
     bool _waterWaiting = false;

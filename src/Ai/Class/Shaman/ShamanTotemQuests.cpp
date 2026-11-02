@@ -11,6 +11,7 @@
 
 #include "GameObject.h"
 #include "ObjectMgr.h"
+#include "OpenItemAction.h"
 #include "Playerbots.h"
 #include "QuestPackets.h"
 #include "SpellMgr.h"
@@ -30,15 +31,22 @@ constexpr uint32 GlowingEmber = 6655;
 constexpr uint32 WaterSpiritQuest = 100;
 constexpr uint32 ReturnWaterQuest = 96;
 constexpr uint32 WaterSpiritRecovery = 1103;
+constexpr uint32 FireproofSatchel = 24336;
+constexpr uint32 WaterBreathingPotion = 23871;
 
 ShamanTotemQuest const ShamanTotemQuests[] = {
-    {1516, EarthTotem}, {1517, EarthTotem}, {1518, EarthTotem}, {1519, EarthTotem}, {1520, EarthTotem},
-    {1521, EarthTotem}, {1522, FireTotem},  {1523, FireTotem},  {2983, FireTotem},  {2984, FireTotem},
-    {1524, FireTotem},  {1525, FireTotem},  {1526, FireTotem},  {1527, FireTotem},  {1528, WaterTotem},
-    {1529, WaterTotem}, {2985, WaterTotem}, {2986, WaterTotem}, {1530, WaterTotem}, {1535, WaterTotem},
-    {1536, WaterTotem}, {1534, WaterTotem}, {220, WaterTotem},  {63, WaterTotem},   {100, WaterTotem},
-    {96, WaterTotem},   {1531, AirTotem},   {1532, AirTotem},   {1462, EarthTotem}, {1463, EarthTotem},
-    {1464, FireTotem},  {972, WaterTotem},  {1103, WaterTotem},
+    {1516, EarthTotem},  {1517, EarthTotem}, {1518, EarthTotem}, {1519, EarthTotem}, {1520, EarthTotem},
+    {1521, EarthTotem},  {1522, FireTotem},  {1523, FireTotem},  {2983, FireTotem},  {2984, FireTotem},
+    {1524, FireTotem},   {1525, FireTotem},  {1526, FireTotem},  {1527, FireTotem},  {1528, WaterTotem},
+    {1529, WaterTotem},  {2985, WaterTotem}, {2986, WaterTotem}, {1530, WaterTotem}, {1535, WaterTotem},
+    {1536, WaterTotem},  {1534, WaterTotem}, {220, WaterTotem},  {63, WaterTotem},   {100, WaterTotem},
+    {96, WaterTotem},    {1531, AirTotem},   {1532, AirTotem},   {1462, EarthTotem}, {1463, EarthTotem},
+    {1464, FireTotem},   {972, WaterTotem},  {1103, WaterTotem}, {9449, EarthTotem}, {9450, EarthTotem},
+    {9451, EarthTotem},  {9462, FireTotem},  {9464, FireTotem},  {9465, FireTotem},  {9467, FireTotem},
+    {9468, FireTotem},   {9461, FireTotem},  {9555, FireTotem},  {9500, WaterTotem}, {9502, WaterTotem},
+    {10490, WaterTotem}, {9501, WaterTotem}, {9503, WaterTotem}, {9504, WaterTotem}, {9508, WaterTotem},
+    {9509, WaterTotem},  {9547, AirTotem},   {9551, AirTotem},   {10491, AirTotem},  {9552, AirTotem},
+    {9553, AirTotem},    {9554, AirTotem},
 };
 
 bool RecoveryQuest(uint32 questId)
@@ -75,13 +83,15 @@ bool TotemEarned(Player* bot, uint32 totem)
     switch (totem)
     {
         case EarthTotem:
-            return bot->GetQuestRewardStatus(1518) || bot->GetQuestRewardStatus(1521);
+            return bot->GetQuestRewardStatus(1518) || bot->GetQuestRewardStatus(1521) ||
+                   bot->GetQuestRewardStatus(9451);
         case FireTotem:
-            return bot->GetQuestRewardStatus(1527);
+            return bot->GetQuestRewardStatus(1527) || bot->GetQuestRewardStatus(9555);
         case WaterTotem:
-            return bot->GetQuestRewardStatus(ReturnWaterQuest);
+            return bot->GetQuestRewardStatus(ReturnWaterQuest) || bot->GetQuestRewardStatus(9509);
         case AirTotem:
-            return bot->GetQuestRewardStatus(1531) || bot->GetQuestRewardStatus(1532);
+            return bot->GetQuestRewardStatus(1531) || bot->GetQuestRewardStatus(1532) ||
+                   bot->GetQuestRewardStatus(9554);
     }
     return false;
 }
@@ -208,6 +218,12 @@ bool ShamanTotemQuestAction::Execute(Event /*event*/)
         return false;
     Quest const* quest = sObjectMgr->GetQuestTemplate(data->Quest);
     QuestStatus const status = bot->GetQuestStatus(data->Quest);
+    if (data->Totem == WaterTotem && bot->IsUnderWater() && !bot->HasAuraType(SPELL_AURA_WATER_BREATHING))
+        if (Item* potion = bot->GetItemByEntry(WaterBreathingPotion))
+        {
+            bot->StopMoving();
+            return UseItemAction(botAI).UseItemOnUnit(potion, bot);
+        }
     uint32 const sapta = RequiredSapta(bot, data->Quest);
     if (sapta && !SaptaSight(bot, sapta))
         return UseFocusedQuestItem(quest, sapta, sapta == EarthSapta ? 5891 : (sapta == FireSapta ? 5893 : 5894));
@@ -224,9 +240,92 @@ bool ShamanTotemQuestAction::Execute(Event /*event*/)
     }
     if (status != QUEST_STATUS_INCOMPLETE)
         return false;
-    if (data->Quest == 1535 || data->Quest == 1536 || data->Quest == 1534)
+    if (data->Quest == 1535 || data->Quest == 1536 || data->Quest == 1534 || data->Quest == 9504)
         return UseFocusedQuestItem(quest, quest->GetSrcItemId(), 0);
+    if (data->Quest == 9467 || data->Quest == 9508)
+    {
+        auto* state = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+        if (!state || state->questId != data->Quest)
+            botAI->rpgInfo.ChangeToDoQuest(data->Quest, quest);
+        if (data->Quest == 9467 && bot->GetItemByEntry(FireproofSatchel))
+            return OpenItemAction(botAI).Execute(Event());
+        return data->Quest == 9467 ? UseDraeneiRitual(quest, 23682, 181672, 17206)
+                                   : UseDraeneiRitual(quest, 23751, 181699, 17359);
+    }
     return DoObjectives(quest);
+}
+
+bool ShamanTotemQuestAction::UseDraeneiRitual(Quest const* quest, uint32 itemId, uint32 objectEntry,
+                                              uint32 creatureEntry)
+{
+    for (char const* nearby : {"nearest npcs", "nearest corpses"})
+        for (ObjectGuid guid : AI_VALUE(GuidVector, nearby))
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            Creature* creature = unit ? unit->ToCreature() : nullptr;
+            if (creature && creature->GetEntry() == creatureEntry && creature->IsInWorld() && bot->IsInMap(creature) &&
+                bot->InSamePhase(creature) && bot->CanSeeOrDetect(creature) &&
+                (creature->IsAlive() || bot->isAllowedToLoot(creature)))
+                return false;
+        }
+    Item* item = bot->GetItemByEntry(itemId);
+    if (!item)
+        return false;
+    if (_ritualQuest != quest->GetQuestId() || _ritualMap != bot->GetMapId() || !_ritualChecked ||
+        GetMSTimeDiffToNow(_ritualChecked) >= MINUTE * IN_MILLISECONDS)
+    {
+        if (_ritualQuest != quest->GetQuestId() || _ritualMap != bot->GetMapId())
+            _ritualUsed = 0;
+        _ritualQuest = quest->GetQuestId();
+        _ritualMap = bot->GetMapId();
+        _ritualChecked = getMSTime();
+        _ritualPosition = WorldPosition();
+        ClassQuestRouteCosts const costs(botAI);
+        WorldPosition origin;
+        float nearest = std::numeric_limits<float>::max();
+        for (auto const* spawn : origin.getGameObjectsNear(0.0f, objectEntry))
+        {
+            if (!(spawn->phaseMask & bot->GetPhaseMask()))
+                continue;
+            WorldPosition const pos(spawn->mapid, spawn->posX, spawn->posY, spawn->posZ);
+            float const cost = costs.Cost(pos);
+            if (cost < nearest)
+            {
+                _ritualPosition = pos;
+                nearest = cost;
+            }
+        }
+    }
+    if (_ritualPosition == WorldPosition())
+        return false;
+    // Native goober events summon their opponents after the item cast and a two-second delay.
+    if (_ritualUsed && GetMSTimeDiffToNow(_ritualUsed) < _ritualWait)
+        return true;
+    for (ObjectGuid guid : AI_VALUE(GuidVector, "nearest game objects no los"))
+    {
+        GameObject* object = botAI->GetGameObject(guid);
+        if (!object || object->GetEntry() != objectEntry || !object->IsInWorld() || !object->isSpawned() ||
+            !bot->IsInMap(object) || !bot->InSamePhase(object) || !bot->CanSeeOrDetect(object) ||
+            object->GetGoType() != GAMEOBJECT_TYPE_GOOBER ||
+            object->GetExactDist(_ritualPosition) > INTERACTION_DISTANCE)
+            continue;
+        if (!object->IsWithinDistInMap(bot, INTERACTION_DISTANCE) || !bot->IsWithinLOSInMap(object))
+            return MoveToQuestPosition(_ritualPosition);
+        bot->StopMoving();
+        if (!UseItemAction(botAI).UseItemOnGameObject(item, guid))
+            return false;
+        _ritualUsed = getMSTime();
+        Spell* cast = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        if (!cast)
+            cast = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        _ritualWait = 5 * IN_MILLISECONDS + (cast ? cast->GetCastTime() : 0);
+        if (cast)
+            botAI->WaitForSpellCast(cast);
+        return true;
+    }
+    return (_ritualPosition.GetMapId() != bot->GetMapId() ||
+            bot->GetExactDist(_ritualPosition) > INTERACTION_DISTANCE) &&
+           MoveToQuestPosition(_ritualPosition);
 }
 
 bool ShamanTotemQuestAction::UseFocusedQuestItem(Quest const* quest, uint32 itemId, uint32 creatureEntry)

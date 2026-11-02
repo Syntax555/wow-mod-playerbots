@@ -56,8 +56,8 @@ existing earned routes between continents when enabled. Later demons and class
 mounts remain incomplete. See
 [warlock quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-warlock-demon-quests).
 
-Solo random shamans pursue the Vanilla Horde totem chains with their own Sapta,
-waterskins and native spirit events. Shared quest actions support NPCs and
+Solo random shamans pursue the Vanilla Horde and Draenei totem chains with their
+own quest items and native spirit events. Shared quest actions support NPCs and
 questgiver objects, and retain ordinary personal eligibility and earned travel.
 See [shaman quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-shaman-totem-quests)
 for recovery behavior and remaining class quests.
