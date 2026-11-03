@@ -5,12 +5,14 @@
  */
 
 #include "DruidAiObjectContext.h"
+
 #include "BalanceDruidStrategy.h"
 #include "BearDruidStrategy.h"
 #include "CatDruidStrategy.h"
 #include "DruidActions.h"
 #include "DruidBearActions.h"
 #include "DruidCatActions.h"
+#include "DruidClassQuests.h"
 #include "DruidPullStrategy.h"
 #include "DruidShapeshiftActions.h"
 #include "DruidTriggers.h"
@@ -79,6 +81,7 @@ class DruidTriggerFactoryInternal : public NamedObjectContext<Trigger>
 public:
     DruidTriggerFactoryInternal()
     {
+        creators["druid class quest"] = &DruidTriggerFactoryInternal::class_quest;
         creators["clearcasting"] = &DruidTriggerFactoryInternal::clearcasting;
         creators["thorns"] = &DruidTriggerFactoryInternal::thorns;
         creators["thorns on party"] = &DruidTriggerFactoryInternal::thorns_on_party;
@@ -137,6 +140,7 @@ public:
     }
 
 private:
+    static Trigger* class_quest(PlayerbotAI* botAI) { return new DruidClassQuestTrigger(botAI); }
     static Trigger* natures_swiftness(PlayerbotAI* botAI) { return new NaturesSwiftnessTrigger(botAI); }
     static Trigger* natures_swiftness_active(PlayerbotAI* botAI) { return new NaturesSwiftnessActiveTrigger(botAI); }
     static Trigger* clearcasting(PlayerbotAI* botAI) { return new ClearcastingTrigger(botAI); }
@@ -207,6 +211,7 @@ class DruidAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     DruidAiObjectContextInternal()
     {
+        creators["druid class quest"] = &DruidAiObjectContextInternal::class_quest;
         creators["feral charge - bear"] = &DruidAiObjectContextInternal::feral_charge_bear;
         creators["feral charge - cat"] = &DruidAiObjectContextInternal::feral_charge_cat;
         creators["swipe (bear)"] = &DruidAiObjectContextInternal::swipe_bear;
@@ -304,6 +309,7 @@ public:
 
 private:
     static Action* natures_swiftness(PlayerbotAI* botAI) { return new CastNaturesSwiftnessAction(botAI); }
+    static Action* class_quest(PlayerbotAI* botAI) { return new DruidClassQuestAction(botAI); }
     static Action* tranquility(PlayerbotAI* botAI) { return new CastTranquilityAction(botAI); }
     static Action* feral_charge_bear(PlayerbotAI* botAI) { return new CastFeralChargeBearAction(botAI); }
     static Action* feral_charge_cat(PlayerbotAI* botAI) { return new CastFeralChargeCatAction(botAI); }
@@ -440,12 +446,14 @@ class DruidValueContextInternal : public NamedObjectContext<UntypedValue>
 public:
     DruidValueContextInternal()
     {
+        creators["druid class quest"] = &DruidValueContextInternal::class_quest;
         creators["eclipse solar proc time"] = &DruidValueContextInternal::eclipse_solar_proc_time;
         creators["eclipse lunar proc time"] = &DruidValueContextInternal::eclipse_lunar_proc_time;
         creators["blanket hot target"] = &DruidValueContextInternal::blanket_hot_target;
     }
 
 private:
+    static UntypedValue* class_quest(PlayerbotAI* botAI) { return new DruidClassQuestValue(botAI); }
     static UntypedValue* eclipse_solar_proc_time(PlayerbotAI* botAI) { return new EclipseSolarProcTimeValue(botAI); }
     static UntypedValue* eclipse_lunar_proc_time(PlayerbotAI* botAI) { return new EclipseLunarProcTimeValue(botAI); }
     static UntypedValue* blanket_hot_target(PlayerbotAI* botAI) { return new BlanketHotTargetValue(botAI); }

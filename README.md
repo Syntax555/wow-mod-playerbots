@@ -62,6 +62,11 @@ questgiver objects, and retain ordinary personal eligibility and earned travel.
 See [shaman quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-shaman-totem-quests)
 for recovery behavior and remaining class quests.
 
+Solo random druids pursue the native Bear Form, Aquatic Form and Cure Poison
+quests through ordinary spirit conversations, owned items, combat and loot.
+See [druid quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-druid-class-quests)
+for material purchases, event recovery and remaining class quests.
+
 General-purpose bag upgrades use the same slot selection for equipment,
 vendors and auctions. All four slots are checked; quivers, ammo pouches and
 profession bags remain equipped. Native inventory checks still govern swaps.

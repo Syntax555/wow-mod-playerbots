@@ -111,6 +111,8 @@ void GenericDruidNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& trig
 {
     NonCombatStrategy::InitTriggers(triggers);
 
+    triggers.push_back(new TriggerNode("druid class quest", {NextAction("druid class quest", ACTION_NORMAL + 2)}));
+
     triggers.push_back(new TriggerNode("mark of the wild", { NextAction("mark of the wild", 14.0f) }));
     triggers.push_back(new TriggerNode("party member cure poison", { NextAction("abolish poison on party", 20.0f) }));
     triggers.push_back(new TriggerNode("party member dead", { NextAction("revive", ACTION_CRITICAL_HEAL + 10) }));
