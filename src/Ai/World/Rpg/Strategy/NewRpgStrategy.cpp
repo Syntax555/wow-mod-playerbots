@@ -5,6 +5,7 @@
  */
 
 #include "NewRpgStrategy.h"
+#include "PlayerbotAI.h"
 
 NewRpgStrategy::NewRpgStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
 
