@@ -8,6 +8,26 @@
 
 NewRpgStrategy::NewRpgStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
 
+float NewRpgGrindMultiplier::GetValue(Action* action)
+{
+    if (!action || action->getName() != "attack anything")
+        return 1.0f;
+
+    NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgStatus status = info.GetStatus();
+    if (status == RPG_IDLE || status == RPG_WANDER_RANDOM)
+        return 1.0f;
+
+    if (status == RPG_DO_QUEST)
+    {
+        auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&info.data);
+        return quest && quest->pos != WorldPosition() && bot->GetDistance(quest->pos) <= 10.0f ? 1.0f : 0.0f;
+    }
+
+    // Let New RPG reach its travel, gathering and upkeep goals before random pulls.
+    return 0.0f;
+}
+
 std::vector<NextAction> NewRpgStrategy::getDefaultActions()
 {
     // the releavance should be greater than grind
@@ -96,6 +116,7 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     );
 }
 
-void NewRpgStrategy::InitMultipliers(std::vector<Multiplier*>&)
+void NewRpgStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
+    multipliers.push_back(new NewRpgGrindMultiplier(botAI));
 }
