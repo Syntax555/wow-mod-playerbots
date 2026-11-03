@@ -32,6 +32,14 @@
 #include "SharedDefines.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
+
+// A core with home screens keeps a character row per account that nobody plays. Other cores have none.
+#if __has_include("HomeViewer.h")
+#include "HomeViewer.h"
+#else
+#define SQL_NOT_HOME_VIEWER "1"
+inline bool IsHomeViewer(ObjectGuid) { return false; }
+#endif
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -88,6 +96,9 @@ public:
 void PlayerbotHolder::AddPlayerBot(ObjectGuid playerGuid, uint32 masterAccountId)
 {
     if (botLoading.find(playerGuid) != botLoading.end())
+        return;
+
+    if (IsHomeViewer(playerGuid))
         return;
 
     // has bot already been added?
@@ -731,6 +742,9 @@ std::string const PlayerbotHolder::ProcessBotCommand(std::string const cmd, Obje
 
     if (cmd == "add" || cmd == "addaccount" || cmd == "login")
     {
+        if (IsHomeViewer(guid))
+            return "character not found";
+
         if (ObjectAccessor::FindPlayer(guid))
             return "player already logged in";
 
@@ -1345,7 +1359,7 @@ std::vector<std::string> PlayerbotHolder::HandlePlayerbotCommand(char const* arg
                 }
             }
 
-            QueryResult results = CharacterDatabase.Query("SELECT name FROM characters WHERE account = {}", accountId);
+            QueryResult results = CharacterDatabase.Query("SELECT name FROM characters WHERE account = {} AND " SQL_NOT_HOME_VIEWER, accountId);
             if (results)
             {
                 do
@@ -1459,7 +1473,7 @@ std::string const PlayerbotHolder::ListBots(Player* master)
 
     if (master)
     {
-        QueryResult results = CharacterDatabase.Query("SELECT class, name FROM characters WHERE account = {}",
+        QueryResult results = CharacterDatabase.Query("SELECT class, name FROM characters WHERE account = {} AND " SQL_NOT_HOME_VIEWER,
                                                       master->GetSession()->GetAccountId());
         if (results)
         {
@@ -1737,7 +1751,7 @@ void PlayerbotMgr::OnPlayerLogin(Player* player)
         return;
 
     uint32 accountId = session->GetAccountId();
-    QueryResult results = CharacterDatabase.Query("SELECT name FROM characters WHERE account = {}", accountId);
+    QueryResult results = CharacterDatabase.Query("SELECT name FROM characters WHERE account = {} AND " SQL_NOT_HOME_VIEWER, accountId);
     if (results)
     {
         std::ostringstream out;
