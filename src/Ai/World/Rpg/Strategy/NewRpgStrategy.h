@@ -13,6 +13,13 @@
 
 class PlayerbotAI;
 
+class NewRpgGrindMultiplier : public Multiplier
+{
+public:
+    NewRpgGrindMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "new rpg grind") {}
+    float GetValue(Action* action) override;
+};
+
 class NewRpgStrategy : public Strategy
 {
 public:
