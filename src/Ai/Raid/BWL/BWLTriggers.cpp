@@ -7,6 +7,7 @@
 #include "BWLTriggers.h"
 #include "BWLHelpers.h"
 #include "Playerbots.h"
+#include "RaidClearRegistry.h"
 
 using namespace BlackwingLairHelpers;
 
@@ -108,6 +109,23 @@ bool BwlNefarianWildMagicTrigger::IsActive()
 {
     return bot->getClass() == CLASS_MAGE &&
         bot->HasAura(static_cast<uint32>(BlackwingLairSpells::SPELL_WILD_MAGIC));
+}
+
+bool BwlNefarianCorruptedTotemTrigger::IsActive()
+{
+    // Shaman call: the shamans drop totems that buff Nefarian and his adds or burn the raid. DPS kill them.
+    if (!PlayerbotAI::IsDps(bot) || !AI_VALUE2(Unit*, "find target", "nefarian"))
+        return false;
+
+    // Raid clear marks the totems in its own order and walks away from the Fire Nova totem.
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
+        return false;
+
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (target && target->IsAlive() && IsCorruptedTotem(target))
+        return false;
+
+    return FindCorruptedTotem(botAI) != nullptr;
 }
 
 // Trash

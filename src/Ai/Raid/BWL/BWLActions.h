@@ -107,6 +107,15 @@ public:
     bool Execute(Event event) override;
 };
 
+// Nefarian
+
+class BwlNefarianKillCorruptedTotemAction : public AttackAction
+{
+public:
+    BwlNefarianKillCorruptedTotemAction(PlayerbotAI* botAI) : AttackAction(botAI, "bwl nefarian kill corrupted totem") {}
+    bool Execute(Event event) override;
+};
+
 // Trash
 
 class BwlDeathTalonWyrmguardTankMoveAwayAction : public MovementAction
