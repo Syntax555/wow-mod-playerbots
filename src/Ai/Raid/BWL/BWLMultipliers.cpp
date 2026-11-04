@@ -11,6 +11,7 @@
 #include "GenericSpellActions.h"
 #include "HunterActions.h"
 #include "Playerbots.h"
+#include "RaidClearRegistry.h"
 #include "ReachTargetActions.h"
 
 using namespace BlackwingLairHelpers;
@@ -96,6 +97,10 @@ float NefarianCorruptedHealingMultiplier::GetValue(Action* action)
         !bot->HasAura(static_cast<uint32>(BlackwingLairSpells::SPELL_CORRUPTED_HEALING)))
         return 1.0f;
 
+    // Raid clear has its own rule (RcBwlCorruptedHealingMultiplier): a dying tank still gets healed.
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
+        return 1.0f;
+
     auto* spellAction = dynamic_cast<CastSpellAction*>(action);
     if (!spellAction)
         return 1.0f;
@@ -127,6 +132,10 @@ float NefarianCorruptedTotemMultiplier::GetValue(Action* action)
     if ((!dynamic_cast<DpsAssistAction*>(action) && !dynamic_cast<DpsAoeAction*>(action) &&
          !dynamic_cast<AttackRtiTargetAction*>(action)) ||
         !PlayerbotAI::IsDps(bot))
+        return 1.0f;
+
+    // Raid clear marks the totems in its own order (RaidClear::BlackwingLair::KillOrder).
+    if (RaidClear::Runs(botAI, bot->GetMapId()))
         return 1.0f;
 
     Unit* target = AI_VALUE(Unit*, "current target");
