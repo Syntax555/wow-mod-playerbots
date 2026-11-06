@@ -16,6 +16,7 @@
 #include "Playerbots.h"
 #include "QuestPackets.h"
 #include "SpellMgr.h"
+#include "TemporarySummon.h"
 #include "UseItemAction.h"
 
 namespace
@@ -279,6 +280,61 @@ ClassQuestStep const ClassQuestSteps[] = {
     {CLASS_MAGE, 1945, 0},
     {CLASS_MAGE, 1946, 0},
     {CLASS_MAGE, 8250, 0},
+    // Warlock Imp: the restored Vanilla chains of each starting zone.
+    {CLASS_WARLOCK, 1470, 688},
+    {CLASS_WARLOCK, 1485, 688},
+    {CLASS_WARLOCK, 1598, 688},
+    {CLASS_WARLOCK, 1599, 688},
+    {CLASS_WARLOCK, 8344, 688},
+    // Warlock Voidwalker; the ritual items summon the Voidwalker at their native focus.
+    {CLASS_WARLOCK, 1471, 697, Use::Focus, 6284, 5676},
+    {CLASS_WARLOCK, 1473, 697},
+    {CLASS_WARLOCK, 1478, 697},
+    {CLASS_WARLOCK, 1501, 697},
+    {CLASS_WARLOCK, 1504, 697, Use::Focus, 7464, 5676},
+    {CLASS_WARLOCK, 1506, 697},
+    {CLASS_WARLOCK, 1685, 697},
+    {CLASS_WARLOCK, 1688, 697},
+    {CLASS_WARLOCK, 1689, 697, Use::Focus, 6928, 5676},
+    {CLASS_WARLOCK, 1715, 697},
+    {CLASS_WARLOCK, 10789, 697},
+    {CLASS_WARLOCK, 10790, 697},
+    {CLASS_WARLOCK, 9529, 697},
+    {CLASS_WARLOCK, 9619, 697, Use::Focus, 23732, 5676},
+    // Warlock Succubus.
+    {CLASS_WARLOCK, 1472, 712},
+    {CLASS_WARLOCK, 1474, 712, Use::Focus, 6286, 5677},
+    {CLASS_WARLOCK, 1476, 712},
+    {CLASS_WARLOCK, 1507, 712},
+    {CLASS_WARLOCK, 1508, 712},
+    {CLASS_WARLOCK, 1509, 712},
+    {CLASS_WARLOCK, 1510, 712},
+    {CLASS_WARLOCK, 1511, 712},
+    {CLASS_WARLOCK, 1512, 712},
+    {CLASS_WARLOCK, 1513, 712, Use::Focus, 6626, 5677},
+    {CLASS_WARLOCK, 1515, 712},
+    {CLASS_WARLOCK, 1716, 712},
+    {CLASS_WARLOCK, 1717, 712},
+    {CLASS_WARLOCK, 1738, 712},
+    {CLASS_WARLOCK, 1739, 712, Use::Focus, 6913, 5677},
+    {CLASS_WARLOCK, 10605, 712},
+    // Warlock Felhunter; Strahad Farsan's escort creates the focus of The Summoning.
+    {CLASS_WARLOCK, 1758, 691},
+    {CLASS_WARLOCK, 1795, 691, Use::Focus, 6999, 6268},
+    {CLASS_WARLOCK, 1798, 691},
+    {CLASS_WARLOCK, 1801, 691},
+    {CLASS_WARLOCK, 1802, 691},
+    {CLASS_WARLOCK, 1803, 691},
+    {CLASS_WARLOCK, 1804, 691},
+    {CLASS_WARLOCK, 1805, 691},
+    {CLASS_WARLOCK, 2996, 691},
+    {CLASS_WARLOCK, 3001, 691},
+    // Warlock Felsteed, restored by Individual Progression.
+    {CLASS_WARLOCK, 3631, 5784},
+    {CLASS_WARLOCK, 4487, 5784},
+    {CLASS_WARLOCK, 4488, 5784},
+    {CLASS_WARLOCK, 4489, 5784},
+    {CLASS_WARLOCK, 4490, 5784},
     // Warlock class quests without a lesson, nearest native giver first.
     {CLASS_WARLOCK, 1499, 0},
     {CLASS_WARLOCK, 3090, 0},
@@ -576,6 +632,24 @@ bool ClassQuestChainAction::StayWith(Quest const* quest, ClassQuestStep const& s
 
 bool ClassQuestChainAction::UseAtFocus(Quest const* quest, ClassQuestStep const& step)
 {
+    if (step.Entry)
+    {
+        // Stay on the ritual instead of grinding elsewhere; the summoned Entry is fought as its quest target.
+        auto* state = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+        if (!state || state->questId != quest->GetQuestId())
+            botAI->rpgInfo.ChangeToDoQuest(quest->GetQuestId(), quest);
+        if (bot->GetReqKillOrCastCurrentCount(quest->GetQuestId(), step.Entry))
+            return false;
+        // Native AI turns the own summon hostile after a short delay; the ritual is not repeated meanwhile.
+        for (ObjectGuid guid : AI_VALUE(GuidVector, "nearest npcs"))
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            Creature* creature = unit ? unit->ToCreature() : nullptr;
+            if (creature && creature->GetEntry() == step.Entry && creature->IsAlive() && Usable(bot, creature) &&
+                creature->ToTempSummon() && creature->ToTempSummon()->GetSummonerGUID() == bot->GetGUID())
+                return true;
+        }
+    }
     Item* item = bot->GetItemByEntry(step.Item);
     if (!item)
         return Restart(quest, step.Item);
@@ -597,9 +671,19 @@ bool ClassQuestChainAction::UseAtFocus(Quest const* quest, ClassQuestStep const&
         return true;
     }
     WorldPosition const pos = FocusPosition(spell->RequiresSpellFocus);
-    return pos != WorldPosition() &&
-           (pos.GetMapId() != bot->GetMapId() || bot->GetExactDist(pos) > INTERACTION_DISTANCE) &&
-           MoveToQuestPosition(pos);
+    if (pos != WorldPosition() && (pos.GetMapId() != bot->GetMapId() || bot->GetExactDist(pos) > INTERACTION_DISTANCE))
+        return MoveToQuestPosition(pos);
+    if (!step.Entry)
+        return false;
+    // Strahad Farsan's native escort creates the Felhunter focus; stay with the quest giver while it runs.
+    for (ObjectGuid guid : AI_VALUE(GuidVector, "nearest npcs"))
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        Creature* giver = unit ? unit->ToCreature() : nullptr;
+        if (giver && giver->hasQuest(quest->GetQuestId()) && giver->IsAlive() && Usable(bot, giver))
+            return !giver->HasNpcFlag(UNIT_NPC_FLAG_QUESTGIVER) && Wait(quest, WorldPosition(giver));
+    }
+    return MoveToQuestLocation(quest, false);
 }
 
 bool ClassQuestChainAction::CastOn(Quest const* quest, ClassQuestStep const& step)

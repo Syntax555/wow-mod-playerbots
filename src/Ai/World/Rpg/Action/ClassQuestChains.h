@@ -21,7 +21,7 @@ enum class ClassQuestUse : uint8
     Creature,  // Own Item on creature Entry; a dormant quest taker is revived the same way.
     Object,    // Gameobject Entry, opened with the own Item when one is given.
     Stay,      // Beside creature Entry, defending it from its attackers.
-    Focus,     // Own Item at its native spell focus.
+    Focus,     // Own Item at its native spell focus; a ritual then fights the Entry it summons.
     Cast,      // Own Casts, in order, on creature Entry.
     Area,      // Native area trigger Entry.
 };
