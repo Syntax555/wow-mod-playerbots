@@ -83,6 +83,7 @@ ShamanNonCombatStrategy::ShamanNonCombatStrategy(PlayerbotAI* botAI) : NonCombat
 void ShamanNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
 
     triggers.push_back(new TriggerNode("shaman totem quest", {NextAction("shaman totem quest", ACTION_NORMAL + 2)}));
 

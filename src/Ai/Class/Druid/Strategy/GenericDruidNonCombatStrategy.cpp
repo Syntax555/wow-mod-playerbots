@@ -110,6 +110,7 @@ GenericDruidNonCombatStrategy::GenericDruidNonCombatStrategy(PlayerbotAI* botAI)
 void GenericDruidNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
 
     triggers.push_back(new TriggerNode("druid class quest", {NextAction("druid class quest", ACTION_NORMAL + 2)}));
 

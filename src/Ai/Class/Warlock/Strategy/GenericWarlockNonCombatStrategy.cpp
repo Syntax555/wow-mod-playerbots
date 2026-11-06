@@ -79,6 +79,7 @@ GenericWarlockNonCombatStrategy::GenericWarlockNonCombatStrategy(PlayerbotAI* bo
 void GenericWarlockNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
     triggers.push_back(new TriggerNode("warlock demon quest", {NextAction("warlock demon quest", ACTION_NORMAL + 2)}));
     triggers.push_back(new TriggerNode("has pet", { NextAction("toggle pet spell", 60.0f) }));
     triggers.push_back(new TriggerNode("new pet", { NextAction("set pet stance", 60.0f) }));

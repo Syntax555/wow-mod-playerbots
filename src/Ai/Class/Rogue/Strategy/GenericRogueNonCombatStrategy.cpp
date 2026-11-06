@@ -35,6 +35,7 @@ GenericRogueNonCombatStrategy::GenericRogueNonCombatStrategy(PlayerbotAI* botAI)
 void GenericRogueNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
 
     triggers.push_back(new TriggerNode("player has flag",
                                        { NextAction("sprint", ACTION_EMERGENCY + 1) }));

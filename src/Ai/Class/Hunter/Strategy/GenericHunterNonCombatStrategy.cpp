@@ -15,6 +15,7 @@ GenericHunterNonCombatStrategy::GenericHunterNonCombatStrategy(PlayerbotAI* botA
 void GenericHunterNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
 
     triggers.push_back(new TriggerNode("trueshot aura", { NextAction("trueshot aura", 2.0f) }));
     triggers.push_back(new TriggerNode("often", { NextAction("apply stone", 1.0f),

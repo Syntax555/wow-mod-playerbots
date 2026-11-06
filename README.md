@@ -58,10 +58,13 @@ Doomguard and the Dreadsteed remain incomplete. See
 
 Solo random warriors, paladins and priests pursue the native quests that teach
 their stances, Redemption, Sense Undead, warhorses and restored priest racial
-spells. Bots use their own quest items on native targets and objects, wait at
-event sites and fight event opponents through ordinary combat; failed or stalled
-event quests are abandoned and accepted again normally. See
-[class quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-warrior-paladin-and-priest-quests).
+spells. Random bots of every class then pursue their other class quests that a
+solo character can finish on the open continents, under the ordinary quest level
+rules. Bots use their own quest items and spells on native targets, objects and
+spell focuses, report native area triggers, wait at event sites and fight event
+opponents through ordinary combat; failed or stalled event quests are abandoned
+and accepted again normally. See
+[class quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-class-quests-for-every-class).
 
 Solo random shamans pursue the Vanilla Horde and Draenei totem chains with their
 own quest items and native spirit events. Shared quest actions support NPCs and

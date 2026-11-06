@@ -34,6 +34,7 @@ GenericMageNonCombatStrategy::GenericMageNonCombatStrategy(PlayerbotAI* botAI) :
 void GenericMageNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL)}));
 
     triggers.push_back(new TriggerNode("arcane intellect", { NextAction("arcane intellect", 21.0f) }));
     triggers.push_back(new TriggerNode("no focus magic", { NextAction("focus magic on party", 19.0f) }));
