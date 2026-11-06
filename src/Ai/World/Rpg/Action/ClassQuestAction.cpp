@@ -11,6 +11,7 @@
 
 #include "GameObject.h"
 #include "Map.h"
+#include "NewRpgHelpers.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedValueContext.h"
@@ -98,7 +99,8 @@ bool ClassQuestAction::InteractWithQuestGiver(Quest const* quest, bool reward)
         Unit* unit = botAI->GetUnit(guid);
         Creature* creature = unit ? unit->ToCreature() : nullptr;
         if (!creature || !creature->IsInWorld() || creature->IsDuringRemoveFromWorld() || !bot->IsInMap(creature) ||
-            !bot->InSamePhase(creature) || !bot->CanSeeOrDetect(creature) || !CanInteractWithQuestGiver(creature) ||
+            !bot->InSamePhase(creature) || !bot->CanSeeOrDetect(creature) ||
+            !NewRpgHelpers::CanInteractWithQuestGiver(bot, creature) ||
             !(reward ? creature->hasInvolvedQuest(quest->GetQuestId()) : creature->hasQuest(quest->GetQuestId())))
             continue;
         if (!IsWithinInteractionDist(creature) || !bot->IsWithinLOSInMap(creature))
@@ -115,7 +117,7 @@ bool ClassQuestAction::InteractWithQuestGiver(Quest const* quest, bool reward)
     {
         GameObject* go = botAI->GetGameObject(guid);
         if (!go || !go->IsInWorld() || !go->isSpawned() || !bot->IsInMap(go) || !bot->InSamePhase(go) ||
-            !bot->CanSeeOrDetect(go) || !CanInteractWithQuestGiver(go) ||
+            !bot->CanSeeOrDetect(go) || !NewRpgHelpers::CanInteractWithQuestGiver(bot, go) ||
             !(reward ? go->hasInvolvedQuest(quest->GetQuestId()) : go->hasQuest(quest->GetQuestId())))
             continue;
         if (!IsWithinInteractionDist(go) || !bot->IsWithinLOSInMap(go))
