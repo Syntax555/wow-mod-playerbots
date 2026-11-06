@@ -540,7 +540,7 @@ namespace
 {
 constexpr float DeckProbeStep = 1.0f;
 constexpr float DeckHeightTolerance = 15.0f;
-constexpr uint32 DockPathChecks = 4;
+constexpr uint32 DockPathChecks = 24;  // one ring around the stop
 
 // Dry ground within range of center at about height z and off the excluded transport, nearest first.
 std::vector<WorldPosition> DryGround(Player* bot, float centerX, float centerY, float z, float minimum, float range,
@@ -713,7 +713,9 @@ Ride CompanionRide(Player* bot, Transport* carrier, WorldPosition& point)
     if (MotionTransport const* ship = carrier->ToMotionTransport())
         return ride == carrier || IsDocked(ship, nullptr) ? Ride::Follow : Ride::Hold;
 
-    if (ride == carrier || !FindBoardingPoint(bot, carrier, point))
+    if (ride == carrier ||
+        OnTransport(carrier, bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()) ||
+        !FindBoardingPoint(bot, carrier, point))
         return Ride::Hold;
 
     // The car must wait until the bot stands on it and the transport check has taken it aboard.

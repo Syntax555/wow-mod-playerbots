@@ -1221,6 +1221,13 @@ bool NewRpgBaseAction::MoveToMap(WorldPosition const& dest, bool master)
             return RideTransport(route, transport);
         if (route.hasLink && route.link.kind == ContinentRoutes::LinkKind::Lift)
             return RideLift(route, transport);
+
+        // A replan for a moved target dropped the lift link under way: ride on and step off at the next stop.
+        WorldPosition landing;
+        if (ContinentTravel::HoldsStill(transport, ContinentTravel::StepOffMs) &&
+            ContinentTravel::FindLandingPoint(bot, transport, landing))
+            MoveStraightTo(landing);
+        return true;
     }
 
     if (route.hasLink && route.usedAt && route.link.kind != ContinentRoutes::LinkKind::Transport &&
@@ -1507,7 +1514,11 @@ bool NewRpgBaseAction::BoardLift(ContinentRouteState& route)
             MoveOverland(from);
             return true;
         }
-        if (!lift || !ContinentTravel::FindDock(bot, link.from, lift, route.dock))
+        // A tram car shuttles between stops far apart; the leg timeout ends a wait for one that never comes.
+        if (!lift)
+            return true;
+
+        if (!ContinentTravel::FindDock(bot, link.from, lift, route.dock))
         {
             FailLink(route);
             return true;

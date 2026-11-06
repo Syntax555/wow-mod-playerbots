@@ -140,6 +140,13 @@ bool FollowAction::Execute(Event /*event*/)
                     StepOnto(point);
                     return true;
                 case ContinentTravel::Ride::Hold:
+                    // The core's follow movement paths after the master on foot: off the car, or after one
+                    // the bot missed, and against the car carrying it.
+                    if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+                    {
+                        bot->GetMotionMaster()->Clear(true);
+                        bot->GetMotionMaster()->MoveIdle();
+                    }
                     if (bot->isMoving())
                         bot->StopMovingOnCurrentPos();
                     return true;
@@ -317,14 +324,14 @@ bool FollowAction::isUseful()
             return false;
     }
 
-    // Boarding or leaving the master's lift or tram car does not wait for the formation distance.
+    // A lift or tram car under the master or the bot needs the ride step whatever the formation distance.
     Player* master = botAI->GetMaster();
     if (sPlayerbotAIConfig.continentTravel && master && fTarget == master && master->IsInWorld() &&
         master->GetMap() == bot->GetMap() && !bot->GetMap()->Instanceable())
     {
         Transport* const carrier = master->GetTransport();
         Transport* const ride = bot->GetTransport();
-        if (carrier != ride && ((carrier && carrier->IsStaticTransport()) || (ride && ride->IsStaticTransport())))
+        if ((carrier && carrier->IsStaticTransport()) || (ride && ride->IsStaticTransport()))
             return true;
     }
 
