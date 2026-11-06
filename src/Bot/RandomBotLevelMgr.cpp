@@ -30,6 +30,13 @@
 #include <string>
 #include <vector>
 
+// A core with home screens has a character per account that nobody plays. Other cores have none.
+#if __has_include("HomeViewer.h")
+#include "HomeViewer.h"
+#else
+inline bool IsHomeViewer(Player const*) { return false; }
+#endif
+
 // True if bot's name is present in excludeList.
 static bool IsNameInExcludeList(Player* bot, std::vector<std::string> const& excludeList)
 {
@@ -604,7 +611,7 @@ void RandomBotLevelMgr::RunLevelBracketsDistribution()
             Player* player = itr.second;
             if (!player || !player->IsInWorld())
                 continue;
-            if (GET_PLAYERBOT_AI(player))
+            if (GET_PLAYERBOT_AI(player) || IsHomeViewer(player))
                 continue; // Only count real players.
             int rangeIndex = GetOrFlagPlayerBracket(player);
             if (rangeIndex < 0)

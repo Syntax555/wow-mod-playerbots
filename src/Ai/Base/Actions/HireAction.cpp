@@ -9,6 +9,13 @@
 #include "PlayerbotAI.h"
 #include "RandomPlayerbotMgr.h"
 
+// A core with home screens keeps a character row per account that nobody plays. Other cores have none.
+#if __has_include("HomeViewer.h")
+#include "HomeViewer.h"
+#else
+#define SQL_NOT_HOME_VIEWER "1"
+#endif
+
 bool HireAction::Execute(Event /*event*/)
 {
     Player* master = GetMaster();
@@ -19,7 +26,7 @@ bool HireAction::Execute(Event /*event*/)
         return false;
 
     uint32 account = master->GetSession()->GetAccountId();
-    QueryResult results = CharacterDatabase.Query("SELECT COUNT(*) FROM characters WHERE account = {}", account);
+    QueryResult results = CharacterDatabase.Query("SELECT COUNT(*) FROM characters WHERE account = {} AND " SQL_NOT_HOME_VIEWER, account);
 
     uint32 charCount = 10;
     if (results)

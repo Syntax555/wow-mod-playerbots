@@ -16,6 +16,13 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 
+// A core with home screens keeps a character row per account that nobody plays. Other cores have none.
+#if __has_include("HomeViewer.h")
+#include "HomeViewer.h"
+#else
+#define SQL_NOT_HOME_VIEWER "1"
+#endif
+
 char* strstri(char const* str1, char const* str2);
 
 enum GuildTaskType
@@ -1216,7 +1223,7 @@ bool GuildTaskMgr::CheckTaskTransfer(std::string const text, Player* ownerPlayer
 
     uint32 account = ownerPlayer->GetSession()->GetAccountId();
 
-    if (QueryResult results = CharacterDatabase.Query("SELECT guid, name FROM characters WHERE account = {}", account))
+    if (QueryResult results = CharacterDatabase.Query("SELECT guid, name FROM characters WHERE account = {} AND " SQL_NOT_HOME_VIEWER, account))
     {
         do
         {

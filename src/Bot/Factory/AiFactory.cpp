@@ -524,17 +524,11 @@ void AiFactory::AddClassNonCombatStrategies(Player* player, PlayerbotAI* const /
             break;
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION)
-            {
                 nonCombatEngine->addStrategiesNoInit("bthreat", "tank assist", "pull", "barmor", nullptr);
-                if (player->GetLevel() >= 20)
-                    nonCombatEngine->addStrategy("bsanc", false);
-                else
-                    nonCombatEngine->addStrategy("bmight", false);
-            }
             else if (tab == PALADIN_TAB_HOLY)
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bwisdom", "bcast", nullptr);
+                nonCombatEngine->addStrategiesNoInit("dps assist", "bcast", nullptr);
             else
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bmight", "baoe", nullptr);
+                nonCombatEngine->addStrategiesNoInit("dps assist", "baoe", nullptr);
 
             nonCombatEngine->addStrategiesNoInit("cure", nullptr);
             break;
@@ -609,7 +603,7 @@ void AiFactory::RefreshCombatStrategies(Player* player, PlayerbotAI* facade, Eng
     static char const* const managed[] = {
         "affli", "aoe", "arcane", "arms", "assassin", "balance", "baoe",
         "barmor", "bcast", "bdps", "bear", "behind", "blood", "bm",
-        "bmana", "bmight", "bsanc", "bthreat", "bwisdom", "caster aoe", "cat",
+        "bmana", "bthreat", "caster aoe", "cat",
         "cc", "combat", "cure", "curse of agony", "curse of elements", "demo", "destro",
         "disc", "dps assist", "ele", "enh", "felguard", "felhunter", "feral charge",
         "fire", "firestone", "flametongue", "frost", "frost aoe", "frostfire", "fury",

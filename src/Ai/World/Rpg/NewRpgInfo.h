@@ -123,6 +123,12 @@ struct NewRpgInfo
     uint32 discoverFlightMaster{0};
     uint32 discoverFlightMasterSince{0};
     std::unordered_map<uint32, uint32> flightMasterRejectedAt;
+    // QUEST GIVER
+    ObjectGuid questGiver;  // giver the bot is walking to or talking with
+    uint32 questGiverSince{0};
+    uint32 questGiverLastTry{0};
+    GuidSet ignoredQuestGivers;  // skipped until the next IDLE
+    // END QUEST GIVER
 
     using RpgData = std::variant<
         Idle,
