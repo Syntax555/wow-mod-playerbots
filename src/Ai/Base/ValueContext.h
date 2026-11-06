@@ -19,6 +19,7 @@
 #include "BudgetValues.h"
 #include "CcTargetValue.h"
 #include "ChatValue.h"
+#include "ClassQuestChains.h"
 #include "CollisionValue.h"
 #include "CombatProfileValue.h"
 #include "CraftValue.h"
@@ -155,6 +156,7 @@ public:
         creators["pet target"] = &ValueContext::pet_target;
         creators["old target"] = &ValueContext::old_target;
         creators["grind target"] = &ValueContext::grind_target;
+        creators["class quest chain"] = &ValueContext::class_quest_chain;
         creators["aggressive target"] = &ValueContext::aggressive_target;
         creators["rti target"] = &ValueContext::rti_target;
         creators["rti cc target"] = &ValueContext::rti_cc_target;
@@ -492,6 +494,7 @@ private:
     static UntypedValue* current_cc_target(PlayerbotAI* botAI) { return new CurrentCcTargetValue(botAI); }
     static UntypedValue* pet_target(PlayerbotAI* botAI) { return new PetTargetValue(botAI); }
     static UntypedValue* grind_target(PlayerbotAI* botAI) { return new GrindTargetValue(botAI); }
+    static UntypedValue* class_quest_chain(PlayerbotAI* botAI) { return new ClassQuestChainValue(botAI); }
     static UntypedValue* aggressive_target(PlayerbotAI* botAI) { return new AggressiveTargetValue(botAI); }
     static UntypedValue* rti_target(PlayerbotAI* botAI) { return new RtiTargetValue(botAI); }
     static UntypedValue* rti_cc_target(PlayerbotAI* botAI) { return new RtiCcTargetValue(botAI); }

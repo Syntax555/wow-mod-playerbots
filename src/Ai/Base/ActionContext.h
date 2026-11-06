@@ -20,6 +20,7 @@
 #include "ChangeTalentsAction.h"
 #include "CheckMailAction.h"
 #include "CheckValuesAction.h"
+#include "ClassQuestChains.h"
 #include "ChooseRpgTargetAction.h"
 #include "ChooseTargetActions.h"
 #include "ChooseTravelTargetAction.h"
@@ -276,6 +277,7 @@ public:
         creators["new rpg natural maintenance"] = &ActionContext::new_rpg_natural_maintenance;
         creators["new rpg discover flight"] = &ActionContext::new_rpg_discover_flight;
         creators["new rpg status update"] = &ActionContext::new_rpg_status_update;
+        creators["class quest chain"] = &ActionContext::class_quest_chain;
         creators["new rpg go grind"] = &ActionContext::new_rpg_go_grind;
         creators["new rpg go camp"] = &ActionContext::new_rpg_go_camp;
         creators["new rpg wander random"] = &ActionContext::new_rpg_wander_random;
@@ -489,6 +491,7 @@ private:
     static Action* new_rpg_natural_maintenance(PlayerbotAI* botAI) { return new NewRpgNaturalMaintenanceAction(botAI); }
     static Action* new_rpg_discover_flight(PlayerbotAI* botAI) { return new NewRpgDiscoverFlightAction(botAI); }
     static Action* new_rpg_status_update(PlayerbotAI* botAI) { return new NewRpgStatusUpdateAction(botAI); }
+    static Action* class_quest_chain(PlayerbotAI* botAI) { return new ClassQuestChainAction(botAI); }
     static Action* new_rpg_go_grind(PlayerbotAI* botAI) { return new NewRpgGoGrindAction(botAI); }
     static Action* new_rpg_go_camp(PlayerbotAI* botAI) { return new NewRpgGoCampAction(botAI); }
     static Action* new_rpg_wander_random(PlayerbotAI* botAI) { return new NewRpgWanderRandomAction(botAI); }

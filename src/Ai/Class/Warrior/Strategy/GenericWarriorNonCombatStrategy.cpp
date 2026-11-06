@@ -32,6 +32,7 @@ GenericWarriorNonCombatStrategy::GenericWarriorNonCombatStrategy(PlayerbotAI* bo
 void GenericWarriorNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL + 2)}));
 
     triggers.push_back(new TriggerNode("often", { NextAction("apply stone", 1.0f) }));
     triggers.push_back(new TriggerNode("vigilance", { NextAction("vigilance", 10.0f) }));

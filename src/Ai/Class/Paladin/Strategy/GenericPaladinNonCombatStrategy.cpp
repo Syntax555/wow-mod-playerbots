@@ -17,6 +17,7 @@ GenericPaladinNonCombatStrategy::GenericPaladinNonCombatStrategy(PlayerbotAI* bo
 void GenericPaladinNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL + 2)}));
 
     triggers.push_back(new TriggerNode("party member dead", { NextAction("redemption", ACTION_CRITICAL_HEAL + 10) }));
     triggers.push_back(new TriggerNode("party member almost full health", { NextAction("flash of light on party", ACTION_MEDIUM_HEAL + 5.0f) }));

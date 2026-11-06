@@ -50,11 +50,18 @@ are retained; historical pet-ability acquisition remains separate.
 Temporary lesson charms expire normally, and quest travel uses spawns on the
 current map; missing navigation can stop acquisition.
 
-Solo random warlocks pursue missing basic demons through native quest chains,
-owned ritual items and ordinary combat and rewards. Quest travel uses the
-existing earned routes between continents when enabled. Later demons and class
-mounts remain incomplete. See
+Solo random warlocks pursue missing basic demons and the Felsteed through native
+quest chains, owned ritual items and ordinary combat and rewards. Quest travel
+uses the existing earned routes between continents when enabled. Infernal,
+Doomguard and the Dreadsteed remain incomplete. See
 [warlock quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-warlock-demon-quests).
+
+Solo random warriors, paladins and priests pursue the native quests that teach
+their stances, Redemption, Sense Undead, warhorses and restored priest racial
+spells. Bots use their own quest items on native targets and objects, wait at
+event sites and fight event opponents through ordinary combat; failed or stalled
+event quests are abandoned and accepted again normally. See
+[class quest coverage](https://github.com/Syntax555/mod-playerbots-portable/blob/main/docs/class-quests.md#autonomous-warrior-paladin-and-priest-quests).
 
 Solo random shamans pursue the Vanilla Horde and Draenei totem chains with their
 own quest items and native spirit events. Shared quest actions support NPCs and

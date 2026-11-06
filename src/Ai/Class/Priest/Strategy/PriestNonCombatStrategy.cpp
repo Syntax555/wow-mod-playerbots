@@ -16,6 +16,7 @@ PriestNonCombatStrategy::PriestNonCombatStrategy(PlayerbotAI* botAI) : NonCombat
 void PriestNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     NonCombatStrategy::InitTriggers(triggers);
+    triggers.push_back(new TriggerNode("class quest chain", {NextAction("class quest chain", ACTION_NORMAL + 2)}));
 
     triggers.push_back(
         new TriggerNode("inner fire",{ NextAction("inner fire", 10.0f) }));

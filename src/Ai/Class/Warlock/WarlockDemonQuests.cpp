@@ -30,7 +30,9 @@ WarlockDemonQuest const WarlockDemonQuests[] = {
     {1739, 712, 6913, 5677}, {1758, 691, 0, 0},       {1795, 691, 6999, 6268}, {1798, 691, 0, 0},
     {1801, 691, 0, 0},       {1802, 691, 0, 0},       {1803, 691, 0, 0},       {1804, 691, 0, 0},
     {1805, 691, 0, 0},       {2996, 691, 0, 0},       {3001, 691, 0, 0},       {8344, 688, 0, 0},
-    {10605, 712, 0, 0},      {10789, 697, 0, 0},      {10790, 697, 0, 0},
+    {10605, 712, 0, 0},      {10789, 697, 0, 0},      {10790, 697, 0, 0},      {9529, 697, 0, 0},
+    {9619, 697, 23732, 5676}, {3631, 5784, 0, 0},     {4487, 5784, 0, 0},      {4488, 5784, 0, 0},
+    {4489, 5784, 0, 0},      {4490, 5784, 0, 0},
 };
 
 }  // namespace
@@ -43,7 +45,7 @@ WarlockDemonQuest const* CurrentWarlockDemonQuest(PlayerbotAI* botAI)
         return nullptr;
     Player* bot = botAI->GetBot();
     std::optional<ClassQuestRouteCosts> costs;
-    for (uint32 spell : {688u, 697u, 712u, 691u})
+    for (uint32 spell : {688u, 697u, 712u, 691u, 5784u})
     {
         if (bot->HasSpell(spell))
             continue;
