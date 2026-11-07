@@ -335,6 +335,10 @@ ClassQuestStep const ClassQuestSteps[] = {
     {CLASS_WARLOCK, 4488, 5784},
     {CLASS_WARLOCK, 4489, 5784},
     {CLASS_WARLOCK, 4490, 5784},
+    // Warlock Inferno; the Fel Fire wakes Kroshius at his remains, and his corpse holds the infernal core.
+    {CLASS_WARLOCK, 7601, 1122},
+    {CLASS_WARLOCK, 7602, 1122},
+    {CLASS_WARLOCK, 7603, 1122, Use::Focus, 18626, 14467},
     // Warlock class quests without a lesson, nearest native giver first.
     {CLASS_WARLOCK, 1499, 0},
     {CLASS_WARLOCK, 3090, 0},
@@ -648,6 +652,17 @@ bool ClassQuestChainAction::UseAtFocus(Quest const* quest, ClassQuestStep const&
             if (creature && creature->GetEntry() == step.Entry && creature->IsAlive() && Usable(bot, creature) &&
                 creature->ToTempSummon() && creature->ToTempSummon()->GetSummonerGUID() == bot->GetGUID())
                 return true;
+        }
+        // A used-up ritual item is not restored while the own summon's corpse holds loot, such as Kroshius' core;
+        // the ordinary loot action takes it.
+        for (ObjectGuid guid : AI_VALUE(GuidVector, "nearest corpses"))
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            Creature* creature = unit ? unit->ToCreature() : nullptr;
+            if (creature && creature->GetEntry() == step.Entry && bot->isAllowedToLoot(creature) &&
+                Usable(bot, creature) && creature->ToTempSummon() &&
+                creature->ToTempSummon()->GetSummonerGUID() == bot->GetGUID())
+                return false;
         }
     }
     Item* item = bot->GetItemByEntry(step.Item);
