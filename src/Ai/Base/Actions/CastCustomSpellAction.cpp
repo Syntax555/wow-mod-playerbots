@@ -6,6 +6,7 @@
 
 #include "CastCustomSpellAction.h"
 #include "ChatHelper.h"
+#include "EarnedAuction.h"
 #include "Event.h"
 #include "ItemUsageValue.h"
 #include "Playerbots.h"
@@ -348,6 +349,10 @@ bool DisEnchantRandomItemAction::Execute(Event /*event*/)
         // Rare and better items stay with a real master or guild; the uncommon ones after them do not.
         if ((botAI->HasGameClientMaster() || botAI->IsInRealGuild()) &&
             item->GetTemplate()->Quality > ITEM_QUALITY_UNCOMMON)
+            continue;
+
+        // Natural progression keeps quest objectives and spell reagents, as it does from vendors.
+        if (EarnedAuction::ShouldReserveForAuction(botAI, item, ITEM_USAGE_DISENCHANT))
             continue;
 
         if (CastCustomSpellAction::Execute(

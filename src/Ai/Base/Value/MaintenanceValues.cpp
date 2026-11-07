@@ -186,13 +186,15 @@ NaturalMaintenanceTask NaturalMaintenanceValue::Calculate()
         gearBudget && ReplaceableBagSize(bot, replaceableBag) && !CarriesBagUpgrade(botAI, replaceableBag);
 
     // Once no NPC needs a visit, a random bot with Enchanting disenchants the bag gear rated for it
-    // instead of selling it, as a player would. The ordinary action keeps a real guild's rare items.
+    // instead of selling it, as a player would. The ordinary action keeps a real guild's rare items
+    // and the bot's quest objectives.
     auto const disenchant = [&]() -> NaturalMaintenanceTask
     {
         if (sRandomPlayerbotMgr.IsRandomBot(bot) && botAI->HasSkill(SKILL_ENCHANTING))
             for (Item* item :
                  AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_DISENCHANT)))
-                if (item->GetTemplate()->Quality <= ITEM_QUALITY_UNCOMMON || !botAI->IsInRealGuild())
+                if ((item->GetTemplate()->Quality <= ITEM_QUALITY_UNCOMMON || !botAI->IsInRealGuild()) &&
+                    !EarnedAuction::ShouldReserveForAuction(botAI, item, ITEM_USAGE_DISENCHANT))
                     return {{}, NaturalMaintenanceType::DISENCHANT};
         return {};
     };
