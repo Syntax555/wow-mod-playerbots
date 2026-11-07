@@ -51,6 +51,20 @@ bool NewRpgNaturalMaintenanceAction::Execute(Event /*event*/)
     }
 
     NaturalMaintenanceTask const task = value->Get();
+    if (task.type == NaturalMaintenanceType::DISENCHANT)
+    {
+        // Like a player, the bot stops and dismounts to cast. The next item follows the cast at once;
+        // a failed cast waits for the next search.
+        bot->StopMoving();
+        if (bot->IsMounted())
+            bot->Dismount();
+        bool const result = botAI->DoSpecificAction("disenchant random item", Event("natural maintenance"), true);
+        if (result)
+            value->Reset();
+        else
+            value->Set({});
+        return result;
+    }
     if (task.type == NaturalMaintenanceType::AUCTION_TRAVEL)
     {
         if (!EarnedAuctionTravel::ContinueTrip(botAI))
@@ -180,6 +194,7 @@ bool NewRpgNaturalMaintenanceAction::Execute(Event /*event*/)
         case NaturalMaintenanceType::AUCTION:
         case NaturalMaintenanceType::AUCTION_MAIL:
         case NaturalMaintenanceType::AUCTION_TRAVEL:
+        case NaturalMaintenanceType::DISENCHANT:
             break;
     }
     bot->SetSelection(oldSelection);

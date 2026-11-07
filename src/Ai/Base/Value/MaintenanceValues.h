@@ -22,7 +22,8 @@ enum class NaturalMaintenanceType : uint8
     BUY,
     AUCTION,
     AUCTION_MAIL,
-    AUCTION_TRAVEL
+    AUCTION_TRAVEL,
+    DISENCHANT
 };
 
 struct NaturalMaintenanceTask

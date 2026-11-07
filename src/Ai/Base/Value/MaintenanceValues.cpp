@@ -185,9 +185,21 @@ NaturalMaintenanceTask NaturalMaintenanceValue::Calculate()
     bool const needsBag =
         gearBudget && ReplaceableBagSize(bot, replaceableBag) && !CarriesBagUpgrade(botAI, replaceableBag);
 
+    // Once no NPC needs a visit, a random bot with Enchanting disenchants the bag gear rated for it
+    // instead of selling it, as a player would. The ordinary action keeps a real guild's rare items.
+    auto const disenchant = [&]() -> NaturalMaintenanceTask
+    {
+        if (sRandomPlayerbotMgr.IsRandomBot(bot) && botAI->HasSkill(SKILL_ENCHANTING))
+            for (Item* item :
+                 AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_DISENCHANT)))
+                if (item->GetTemplate()->Quality <= ITEM_QUALITY_UNCOMMON || !botAI->IsInRealGuild())
+                    return {{}, NaturalMaintenanceType::DISENCHANT};
+        return {};
+    };
+
     bool const needsSupplies = needsFood || needsDrink || ammoSubclass || !neededReagents.empty();
     if (!canSell && !needsRepair && !spellBudget && !needsSupplies && !needsBag)
-        return {};
+        return disenchant();
 
     // An unreachable or failed NPC must not block the others while it stays nearest.
     ObjectGuid const rejected = botAI->rpgInfo.naturalMaintenanceRejected;
@@ -293,7 +305,7 @@ NaturalMaintenanceTask NaturalMaintenanceValue::Calculate()
             return {guid, NaturalMaintenanceType::BUY, bag->ItemId, uint32(NeedMoneyFor::gear)};
     }
 
-    return {};
+    return disenchant();
 }
 
 bool CanMoveAroundValue::Calculate()

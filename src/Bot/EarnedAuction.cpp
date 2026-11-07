@@ -903,15 +903,16 @@ bool SellsToVendor(PlayerbotAI* ai, Item* item, ItemUsage usage)
 {
     if (usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
         return true;
-    // Natural upkeep has no disenchanting, so a random bot sells outgrown bound gear
-    // instead of keeping it in its bags. Vendors refuse gear without a price, gear the
-    // bot cannot wear yet may still become an upgrade, and bots in a real guild keep
-    // rare gear as they would from disenchanting.
+    // Natural upkeep disenchants the bound gear a random bot can use and sells the outgrown
+    // rest, such as armor of another type, instead of keeping it in its bags. Vendors refuse
+    // gear without a price, gear the bot cannot wear yet may still become an upgrade, and
+    // bots in a real guild keep rare gear as they would from disenchanting.
     ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
     return usage == ITEM_USAGE_DISENCHANT && proto && proto->SellPrice && item->IsSoulBound() &&
            sPlayerbotAIConfig.naturalProgression && ai && ai->GetBot() &&
            proto->RequiredLevel <= ai->GetBot()->GetLevel() && sRandomPlayerbotMgr.IsRandomBot(ai->GetBot()) &&
-           !ai->HasGameClientMaster() && (proto->Quality <= ITEM_QUALITY_UNCOMMON || !ai->IsInRealGuild());
+           !ai->HasGameClientMaster() && (proto->Quality <= ITEM_QUALITY_UNCOMMON || !ai->IsInRealGuild()) &&
+           ai->GetBot()->CanUseItem(proto) != EQUIP_ERR_OK;
 }
 
 bool HasVendorSurplus(PlayerbotAI* ai)

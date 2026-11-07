@@ -17,7 +17,8 @@ bool NewRpgNaturalMaintenanceTrigger::IsActive()
     if (!sPlayerbotAIConfig.naturalProgression)
         return false;
     NaturalMaintenanceTask const task = AI_VALUE(NaturalMaintenanceTask, "natural maintenance");
-    return !task.target.IsEmpty() || task.type == NaturalMaintenanceType::AUCTION_TRAVEL;
+    return !task.target.IsEmpty() || task.type == NaturalMaintenanceType::AUCTION_TRAVEL ||
+           task.type == NaturalMaintenanceType::DISENCHANT;
 }
 
 bool NewRpgDiscoverFlightTrigger::IsActive()
