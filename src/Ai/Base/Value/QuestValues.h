@@ -24,9 +24,12 @@ enum class QuestRelationFlag : uint32
     objective2 = 2,
     objective3 = 4,
     objective4 = 8,
-    questGiver = 16,
-    questTaker = 32,
-    maxQuestRelationFlag = 64
+    // Item objectives 5 and 6 have no creature or object slot.
+    objective5 = 16,
+    objective6 = 32,
+    questGiver = 64,
+    questTaker = 128,
+    maxQuestRelationFlag = 256
 };
 
 //                     questId, QuestRelationFlag

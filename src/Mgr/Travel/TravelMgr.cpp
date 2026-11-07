@@ -2055,7 +2055,10 @@ void TravelMgr::LoadQuestTravelTable()
                         container->questTakers.push_back(loc);
                         locs.push_back(loc);
                     }
-                    else
+                    // A quest giver alone is no objective. Destinations index the four creature and
+                    // object slots, so item objectives 5 and 6 get none.
+                    else if (flag & ((uint32)QuestRelationFlag::objective1 | (uint32)QuestRelationFlag::objective2 |
+                                     (uint32)QuestRelationFlag::objective3 | (uint32)QuestRelationFlag::objective4))
                     {
                         uint32 objective = 0;
                         if (flag & (uint32)QuestRelationFlag::objective1)

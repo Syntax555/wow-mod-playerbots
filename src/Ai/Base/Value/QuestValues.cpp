@@ -12,6 +12,9 @@
 #include "Playerbots.h"
 #include "SharedValueContext.h"
 
+// Every item objective has its own bit below the quest giver and taker roles.
+static_assert(uint32(QuestRelationFlag::questGiver) == 1u << QUEST_ITEM_OBJECTIVES_COUNT);
+
 // What kind of a relation does this entry have with this quest.
 entryQuestRelationMap EntryQuestRelationMapValue::Calculate()
 {
@@ -37,12 +40,12 @@ entryQuestRelationMap EntryQuestRelationMapValue::Calculate()
         uint32 questId = questItr.first;
         Quest* quest = questItr.second;
 
-        for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; objective++)
+        for (uint32 objective = 0; objective < QUEST_ITEM_OBJECTIVES_COUNT; objective++)
         {
             uint32 relationFlag = 1 << objective;
 
             // Kill objective
-            if (quest->RequiredNpcOrGo[objective])
+            if (objective < QUEST_OBJECTIVES_COUNT && quest->RequiredNpcOrGo[objective])
                 rMap[quest->RequiredNpcOrGo[objective]][questId] |= relationFlag;
 
             // Loot objective
