@@ -345,10 +345,10 @@ bool DisEnchantRandomItemAction::Execute(Event /*event*/)
 
     for (auto& item : items)
     {
-        // Don't touch rare+ items if with real player/guild
+        // Rare and better items stay with a real master or guild; the uncommon ones after them do not.
         if ((botAI->HasGameClientMaster() || botAI->IsInRealGuild()) &&
             item->GetTemplate()->Quality > ITEM_QUALITY_UNCOMMON)
-            return false;
+            continue;
 
         if (CastCustomSpellAction::Execute(
                 Event("disenchant random item", "13262 " + chat->FormatQItem(item->GetEntry()))))
