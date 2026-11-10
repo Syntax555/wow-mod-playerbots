@@ -124,12 +124,12 @@ bool CastAspectOfTheHawkAction::isUseful()
 bool CastArcaneShotAction::isUseful()
 {
     Unit* target = GetTarget();
-    if (!target || !botAI->HasSpell("explosive shot"))
+    if (!target || botAI->HasSpell("explosive shot"))
         return false;
 
     // Armor Penetration rating check - will not cast Arcane Shot above 435 ArP
-    int32 armorPenRating =
-        bot->GetUInt32Value(PLAYER_FIELD_COMBAT_RATING_1) + bot->GetUInt32Value(CR_ARMOR_PENETRATION);
+    uint32 const armorPenRating = bot->GetUInt32Value(static_cast<uint16>(PLAYER_FIELD_COMBAT_RATING_1) +
+                                                      static_cast<uint16>(CR_ARMOR_PENETRATION));
     if (armorPenRating > 435)
         return false;
 
