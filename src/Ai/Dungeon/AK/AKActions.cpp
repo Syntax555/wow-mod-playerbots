@@ -62,12 +62,15 @@ bool AvoidShadowCrashAction::Execute(Event /*event*/)
     {
         // This doesn't seem to avoid casts very well, perhaps because this isn't checked while allies are casting.
         // TODO: Revisit if this is an issue in heroics, otherwise ignore shadow crashes for the most part.
+        // The caster's target is empty for a self focus and may have left the map.
         victim = botAI->GetUnit(unit->GetTarget());
-        float distance = bot->GetExactDist2d(victim->GetPosition());
-
-        if (victim && distance < radius)
+        if (victim)
         {
-            return MoveAway(victim, targetDist - distance);
+            float distance = bot->GetExactDist2d(victim->GetPosition());
+            if (distance < radius)
+            {
+                return MoveAway(victim, targetDist - distance);
+            }
         }
     }
 
